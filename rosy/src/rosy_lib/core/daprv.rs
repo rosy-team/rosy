@@ -5,10 +5,8 @@
 
 use anyhow::{Result, Context, bail};
 
-use crate::rosy_lib::taylor::{DA, get_config};
-use crate::rosy_lib::taylor::da::DACoefficient;
+use crate::rosy_lib::taylor::{DA, get_config, get_runtime};
 use crate::rosy_lib::taylor::Monomial;
-use crate::rosy_lib::core::display::RosyDisplay;
 
 /// Write an array of DA vectors in COSY INFINITY DAPRV format.
 ///
@@ -40,16 +38,25 @@ pub fn rosy_daprv(
     Ok(())
 }
 
-/// Format DAPRV output in COSY-compatible format.
+/// Format DAPRV output in COSY INFINITY-compatible format.
+///
+/// COSY format (per component block):
+///   - No header line
+///   - Each non-zero term: `{coeff:17.12}     {exponents_concatenated}\n`
+///   - Separator: ` ` + 78 dashes + `\n`
 fn format_daprv(
     array: &Vec<DA>,
     num_components: usize,
     _max_vars: usize,
     current_vars: usize,
 ) -> Result<String> {
+    let epsilon = get_runtime()
+        .context("DAPRV requires DA to be initialized (call OV first)")?
+        .config.epsilon;
+
     let mut output = String::new();
 
-    // Collect all unique monomials from all components
+    // Collect all unique monomials across all components
     let mut all_monomials: Vec<Monomial> = Vec::new();
     for i in 0..num_components.min(array.len()) {
         for (m, _) in array[i].coeffs_iter() {
@@ -59,7 +66,7 @@ fn format_daprv(
         }
     }
 
-    // Sort monomials: first by total order, then by exponents
+    // Sort by total order ascending, then reverse-lexicographic on exponents
     all_monomials.sort_by(|m1, m2| {
         m1.total_order.cmp(&m2.total_order)
             .then_with(|| {
@@ -73,39 +80,22 @@ fn format_daprv(
             })
     });
 
-    // If no monomials, print a zero entry
-    if all_monomials.is_empty() {
-        all_monomials.push(Monomial::constant());
-    }
-
-    // Print header
-    output.push_str(&format!(
-        "  I  COEFFICIENT          "));
-    for comp in 1..=num_components.min(array.len()) {
-        output.push_str(&format!("     {:>2}             ", comp));
-    }
-    output.push_str("ORDER EXPONENTS\n");
-
-    // Print each monomial row
-    for (idx, monomial) in all_monomials.iter().enumerate() {
-        let order = monomial.total_order;
-        let exp_str = build_exp_str(&monomial.exponents, current_vars);
-
-        output.push_str(&format!("{:>3}  ", idx + 1));
-
-        // Print coefficient for each component
-        for i in 0..num_components.min(array.len()) {
-            let coeff = array[i].get_coeff(monomial);
-            output.push_str(&format!("{} ", coeff.rosy_display()));
+    // One block per component (single-column COSY format)
+    let nv = current_vars.min(6);
+    for comp_idx in 0..num_components.min(array.len()) {
+        for monomial in &all_monomials {
+            let coeff = array[comp_idx].get_coeff(monomial);
+            if coeff.abs() <= epsilon {
+                continue;
+            }
+            let exp_str: String = monomial.exponents[..nv]
+                .iter()
+                .map(|&e| char::from_digit(e as u32, 10).unwrap_or('?'))
+                .collect();
+            output.push_str(&format!("{:17.12}     {}\n", coeff, exp_str));
         }
-
-        output.push_str(&format!("{:>5}   {}\n", order, exp_str));
+        output.push_str(&format!(" {}\n", "-".repeat(78)));
     }
-
-    // Print separator
-    let sep_len = 30 + num_components.min(array.len()) * 24;
-    output.push_str(&"-".repeat(sep_len.min(132)));
-    output.push('\n');
 
     Ok(output)
 }
@@ -125,85 +115,46 @@ pub fn rosy_darev(
     current_vars: usize,
     unit: u64,
 ) -> Result<()> {
-    // Read lines from the file
-    let mut lines = Vec::new();
-    
-    // Read the header line
-    let _header = crate::rosy_lib::core::file_io::rosy_read_from_unit(unit)
-        .context("Failed to read header line in DAREV")?;
-    
-    // Read coefficient lines until we hit the separator
-    loop {
-        let line = crate::rosy_lib::core::file_io::rosy_read_from_unit(unit)
-            .context("Failed to read line in DAREV")?;
-        
-        // Check if this is a separator line (all dashes)
-        if line.trim().chars().all(|c| c == '-') && !line.trim().is_empty() {
-            break;
-        }
-        
-        lines.push(line);
-    }
-
-    // Ensure array is big enough
+    // Ensure array is big enough and zeroed
     while array.len() < num_components {
         array.push(DA::zero());
     }
-
-    // Zero out the components we're reading into
     for i in 0..num_components.min(array.len()) {
         array[i] = DA::zero();
     }
 
-    // Parse each line
-    for line in &lines {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
+    let nv = current_vars.min(6);
 
-        // Parse the line: index, coefficients, order, exponents
-        let tokens: Vec<&str> = trimmed.split_whitespace().collect();
-        if tokens.len() < 2 + num_components {
-            continue; // Skip malformed lines
-        }
+    // Read one block per component; each block ends with a separator line (all dashes)
+    for comp_idx in 0..num_components.min(array.len()) {
+        loop {
+            let line = crate::rosy_lib::core::file_io::rosy_read_from_unit(unit)
+                .context("Failed to read line in DAREV")?;
+            let trimmed = line.trim();
 
-        // First token is the index (1-based), skip it
-        // Next num_components tokens are coefficients
-        // Then order
-        // Then exponents
-        let mut coeffs = Vec::new();
-        for i in 0..num_components {
-            if let Ok(coeff) = tokens[1 + i].parse::<f64>() {
-                coeffs.push(coeff);
-            } else {
-                coeffs.push(0.0);
+            // Separator line (all dashes) ends this component's block
+            if trimmed.chars().all(|c| c == '-') && !trimmed.is_empty() {
+                break;
             }
-        }
-
-        // Order is after the coefficients
-        let order_idx = 1 + num_components;
-        if order_idx >= tokens.len() {
-            continue;
-        }
-        
-        // Exponents start after order
-        let exp_start = order_idx + 1;
-        let mut exponents = [0u8; 6];
-        for i in 0..current_vars.min(6) {
-            if exp_start + i < tokens.len() {
-                if let Ok(exp) = tokens[exp_start + i].parse::<u8>() {
-                    exponents[i] = exp;
-                }
+            if trimmed.is_empty() {
+                continue;
             }
-        }
 
-        let monomial = Monomial::new(exponents);
+            let tokens: Vec<&str> = trimmed.split_whitespace().collect();
+            if tokens.len() < 2 {
+                continue;
+            }
 
-        // Set coefficients for each component
-        for (i, &coeff) in coeffs.iter().enumerate() {
-            if i < array.len() && coeff.abs() > 1e-15 {
-                array[i].set_coeff(monomial, coeff);
+            let coeff: f64 = tokens[0].parse().unwrap_or(0.0);
+            // Exponents are concatenated single digits per variable, e.g. "10" = x1=1, x2=0
+            let mut exponents = [0u8; 6];
+            for (i, ch) in tokens[1].chars().enumerate().take(nv) {
+                exponents[i] = ch.to_digit(10).unwrap_or(0) as u8;
+            }
+            let monomial = Monomial::new(exponents);
+
+            if coeff.abs() > 1e-15 {
+                array[comp_idx].set_coeff(monomial, coeff);
             }
         }
     }
@@ -300,19 +251,6 @@ pub fn rosy_datrn(
     }
 
     Ok(())
-}
-
-/// Build exponent string for DAPRV display.
-fn build_exp_str(exponents: &[u8], num_vars: usize) -> String {
-    let mut result = String::new();
-    for i in 0..num_vars.min(exponents.len()) {
-        if i % 2 == 0 {
-            result.push_str(&format!("{:>2}", exponents[i]));
-        } else {
-            result.push_str(&format!("{:>2} ", exponents[i]));
-        }
-    }
-    result.trim_end().to_string()
 }
 
 /// DAPLU: Replace independent variable xi by constant C in a DA vector.

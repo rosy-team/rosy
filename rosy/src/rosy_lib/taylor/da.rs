@@ -337,9 +337,10 @@ impl<T: DACoefficient> DA<T> {
 
     /// O(1) amortized. Used by Horner's method.
     pub fn add_constant_in_place(&mut self, value: T) {
-        let was_nz = self.coeffs[0].abs() > 1e-15;
+        let epsilon = get_runtime().map(|rt| rt.config.epsilon).unwrap_or(1e-15);
+        let was_nz = self.coeffs[0].abs() > epsilon;
         self.coeffs[0] = self.coeffs[0] + value;
-        let is_nz = self.coeffs[0].abs() > 1e-15;
+        let is_nz = self.coeffs[0].abs() > epsilon;
 
         if is_nz && !was_nz {
             self.nonzero.push(0);
@@ -358,7 +359,8 @@ impl<T: DACoefficient> DA<T> {
     /// this avoids the RwLock acquisition and HashMap lookup in `set_coeff`.
     pub fn make_prime(&self) -> Self {
         let mut prime = self.clone();
-        if prime.coeffs[0].abs() > 1e-15 {
+        let epsilon = get_runtime().map(|rt| rt.config.epsilon).unwrap_or(1e-15);
+        if prime.coeffs[0].abs() > epsilon {
             prime.coeffs[0] = T::zero();
             // Remove 0 from nonzero list
             if let Some(pos) = prime.nonzero.iter().position(|&i| i == 0) {

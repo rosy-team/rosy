@@ -1,4 +1,5 @@
 use crate::rosy_lib::{RE, ST, LO, CM, VE, DA, CD};
+use crate::rosy_lib::taylor::get_runtime;
 
 fn sci(x: f64) -> (f64, i32) {
     if x == 0.0 {
@@ -83,10 +84,9 @@ fn display_re (
         )
     }
 }
-fn build_exp_str (
-    exps: &[u8],
-) -> String {
-    exps.iter()
+fn build_exp_str(exps: &[u8], num_vars: usize) -> String {
+    exps[..num_vars.min(exps.len())]
+        .iter()
         .enumerate()
         .fold(String::new(), |mut acc, (i, exp)| {
             if i % 2 == 0 {
@@ -170,13 +170,12 @@ impl RosyDisplay for &DA {
         for (idx, (monomial, coeff)) in sorted.iter().enumerate() {
             let order = monomial.total_order;
             let exp_str = {
-                // For 6 exponents, should match: '1 0  1 0  0 0'
                 let exps = &monomial.exponents;
-
-                build_exp_str(exps)
+                let nv = get_runtime().map(|rt| rt.config.num_vars).unwrap_or(exps.len());
+                build_exp_str(exps, nv)
             };
             output.push_str(&format!(
-                "{}  {} {}  {}\n", 
+                "{}  {} {}  {}\n",
                 idx + 1,
                 coeff.rosy_display(),
                 format!("{:>3}", order),
@@ -238,15 +237,14 @@ impl RosyDisplay for &CD {
             let imag_coeff = imag_part.get_coeff(monomial);
             let order = monomial.total_order;
             let exp_str = {
-                // For 6 exponents, should match: '1 0  1 0  0 0'
                 let exps = &monomial.exponents;
-
-                build_exp_str(exps)
+                let nv = get_runtime().map(|rt| rt.config.num_vars).unwrap_or(exps.len());
+                build_exp_str(exps, nv)
             };
             output.push_str(&format!(
                 "     {} {} {} {:>3}  {}\n",
-                idx + 1, 
-                real_coeff.rosy_display(), 
+                idx + 1,
+                real_coeff.rosy_display(),
                 imag_coeff.rosy_display(),
                 order,
                 exp_str.trim_end()

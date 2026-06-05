@@ -203,6 +203,10 @@ pub fn rosy_dafset(template_da: Vec<DA>) -> Result<()> {
 /// is used as a universal mask).
 pub fn rosy_dafilt(input: &Vec<DA>, result: &mut Vec<DA>) -> Result<()> {
     let filter = get_filter_da()?;
+    let epsilon = {
+        let rt = get_runtime().context("DAFILT requires DA initialized")?;
+        rt.config.epsilon
+    };
 
     match filter {
         None => {
@@ -217,7 +221,7 @@ pub fn rosy_dafilt(input: &Vec<DA>, result: &mut Vec<DA>) -> Result<()> {
                 // Keep only monomials that are nonzero in the mask
                 let mut new_da = DA::zero();
                 for &k in &src.nonzero {
-                    if mask.coeffs[k as usize].abs() > 0.0 {
+                    if mask.coeffs[k as usize].abs() > epsilon {
                         new_da.coeffs[k as usize] = src.coeffs[k as usize];
                         new_da.nonzero.push(k);
                     }
@@ -234,9 +238,9 @@ pub fn rosy_dafilt(input: &Vec<DA>, result: &mut Vec<DA>) -> Result<()> {
 /// `sparsity` is the fraction of monomials that will be set nonzero
 /// (0.0 = all zero, 1.0 = all filled). Uses the global Rosy RNG.
 pub fn rosy_daran(da: &mut Vec<DA>, sparsity: f64) -> Result<()> {
-    let num_monomials = {
+    let (num_monomials, epsilon) = {
         let rt = get_runtime().context("DARAN requires DA to be initialized (call DAINI first)")?;
-        rt.num_monomials
+        (rt.num_monomials, rt.config.epsilon)
     };
 
     let sparsity = sparsity.clamp(0.0, 1.0);
@@ -246,8 +250,10 @@ pub fn rosy_daran(da: &mut Vec<DA>, sparsity: f64) -> Result<()> {
         for k in 0..num_monomials {
             if crate::rosy_lib::core::rng::rng_f64() < sparsity {
                 let val = crate::rosy_lib::core::rng::rng_f64_symmetric();
-                da_el.coeffs[k] = val;
-                da_el.nonzero.push(k as u32);
+                if val.abs() > epsilon {
+                    da_el.coeffs[k] = val;
+                    da_el.nonzero.push(k as u32);
+                }
             }
         }
     }
