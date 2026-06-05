@@ -10,7 +10,7 @@
 use anyhow::{Context, Result};
 
 use crate::rosy_lib::core::display::RosyDisplay;
-use crate::rosy_lib::taylor::{DA, MAX_VARS};
+use crate::rosy_lib::taylor::{DA, MAX_VARS, get_runtime};
 use crate::rosy_lib::taylor::Monomial;
 
 // ============================================================================
@@ -50,49 +50,42 @@ fn decode_transport_id(id: u64) -> [u8; MAX_VARS] {
 pub fn rosy_darea(unit: u64, da: &mut Vec<DA>, num_vars: usize) -> Result<()> {
     use crate::rosy_lib::core::file_io::rosy_read_from_unit;
 
-    // Skip the header line
-    let _header = rosy_read_from_unit(unit).context("Failed to read header line in DAREA")?;
-
-    // Collect data lines until a separator (all dashes)
-    let mut lines: Vec<String> = Vec::new();
-    loop {
-        let line = rosy_read_from_unit(unit).context("Failed to read data line in DAREA")?;
-        if line.trim().chars().all(|c| c == '-') && !line.trim().is_empty() {
-            break;
-        }
-        lines.push(line);
-    }
-
-    // Ensure the output array has at least one element
+    // Ensure the output array has at least one element and is zeroed
     while da.is_empty() {
         da.push(DA::zero());
     }
     da[0] = DA::zero();
 
-    for line in &lines {
+    let nv = num_vars.min(MAX_VARS);
+
+    // Read COSY DAPRV format: coefficient lines until separator (all dashes)
+    loop {
+        let line = rosy_read_from_unit(unit).context("Failed to read data line in DAREA")?;
         let trimmed = line.trim();
+
+        // Separator line ends the block
+        if trimmed.chars().all(|c| c == '-') && !trimmed.is_empty() {
+            break;
+        }
         if trimmed.is_empty() {
             continue;
         }
 
-        // DAPRV row layout (1-component): idx  coeff  order  exp1 exp2 ...
+        // COSY DAPRV format: `{coeff:17.12}     {concatenated_exps}`
         let tokens: Vec<&str> = trimmed.split_whitespace().collect();
-        if tokens.len() < 3 {
+        if tokens.len() < 2 {
             continue;
         }
 
-        let coeff: f64 = tokens[1].parse().unwrap_or(0.0);
+        let coeff: f64 = tokens[0].parse().unwrap_or(0.0);
         if coeff.abs() <= 1e-15 {
             continue;
         }
 
-        // Exponents start at token index 3 (after idx, coeff, order)
-        let exp_start = 3;
+        // Exponents are concatenated single digits, e.g. "10" = x1=1, x2=0
         let mut exponents = [0u8; MAX_VARS];
-        for i in 0..num_vars.min(MAX_VARS) {
-            if exp_start + i < tokens.len() {
-                exponents[i] = tokens[exp_start + i].parse().unwrap_or(0);
-            }
+        for (i, ch) in tokens[1].chars().enumerate().take(nv) {
+            exponents[i] = ch.to_digit(10).unwrap_or(0) as u8;
         }
 
         let monomial = Monomial::new(exponents);
@@ -122,13 +115,19 @@ pub fn rosy_dapew(unit: u64, da: &Vec<DA>, var_i: usize, order_n: u32) -> Result
         return Ok(());
     }
 
+    let num_vars = get_runtime()
+        .context("DAPEW requires DA initialized")?
+        .config.num_vars;
+
     let da0 = &da[0];
     let mut output = String::new();
 
+    // COSY DAPEW header format
     output.push_str(&format!(
-        "  I  COEFFICIENT          ORDER EXPONENTS  (DAPEW var={} order={})\n",
-        var_i, order_n
+        "        ORDER{:>4}  IN COLUMN{:>5}\n",
+        order_n, var_i
     ));
+    output.push_str("     I  COEFFICIENT          ORDER EXPONENTS\n");
 
     let mut terms: Vec<(Monomial, f64)> = da0
         .coeffs_iter()
@@ -142,7 +141,7 @@ pub fn rosy_dapew(unit: u64, da: &Vec<DA>, var_i: usize, order_n: u32) -> Result
         })
         .collect();
 
-    // Sort by total order for deterministic output
+    // Sort by total order ascending then lexicographic
     terms.sort_by(|(a, _), (b, _)| {
         a.total_order
             .cmp(&b.total_order)
@@ -151,12 +150,12 @@ pub fn rosy_dapew(unit: u64, da: &Vec<DA>, var_i: usize, order_n: u32) -> Result
 
     for (idx, (monomial, coeff)) in terms.iter().enumerate() {
         let order = monomial.total_order;
-        let exp_parts: Vec<String> = (0..MAX_VARS)
+        let exp_parts: Vec<String> = (0..num_vars.min(MAX_VARS))
             .map(|i| format!("{:>2}", monomial.exponents[i]))
             .collect();
         let exp_str = exp_parts.join(" ");
         output.push_str(&format!(
-            "{:>3}  {} {:>5}   {}\n",
+            "  {:>4}  {} {:>5}   {}\n",
             idx + 1,
             coeff.rosy_display(),
             order,
@@ -164,11 +163,9 @@ pub fn rosy_dapew(unit: u64, da: &Vec<DA>, var_i: usize, order_n: u32) -> Result
         ));
     }
 
-    if terms.is_empty() {
-        output.push_str("  (no matching terms)\n");
-    }
-
-    output.push_str(&"-".repeat(50));
+    // COSY separator: 5 spaces + 35 dashes
+    output.push_str("     ");
+    output.push_str(&"-".repeat(35));
     output.push('\n');
 
     if unit == 6 {
