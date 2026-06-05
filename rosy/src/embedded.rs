@@ -99,7 +99,7 @@ fn generate_cargo_toml(uses_mpi: bool, optimized: bool) -> String {
     };
 
     format!(
-        "[package]\nname = \"rosy_output\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nanyhow = \"1.0\"\n{mpi_dep}\nnum-complex = \"0.4\"\n{profile_section}"
+        "[workspace]\n\n[package]\nname = \"rosy_output\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nanyhow = \"1.0\"\n{mpi_dep}\nnum-complex = \"0.4\"\n{profile_section}"
     )
 }
 

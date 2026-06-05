@@ -141,7 +141,11 @@ impl TranspileableStatement for AssignStatement {
                 // the declared dimensions by the number of indices.
                 let mut explicit_type = node.resolved.as_ref().unwrap().clone();
                 let num_indices = self.identifier.num_index_dimensions();
-                explicit_type.dimensions = explicit_type.dimensions.saturating_sub(num_indices);
+                if num_indices > 0 && explicit_type.base_type == RosyBaseType::VE && explicit_type.dimensions == 0 {
+                    explicit_type = RosyType::RE();
+                } else {
+                    explicit_type.dimensions = explicit_type.dimensions.saturating_sub(num_indices);
+                }
                 if let Ok(new_type) = resolver.evaluate_recipe(&recipe) {
                     if new_type != explicit_type {
                         let scope_str = if ctx.scope_path.is_empty() {
