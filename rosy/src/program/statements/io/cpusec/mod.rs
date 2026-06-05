@@ -146,11 +146,10 @@ impl Transpile for CpusecStatement {
             }
         };
 
-        // Use the `start` Instant created at the top of main_wrapper() in the
-        // output template.  This matches COSY INFINITY's CPUSEC semantics: elapsed
-        // wall-clock time since the program began execution.
+        // rosy_cpu_time() returns POSIX clock() / CLOCKS_PER_SEC — CPU time, not wall time.
+        // PWTIME uses start.elapsed() for wall-clock time.
         let serialization = format!(
-            "{}{} = start.elapsed().as_secs_f64();",
+            "{}{} = rosy_cpu_time();",
             dereference, serialized_identifier
         );
 

@@ -1,5 +1,6 @@
 pub mod da_ops;
 pub mod display;
+pub mod time;
 pub mod file_io;
 pub mod memory;
 pub mod daprv;
@@ -19,6 +20,7 @@ pub mod mem_serial;
 
 pub use da_ops::*;
 pub use display::*;
+pub use time::*;
 pub use file_io::*;
 pub use memory::*;
 pub use daprv::*;

@@ -35,6 +35,7 @@ num-complex.workspace = true
 rand.workspace = true
 rustc-hash.workspace = true
 libm = "0.2"
+libc.workspace = true
 memory-stats = "1"
 
 # LSP server dependencies

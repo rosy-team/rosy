@@ -473,15 +473,37 @@ impl RosyFromBinary for bool {
     }
 }
 
-// Binary serialization for DA (stub — DA binary I/O not yet fully supported)
+// Binary serialization for CM (Complex64): 8 bytes real + 8 bytes imag (little-endian)
+impl RosyToBinary for num_complex::Complex64 {
+    fn to_binary(&self) -> Vec<u8> {
+        let mut bytes = self.re.to_le_bytes().to_vec();
+        bytes.extend(self.im.to_le_bytes());
+        bytes
+    }
+}
+
+impl RosyFromBinary for num_complex::Complex64 {
+    fn from_binary(data: &[u8]) -> Result<Self> {
+        if data.len() < 16 {
+            bail!("Not enough data to deserialize Complex64: expected 16 bytes, got {}", data.len());
+        }
+        let mut re_buf = [0u8; 8];
+        let mut im_buf = [0u8; 8];
+        re_buf.copy_from_slice(&data[..8]);
+        im_buf.copy_from_slice(&data[8..16]);
+        Ok(num_complex::Complex64::new(f64::from_le_bytes(re_buf), f64::from_le_bytes(im_buf)))
+    }
+}
+
+// Binary serialization for DA (stub — DA binary I/O not yet implemented)
 impl RosyToBinary for crate::rosy_lib::taylor::DA {
     fn to_binary(&self) -> Vec<u8> {
-        unimplemented!("Binary I/O for DA vectors is not yet supported in Rosy. Use DAPRV/DAREV for ASCII DA I/O.")
+        panic!("Binary I/O for DA is not yet supported in Rosy. Use DAPRV/DAREV for ASCII DA I/O.")
     }
 }
 
 impl RosyFromBinary for crate::rosy_lib::taylor::DA {
     fn from_binary(_data: &[u8]) -> Result<Self> {
-        unimplemented!("Binary I/O for DA vectors is not yet supported in Rosy. Use DAPRV/DAREV for ASCII DA I/O.")
+        bail!("Binary I/O for DA is not yet supported in Rosy. Use DAPRV/DAREV for ASCII DA I/O.")
     }
 }
