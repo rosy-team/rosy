@@ -16,6 +16,8 @@
 use anyhow::Result;
 use crate::rosy_lib::RosyType;
 use crate::rosy_lib::{RE, CM, VE, DA, CD};
+use std::sync::OnceLock;
+use std::collections::HashMap;
 use crate::rosy_lib::operators::{TypeRule, build_type_registry};
 
 /// Type compatibility registry for division operator.
@@ -48,9 +50,12 @@ pub const DIV_REGISTRY: &[TypeRule] = &[
     TypeRule::new("CD", "CD", "CD", "1+DA(1)+CM(2&3)*DA(2)", "2+DA(3)+CM(6&7)*DA(4)"),
 ];
 
+static DIV_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
+
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    let registry = build_type_registry(DIV_REGISTRY);
-    registry.get(&(*lhs, *rhs)).copied()
+    DIV_MAP.get_or_init(|| build_type_registry(DIV_REGISTRY))
+        .get(&(*lhs, *rhs))
+        .copied()
 }
 
 pub trait RosyDiv<Rhs = Self> {
@@ -153,6 +158,8 @@ impl RosyDiv<&RE> for &VE {
 impl RosyDiv<&VE> for &VE {
     type Output = VE;
     fn rosy_div(self, other: &VE) -> Result<Self::Output> {
+        anyhow::ensure!(self.len() == other.len(),
+            "Vector length mismatch in division: {} vs {}", self.len(), other.len());
         Ok(self.iter()
             .zip(other.iter())
             .map(|(x, y)| x / y)

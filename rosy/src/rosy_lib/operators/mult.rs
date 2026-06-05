@@ -16,6 +16,8 @@
 use anyhow::Result;
 use crate::rosy_lib::RosyType;
 use crate::rosy_lib::{RE, CM, VE, DA, CD, LO};
+use std::sync::OnceLock;
+use std::collections::HashMap;
 use crate::rosy_lib::operators::{TypeRule, build_type_registry};
 
 /// Type compatibility registry for multiplication operator.
@@ -49,9 +51,12 @@ pub const MULT_REGISTRY: &[TypeRule] = &[
     TypeRule::new("CD", "CD", "CD", "DA(1)+CM(0&1)*DA(2)", "DA(3)+CM(4&5)*DA(6)"),
 ];
 
+static MULT_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
+
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    let registry = build_type_registry(MULT_REGISTRY);
-    registry.get(&(*lhs, *rhs)).copied()
+    MULT_MAP.get_or_init(|| build_type_registry(MULT_REGISTRY))
+        .get(&(*lhs, *rhs))
+        .copied()
 }
 
 pub trait RosyMult<Rhs = Self> {
@@ -120,6 +125,8 @@ impl RosyMult<&RE> for &VE {
 impl RosyMult<&VE> for &VE {
     type Output = VE;
     fn rosy_mult(self, other: &VE) -> Result<Self::Output> {
+        anyhow::ensure!(self.len() == other.len(),
+            "Vector length mismatch in multiplication: {} vs {}", self.len(), other.len());
         Ok(self.iter()
             .zip(other.iter())
             .map(|(x, y)| x * y)

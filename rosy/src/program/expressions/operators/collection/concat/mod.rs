@@ -71,7 +71,7 @@ impl TranspileableExpr for ConcatExpr {
             .context("...while determining type of right side of concatenation")?;
 
         crate::rosy_lib::operators::concat::get_return_type(&left_type, &right_type)
-            .ok_or(anyhow::anyhow!(
+            .ok_or_else(|| anyhow::anyhow!(
                 "Cannot concatenate types '{}' and '{}' together!",
                 left_type,
                 right_type

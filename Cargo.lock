@@ -1056,13 +1056,12 @@ dependencies = [
 
 [[package]]
 name = "rosy"
-version = "1.2.2"
+version = "1.3.1"
 dependencies = [
  "anyhow",
  "clap",
  "flate2",
  "impls",
- "lazy_static",
  "libm",
  "memory-stats",
  "num-complex",

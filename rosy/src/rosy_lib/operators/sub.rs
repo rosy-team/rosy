@@ -17,6 +17,8 @@ use anyhow::Result;
 use num_complex::Complex64;
 use crate::rosy_lib::RosyType;
 use crate::rosy_lib::{RE, CM, VE, DA, CD};
+use std::sync::OnceLock;
+use std::collections::HashMap;
 use crate::rosy_lib::operators::{TypeRule, build_type_registry};
 
 /// Type compatibility registry for subtraction operator.
@@ -49,9 +51,12 @@ pub const SUB_REGISTRY: &[TypeRule] = &[
     TypeRule::new("CD", "CD", "CD", "DA(1)+CM(1&2)*DA(2)", "DA(3)+CM(5&6)*DA(4)"),
 ];
 
+static SUB_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
+
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    let registry = build_type_registry(SUB_REGISTRY);
-    registry.get(&(*lhs, *rhs)).copied()
+    SUB_MAP.get_or_init(|| build_type_registry(SUB_REGISTRY))
+        .get(&(*lhs, *rhs))
+        .copied()
 }
 
 pub trait RosySub<Rhs = Self> {
@@ -152,6 +157,8 @@ impl RosySub<&RE> for &VE {
 impl RosySub<&VE> for &VE {
     type Output = VE;
     fn rosy_sub(self, other: &VE) -> Result<Self::Output> {
+        anyhow::ensure!(self.len() == other.len(),
+            "Vector length mismatch in subtraction: {} vs {}", self.len(), other.len());
         Ok(self.iter()
             .zip(other.iter())
             .map(|(x, y)| x - y)

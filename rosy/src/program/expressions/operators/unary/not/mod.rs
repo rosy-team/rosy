@@ -56,12 +56,12 @@ impl FromRule for NotExpr {
 }
 impl TranspileableExpr for NotExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        crate::rosy_lib::operators::not::get_return_type(&self.operand.type_of(context)?).ok_or(
-            anyhow::anyhow!(
+        let operand_type = self.operand.type_of(context)?;
+        crate::rosy_lib::operators::not::get_return_type(&operand_type)
+            .ok_or_else(|| anyhow::anyhow!(
                 "Cannot apply NOT to type '{}'!",
-                self.operand.type_of(context)?
-            ),
-        )
+                operand_type
+            ))
     }
     fn discover_expr_function_calls(
         &self,

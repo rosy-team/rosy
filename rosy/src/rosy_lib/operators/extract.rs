@@ -17,6 +17,8 @@ use anyhow::{Result, bail};
 
 use crate::rosy_lib::RosyType;
 use crate::rosy_lib::{RE, ST, VE, CM, DA, CD};
+use std::sync::OnceLock;
+use std::collections::HashMap;
 use crate::rosy_lib::operators::{TypeRule, build_type_registry};
 use crate::rosy_lib::taylor::monomial::Monomial;
 
@@ -43,9 +45,12 @@ pub const EXTRACT_REGISTRY: &[TypeRule] = &[
     TypeRule::with_comment("CD", "VE", "CM", "CD(1)", "0&1", "Extract CD coefficient by exponent vector"),
 ];
 
+static EXTRACT_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
+
 pub fn get_return_type(base: &RosyType, index: &RosyType) -> Option<RosyType> {
-    let registry = build_type_registry(EXTRACT_REGISTRY);
-    registry.get(&(*base, *index)).copied()
+    EXTRACT_MAP.get_or_init(|| build_type_registry(EXTRACT_REGISTRY))
+        .get(&(*base, *index))
+        .copied()
 }
 
 /// Trait for extracting components from Rosy data types
