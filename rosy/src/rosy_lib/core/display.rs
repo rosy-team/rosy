@@ -20,6 +20,37 @@ fn sci(x: f64) -> (f64, i32) {
         }
     }
 }
+fn display_ve_element(x: f64) -> String {
+    let sign = if x.is_sign_negative() { '-' } else { ' ' };
+    let abs_x = x.abs();
+
+    if (abs_x != 0.0 && abs_x < 0.1) || abs_x >= 1e7 {
+        // Scientific: ±0.xxxxxxxE±eee  (1+2+7+5 = 15 chars)
+        let (mantissa, exp) = if abs_x < 1.0 {
+            sci(abs_x)
+        } else {
+            let e = abs_x.log10().floor() as i32 + 1;
+            let m = abs_x / 10f64.powi(e);
+            (m, e)
+        };
+        let digits: String = format!("{:.7}", mantissa)
+            .chars().skip(2).take(7)
+            .collect();
+        format!("{}0.{}E{:+04}", sign, digits, exp)
+    } else {
+        // Fixed: sign + right-justified-10 + 4 blanks = 15 chars (G15.7 = F11.7 + 4 blanks)
+        let dec_places: usize = if abs_x < 1.0 { 7 }
+            else if abs_x < 10.0 { 6 }
+            else if abs_x < 100.0 { 5 }
+            else if abs_x < 1_000.0 { 4 }
+            else if abs_x < 10_000.0 { 3 }
+            else if abs_x < 100_000.0 { 2 }
+            else if abs_x < 1_000_000.0 { 1 }
+            else { 0 };
+        let value_str = format!("{:.prec$}", abs_x, prec=dec_places);
+        format!("{}{:>10}    ", sign, value_str)
+    }
+}
 fn display_re (
     num: RE,
     precision: usize,
@@ -31,7 +62,7 @@ fn display_re (
 
         if num.is_sign_positive() {
             format!(
-                "0.{}{}",
+                " 0.{}{}",
                 format!("{:.precision$}", mantissa, precision=precision)
                     .chars()
                     .skip(2) // Skip "0."
@@ -102,7 +133,7 @@ pub trait RosyDisplay {
 }
 impl RosyDisplay for &RE {
     fn rosy_display(self) -> String {
-        display_re(*self, 16, 3, 4)
+        display_re(*self, 16, 4, 4)
     }
 }
 
@@ -131,10 +162,10 @@ impl RosyDisplay for &CM {
 
 impl RosyDisplay for &VE {
     fn rosy_display(self) -> String {
-        let elements: Vec<String> = self.iter()
-            .map(|x| format!(" {}", display_re(*x, 9, 4, 5)))
-            .collect();
-        format!("{}", elements.join("     ") )
+        self.iter()
+            .map(|x| display_ve_element(*x))
+            .collect::<Vec<String>>()
+            .join("")
     }
 }
 
@@ -279,7 +310,7 @@ mod tests {
         let values = vec![0.546920369e-2, 0.937875496e-10];
         let displayed = values.rosy_display();
 
-        assert!(displayed.contains("0.546920369E-002"));
-        assert!(displayed.contains("0.937875496E-010"));
+        assert!(displayed.contains(" 0.5469204E-002"), "got: {displayed:?}");
+        assert!(displayed.contains(" 0.9378755E-010"), "got: {displayed:?}");
     }
 }

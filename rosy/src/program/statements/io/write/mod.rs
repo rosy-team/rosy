@@ -165,21 +165,23 @@ impl Transpile for WriteStatement {
             requested_variables.extend(expr_requested_variables);
         }
 
-        // Runtime dispatch on unit value
-        let fmt_placeholders = serialized_exprs
+        // Each WRITE argument is printed on its own line, matching COSY INFINITY semantics.
+        let individual_writes: Vec<String> = serialized_exprs
             .iter()
-            .map(|_| "{}")
-            .collect::<Vec<&str>>()
-            .join("");
-        let fmt_args = serialized_exprs.join(", ");
+            .enumerate()
+            .map(|(i, expr)| {
+                format!(
+                    "let __rosy_write_arg_{i} = {expr}; \
+                     if __rosy_unit == 6 {{ println!(\"{{}}\", __rosy_write_arg_{i}); }} \
+                     else {{ rosy_lib::core::file_io::rosy_write_to_unit(__rosy_unit as u64, &__rosy_write_arg_{i})?; }}"
+                )
+            })
+            .collect();
 
         let serialization = format!(
-            "{{ let __rosy_unit = ({}).round() as i64; \
-            if __rosy_unit == 6 {{ println!(\"{fmt}\", {args}); }} \
-            else {{ rosy_lib::core::file_io::rosy_write_to_unit(__rosy_unit as u64, &format!(\"{fmt}\", {args}))?; }} }}",
+            "{{ let __rosy_unit = ({}).round() as i64; {} }}",
             unit_output.as_value(),
-            fmt = fmt_placeholders,
-            args = fmt_args,
+            individual_writes.join(" ")
         );
 
         Ok(TranspilationOutput {
