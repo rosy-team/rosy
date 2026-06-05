@@ -406,7 +406,7 @@ fn evaluate_cd_at_cd(poly: &CD, args: &[CD], na: usize) -> Result<CD> {
 
 /// CD-typed exponentiation by repeated squaring. Mirrors `da_powi`.
 #[inline]
-fn cd_powi(base: &CD, exp: u8) -> Result<CD> {
+pub fn cd_powi(base: &CD, exp: u8) -> Result<CD> {
     Ok(match exp {
         0 => CD::from_coeff(num_complex::Complex64::new(1.0, 0.0)),
         1 => base.clone(),
@@ -447,7 +447,7 @@ fn cd_powi(base: &CD, exp: u8) -> Result<CD> {
 
 /// Compute base^exp for small u8 exponents using exponentiation-by-squaring.
 #[inline]
-fn da_powi(base: &DA, exp: u8) -> Result<DA> {
+pub fn da_powi(base: &DA, exp: u8) -> Result<DA> {
     Ok(match exp {
         0 => DA::from_coeff(1.0),
         1 => base.clone(),

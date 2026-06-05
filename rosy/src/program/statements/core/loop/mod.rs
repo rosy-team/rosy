@@ -268,11 +268,11 @@ impl Transpile for LoopStatement {
             }
         };
         requested_variables.extend(end_output.requested_variables.iter().cloned());
-        let step_serialization = if let Some(step_expr) = &self.step {
+        let step_value: Option<String> = if let Some(step_expr) = &self.step {
             match step_expr.transpile(context) {
                 Ok(output) => {
                     requested_variables.extend(output.requested_variables.iter().cloned());
-                    format!(".step_by({} as usize)", output.as_value())
+                    Some(output.as_value().to_string())
                 }
                 Err(vec_err) => {
                     for e in vec_err {
@@ -285,19 +285,33 @@ impl Transpile for LoopStatement {
                 }
             }
         } else {
-            String::from("")
+            None
         };
 
-        let serialization = format!(
-            "for {} in (({} as usize)..=({} as usize)){} {{\n\tlet mut {} = {} as RE;\n{}\n}}",
-            self.iterator,
-            start_output.as_value(),
-            end_output.as_value(),
-            step_serialization,
-            self.iterator,
-            self.iterator,
-            indent(serialized_statements.join("\n"))
-        );
+        let iter = &self.iterator;
+        let start = start_output.as_value();
+        let end = end_output.as_value();
+        let body = indent(serialized_statements.join("\n"));
+        let serialization = if let Some(step) = &step_value {
+            format!(
+                "let mut {iter}: RE = ({start}) as RE;\n\
+                 let __{iter}_end: RE = ({end}) as RE;\n\
+                 let __{iter}_step: RE = ({step}) as RE;\n\
+                 while (__{iter}_step > 0.0_f64 && {iter} <= __{iter}_end) || (__{iter}_step <= 0.0_f64 && {iter} >= __{iter}_end) {{\n\
+                 {body}\n\
+                 \t{iter} += __{iter}_step;\n\
+                 }}"
+            )
+        } else {
+            format!(
+                "let mut {iter}: RE = ({start}) as RE;\n\
+                 let __{iter}_end: RE = ({end}) as RE;\n\
+                 while {iter} <= __{iter}_end {{\n\
+                 {body}\n\
+                 \t{iter} += 1.0_f64;\n\
+                 }}"
+            )
+        };
         if errors.is_empty() {
             Ok(TranspilationOutput {
                 serialization,
