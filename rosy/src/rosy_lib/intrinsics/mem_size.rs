@@ -14,15 +14,15 @@ impl RosyLST for RE {
 }
 
 /// LCM(n) - Complex number memory estimator (COSY compatibility).
-/// In COSY, LCM(n) returns 2*n (complex needs 2x the real storage).
-/// In Rosy, we just return 2*n for compatibility.
+/// In COSY, LCM(n) always returns 2.0 (a CM always occupies exactly 2 RE words).
+/// The input is arbitrary; the result is the constant 2.
 pub trait RosyLCM {
     fn rosy_lcm(&self) -> RE;
 }
 
 impl RosyLCM for RE {
     fn rosy_lcm(&self) -> RE {
-        2.0 * self
+        2.0
     }
 }
 
@@ -53,15 +53,14 @@ impl RosyLLO for RE {
 }
 
 /// LVE(n) - Vector memory size estimator (COSY compatibility).
-/// In COSY, LVE(n) returns n (the number of components).
-/// In Rosy, we pass through the value for compatibility.
+/// In COSY, LVE(n) returns max(2, n) — a VE always occupies at least 2 RE words.
 pub trait RosyLVE {
     fn rosy_lve(&self) -> RE;
 }
 
 impl RosyLVE for RE {
     fn rosy_lve(&self) -> RE {
-        *self
+        self.max(2.0)
     }
 }
 

@@ -6,11 +6,11 @@ use crate::rosy_lib::{RE, VE, DA, CD};
 /// Type registry for NORM intrinsic function.
 ///
 /// According to COSY INFINITY manual, NORM supports:
-/// - VE -> VE (elementwise abs)
+/// - VE -> RE (L1 norm = sum of absolute values of components)
 /// - DA -> RE (max coefficient abs, i.e. max norm)
 /// - CD -> RE (max coefficient abs of complex DA)
 pub const NORM_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("VE", "VE", "1.5&2.5&3.5"),
+    IntrinsicTypeRule::new("VE", "RE", "1.5&2.5&3.5"),
     IntrinsicTypeRule::new("DA", "RE", "DA(1)"),
     IntrinsicTypeRule::new("CD", "RE", "CD(1)"),
 ];
@@ -20,7 +20,7 @@ pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
     let registry: HashMap<RosyType, RosyType> = {
         let mut m = HashMap::new();
         let all = vec![
-            (RosyType::VE(), RosyType::VE()),
+            (RosyType::VE(), RosyType::RE()),
             (RosyType::DA(), RosyType::RE()),
             (RosyType::CD(), RosyType::RE()),
         ];
@@ -39,11 +39,11 @@ pub trait RosyNORM {
     fn rosy_norm(&self) -> anyhow::Result<Self::Output>;
 }
 
-/// NORM for vectors - elementwise abs
+/// NORM for vectors - L1 norm (sum of absolute values)
 impl RosyNORM for VE {
-    type Output = VE;
+    type Output = RE;
     fn rosy_norm(&self) -> anyhow::Result<Self::Output> {
-        Ok(self.iter().map(|x| x.abs()).collect())
+        Ok(self.iter().map(|x| x.abs()).sum())
     }
 }
 

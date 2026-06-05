@@ -309,9 +309,9 @@ impl TranspileableExpr for VarExpr {
         let is_var = ctx.variables.contains_key(&ident.name);
         let is_func = ctx.functions.contains_key(&ident.name);
 
-        // Apply the same disambiguation logic as classify():
+        // Apply the same disambiguation logic as discover_expr_function_calls():
         // - 0 paren groups → variable
-        // - 1 group, multiple args → function call
+        // - 1 group, multiple args → function call only if arity matches; else variable
         // - 1 group, 1 arg → prefer variable if it exists, else function
         // - ≥2 groups → variable (multi-dim indexing)
         let is_function_call = match num_groups {
@@ -319,7 +319,17 @@ impl TranspileableExpr for VarExpr {
             1 => {
                 let num_args = ident.paren_groups[0].len();
                 if num_args > 1 {
-                    true
+                    let func_accepts = is_func
+                        && ctx.functions.get(&ident.name)
+                            .map(|(_, args)| args.len() == num_args)
+                            .unwrap_or(false);
+                    if func_accepts {
+                        true
+                    } else if is_var {
+                        false
+                    } else {
+                        is_func
+                    }
                 } else {
                     // Single arg: variable wins if it exists, else function
                     !is_var && is_func
