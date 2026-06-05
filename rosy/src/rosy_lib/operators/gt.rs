@@ -7,6 +7,8 @@
 use anyhow::Result;
 use crate::rosy_lib::RosyType;
 use crate::rosy_lib::{RE, ST, LO};
+use std::sync::OnceLock;
+use std::collections::HashMap;
 use crate::rosy_lib::operators::{TypeRule, build_type_registry};
 
 /// Type compatibility registry for greater-than operator.
@@ -15,9 +17,12 @@ pub const GT_REGISTRY: &[TypeRule] = &[
     TypeRule::with_comment("ST", "ST", "LO", "'banana'", "'apple'", "Lexicographic ordering"),
 ];
 
+static GT_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
+
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    let registry = build_type_registry(GT_REGISTRY);
-    registry.get(&(*lhs, *rhs)).copied()
+    GT_MAP.get_or_init(|| build_type_registry(GT_REGISTRY))
+        .get(&(*lhs, *rhs))
+        .copied()
 }
 
 pub trait RosyGt<Rhs = Self> {

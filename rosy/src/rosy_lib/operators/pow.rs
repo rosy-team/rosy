@@ -13,6 +13,8 @@
 use anyhow::Result;
 use crate::rosy_lib::RosyType;
 use crate::rosy_lib::{RE, VE, DA, CD};
+use std::sync::OnceLock;
+use std::collections::HashMap;
 use crate::rosy_lib::operators::{TypeRule, build_type_registry};
 use crate::rosy_lib::core::polval::{da_powi, cd_powi};
 
@@ -26,9 +28,12 @@ pub const POW_REGISTRY: &[TypeRule] = &[
     TypeRule::new("CD", "RE", "CD", "CD(1)", "2"),
 ];
 
+static POW_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
+
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    let registry = build_type_registry(POW_REGISTRY);
-    registry.get(&(*lhs, *rhs)).copied()
+    POW_MAP.get_or_init(|| build_type_registry(POW_REGISTRY))
+        .get(&(*lhs, *rhs))
+        .copied()
 }
 
 pub trait RosyPow<Rhs = Self> {

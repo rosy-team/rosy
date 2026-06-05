@@ -16,6 +16,8 @@
 use anyhow::Result;
 use crate::rosy_lib::RosyType;
 use crate::rosy_lib::{RE, ST, LO};
+use std::sync::OnceLock;
+use std::collections::HashMap;
 use crate::rosy_lib::operators::{TypeRule, build_type_registry};
 
 /// Type compatibility registry for not-equals operator.
@@ -27,14 +29,17 @@ use crate::rosy_lib::operators::{TypeRule, build_type_registry};
 /// - COSY test script (`neq.fox`)
 /// - Integration tests
 pub const NEQ_REGISTRY: &[TypeRule] = &[
-    TypeRule::with_comment("RE", "RE", "LO", "3.14159", "2.71828", "Not-equals with epsilon tolerance"),
+    TypeRule::with_comment("RE", "RE", "LO", "3.14159", "2.71828", "Exact IEEE-754 not-equals (matches COSY behavior)"),
     TypeRule::with_comment("ST", "ST", "LO", "'hello'", "'world'", "String not-equals"),
     TypeRule::with_comment("LO", "LO", "LO", "TRUE", "FALSE", "Logical not-equals"),
 ];
 
+static NEQ_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
+
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    let registry = build_type_registry(NEQ_REGISTRY);
-    registry.get(&(*lhs, *rhs)).copied()
+    NEQ_MAP.get_or_init(|| build_type_registry(NEQ_REGISTRY))
+        .get(&(*lhs, *rhs))
+        .copied()
 }
 
 pub trait RosyNeq<Rhs = Self> {
@@ -42,11 +47,11 @@ pub trait RosyNeq<Rhs = Self> {
     fn rosy_neq(self, rhs: Rhs) -> Result<Self::Output>;
 }
 
-// RE # RE (with epsilon tolerance)
+// RE # RE (exact IEEE-754, matches COSY behavior)
 impl RosyNeq<&RE> for &RE {
     type Output = LO;
     fn rosy_neq(self, rhs: &RE) -> Result<Self::Output> {
-        Ok((self - rhs).abs() >= f64::EPSILON)
+        Ok(self != rhs)
     }
 }
 
