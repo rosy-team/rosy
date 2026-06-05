@@ -12,7 +12,7 @@
 //!
 //! | Input | Result |
 //! |-------|--------|
-//! | VE    | VE     |
+//! | VE    | RE     |
 //! | DA    | RE     |
 //! | CD    | RE     |
 //!
@@ -122,8 +122,6 @@ impl TranspileableExpr for NormExpr {
         _ctx: &ScopeContext,
         _deps: &mut HashSet<TypeSlot>,
     ) -> ExprRecipe {
-        // NORM has non-uniform type mapping (DA->RE, VE->VE), so we cannot
-        // represent it with a type-preserving recipe.
-        ExprRecipe::Unknown(None)
+        ExprRecipe::Literal(RosyType::RE())
     }
 }

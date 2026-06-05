@@ -1,7 +1,7 @@
 //! # LCM Function (Complex Memory Estimate)
 //!
 //! Returns the complex-number memory size estimate. This is a COSY INFINITY
-//! compatibility function — returns `2*n` as a `RE`.
+//! compatibility function — always returns `2.0` (a CM always occupies 2 RE words).
 //!
 //! ## Syntax
 //!
@@ -44,7 +44,7 @@ use anyhow::{Context as AnyhowContext, Error, Result};
 use std::collections::HashSet;
 
 /// LCM(n) — Complex memory size estimator (COSY compatibility).
-/// Returns `2*n` as RE. Rosy doesn't need memory management.
+/// Always returns `2.0` (one CM occupies exactly 2 RE words). Input is arbitrary.
 #[derive(Debug)]
 pub struct LcmExpr {
     pub expr: Box<Expr>,
