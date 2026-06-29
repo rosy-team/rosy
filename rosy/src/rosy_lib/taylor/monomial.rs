@@ -87,11 +87,94 @@ impl Monomial {
 /// When `weights` is `Some`, exponents for variable `v` step in multiples of
 /// `weights[v]` and the order budget is consumed by `weights[v]` per step.
 /// Internal exponents are stored as `weight * actual_exponent`.
-pub fn enumerate_monomials(max_order: u32, num_vars: u32, weights: Option<&[u32]>) -> Vec<Monomial> {
+pub fn enumerate_monomials(
+    max_order: u32,
+    num_vars: u32,
+    weights: Option<&[u32]>,
+) -> Vec<Monomial> {
     let mut result = Vec::new();
-    enumerate_monomials_recursive(max_order, num_vars as usize, 0, weights, &mut [0u8; MAX_VARS], &mut result);
+    enumerate_monomials_recursive(
+        max_order,
+        num_vars as usize,
+        0,
+        weights,
+        &mut [0u8; MAX_VARS],
+        &mut result,
+    );
     result.sort();
     result
+}
+
+/// Return COSY's DAPRV/DA display rank for a monomial at a fixed total order.
+///
+/// COSY recursively splits the active variables into left/right blocks. For a
+/// four-variable map this yields second-order terms as:
+/// 2000, 1100, 0200, 1010, 0110, 1001, 0101, 0020, 0011, 0002.
+pub fn cosy_display_rank(exponents: &[u8], active_vars: usize) -> usize {
+    let active_vars = active_vars.min(exponents.len());
+    if active_vars == 0 {
+        return 0;
+    }
+
+    let degree = exponents[..active_vars]
+        .iter()
+        .map(|&exp| exp as usize)
+        .sum();
+    let mut ordered = Vec::new();
+    enumerate_cosy_exponents(active_vars, degree, &mut ordered);
+    ordered
+        .iter()
+        .position(|candidate| candidate.as_slice() == &exponents[..active_vars])
+        .unwrap_or(usize::MAX)
+}
+
+fn enumerate_cosy_exponents(num_vars: usize, degree: usize, result: &mut Vec<Vec<u8>>) {
+    if num_vars == 0 {
+        if degree == 0 {
+            result.push(Vec::new());
+        }
+        return;
+    }
+
+    if num_vars == 1 {
+        result.push(vec![degree as u8]);
+        return;
+    }
+
+    let left_vars = (num_vars + 1) / 2;
+    let right_vars = num_vars - left_vars;
+
+    for right_degree in 0..=degree {
+        if right_degree == 0 {
+            let mut left_terms = Vec::new();
+            enumerate_cosy_exponents(left_vars, degree, &mut left_terms);
+            for left in left_terms {
+                let mut term = left;
+                term.resize(num_vars, 0);
+                result.push(term);
+            }
+        } else if right_degree == degree {
+            let mut right_terms = Vec::new();
+            enumerate_cosy_exponents(right_vars, degree, &mut right_terms);
+            for right in right_terms {
+                let mut term = vec![0; left_vars];
+                term.extend(right);
+                result.push(term);
+            }
+        } else {
+            let mut right_terms = Vec::new();
+            let mut left_terms = Vec::new();
+            enumerate_cosy_exponents(right_vars, right_degree, &mut right_terms);
+            enumerate_cosy_exponents(left_vars, degree - right_degree, &mut left_terms);
+            for right in &right_terms {
+                for left in &left_terms {
+                    let mut term = left.clone();
+                    term.extend(right);
+                    result.push(term);
+                }
+            }
+        }
+    }
 }
 
 fn enumerate_monomials_recursive(
@@ -205,7 +288,7 @@ mod tests {
         let m1 = Monomial::variable(0); // x1
         let m2 = Monomial::variable(1); // x2
         let product = m1.multiply(&m2);
-        
+
         assert_eq!(product.exponents[0], 1);
         assert_eq!(product.exponents[1], 1);
         assert_eq!(product.total_order, 2);
@@ -223,5 +306,25 @@ mod tests {
 
         assert!(m1 < m2);
         assert!(m2 < m3);
+    }
+
+    #[test]
+    fn test_cosy_display_rank_four_vars_degree_two() {
+        let expected = [
+            [2, 0, 0, 0],
+            [1, 1, 0, 0],
+            [0, 2, 0, 0],
+            [1, 0, 1, 0],
+            [0, 1, 1, 0],
+            [1, 0, 0, 1],
+            [0, 1, 0, 1],
+            [0, 0, 2, 0],
+            [0, 0, 1, 1],
+            [0, 0, 0, 2],
+        ];
+
+        for (rank, exponents) in expected.iter().enumerate() {
+            assert_eq!(cosy_display_rank(exponents, 4), rank);
+        }
     }
 }

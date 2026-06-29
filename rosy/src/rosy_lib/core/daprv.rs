@@ -3,12 +3,12 @@
 //! DAPRV writes an array of DA vectors in COSY-format tabular output.
 //! DAREV reads an array of DA vectors back from that format.
 
-use anyhow::{Result, Context, bail};
+use anyhow::{Context, Result, bail};
 
-use crate::rosy_lib::taylor::{DA, get_config};
-use crate::rosy_lib::taylor::da::DACoefficient;
-use crate::rosy_lib::taylor::Monomial;
 use crate::rosy_lib::core::display::RosyDisplay;
+use crate::rosy_lib::taylor::Monomial;
+use crate::rosy_lib::taylor::da::DACoefficient;
+use crate::rosy_lib::taylor::{DA, cosy_display_rank, get_config};
 
 /// Write an array of DA vectors in COSY INFINITY DAPRV format.
 ///
@@ -21,11 +21,11 @@ use crate::rosy_lib::core::display::RosyDisplay;
 pub fn rosy_daprv(
     array: &Vec<DA>,
     num_components: usize,
-    _max_vars: usize,
+    max_vars: usize,
     current_vars: usize,
     unit: u64,
 ) -> Result<()> {
-    let output = format_daprv(array, num_components, _max_vars, current_vars)?;
+    let output = format_daprv(array, num_components, max_vars, current_vars)?;
 
     if unit == 6 {
         print!("{}", output);
@@ -44,7 +44,7 @@ pub fn rosy_daprv(
 fn format_daprv(
     array: &Vec<DA>,
     num_components: usize,
-    _max_vars: usize,
+    max_vars: usize,
     current_vars: usize,
 ) -> Result<String> {
     let mut output = String::new();
@@ -59,18 +59,13 @@ fn format_daprv(
         }
     }
 
-    // Sort monomials: first by total order, then by exponents
-    all_monomials.sort_by(|m1, m2| {
-        m1.total_order.cmp(&m2.total_order)
-            .then_with(|| {
-                for i in (0..m1.exponents.len()).rev() {
-                    match m1.exponents[i].cmp(&m2.exponents[i]) {
-                        std::cmp::Ordering::Equal => continue,
-                        ord => return ord,
-                    }
-                }
-                std::cmp::Ordering::Equal
-            })
+    let sort_vars = current_vars.max(1).min(max_vars).min(6);
+    all_monomials.sort_by_cached_key(|m| {
+        (
+            m.total_order,
+            cosy_display_rank(&m.exponents, sort_vars),
+            m.exponents,
+        )
     });
 
     // If no monomials, print a zero entry
@@ -79,8 +74,7 @@ fn format_daprv(
     }
 
     // Print header
-    output.push_str(&format!(
-        "  I  COEFFICIENT          "));
+    output.push_str(&format!("  I  COEFFICIENT          "));
     for comp in 1..=num_components.min(array.len()) {
         output.push_str(&format!("     {:>2}             ", comp));
     }
@@ -89,7 +83,7 @@ fn format_daprv(
     // Print each monomial row
     for (idx, monomial) in all_monomials.iter().enumerate() {
         let order = monomial.total_order;
-        let exp_str = build_exp_str(&monomial.exponents, current_vars);
+        let exp_str = build_exp_str(&monomial.exponents, max_vars);
 
         output.push_str(&format!("{:>3}  ", idx + 1));
 
@@ -121,27 +115,27 @@ fn format_daprv(
 pub fn rosy_darev(
     array: &mut Vec<DA>,
     num_components: usize,
-    _max_vars: usize,
-    current_vars: usize,
+    max_vars: usize,
+    _current_vars: usize,
     unit: u64,
 ) -> Result<()> {
     // Read lines from the file
     let mut lines = Vec::new();
-    
+
     // Read the header line
     let _header = crate::rosy_lib::core::file_io::rosy_read_from_unit(unit)
         .context("Failed to read header line in DAREV")?;
-    
+
     // Read coefficient lines until we hit the separator
     loop {
         let line = crate::rosy_lib::core::file_io::rosy_read_from_unit(unit)
             .context("Failed to read line in DAREV")?;
-        
+
         // Check if this is a separator line (all dashes)
         if line.trim().chars().all(|c| c == '-') && !line.trim().is_empty() {
             break;
         }
-        
+
         lines.push(line);
     }
 
@@ -186,11 +180,11 @@ pub fn rosy_darev(
         if order_idx >= tokens.len() {
             continue;
         }
-        
+
         // Exponents start after order
         let exp_start = order_idx + 1;
         let mut exponents = [0u8; 6];
-        for i in 0..current_vars.min(6) {
+        for i in 0..max_vars.min(6) {
             if exp_start + i < tokens.len() {
                 if let Ok(exp) = tokens[exp_start + i].parse::<u8>() {
                     exponents[i] = exp;
@@ -241,8 +235,16 @@ pub fn rosy_datrn(
         if var_idx >= m1 && var_idx <= m2 {
             // Index into scales/shifts arrays (0-based offset from m1)
             let arr_idx = var_idx - m1;
-            let a_i = if arr_idx < scales.len() { scales[arr_idx] } else { 1.0 };
-            let c_i = if arr_idx < shifts.len() { shifts[arr_idx] } else { 0.0 };
+            let a_i = if arr_idx < scales.len() {
+                scales[arr_idx]
+            } else {
+                1.0
+            };
+            let c_i = if arr_idx < shifts.len() {
+                shifts[arr_idx]
+            } else {
+                0.0
+            };
 
             // Build: a_i * x_i + c_i
             let x_i = DA::variable(var_idx)
@@ -254,8 +256,9 @@ pub fn rosy_datrn(
             substitutions.push(shifted);
         } else {
             // Identity substitution: new_x_i = x_i
-            let x_i = DA::variable(var_idx)
-                .with_context(|| format!("DATRN: failed to create identity DA variable {}", var_idx))?;
+            let x_i = DA::variable(var_idx).with_context(|| {
+                format!("DATRN: failed to create identity DA variable {}", var_idx)
+            })?;
             substitutions.push(x_i);
         }
     }
@@ -284,11 +287,19 @@ pub fn rosy_datrn(
                 // Raise substitution[var_0idx] to the power `exp`
                 let mut power = DA::from_coeff(1.0);
                 for _ in 0..exp {
-                    power = (&power * &substitutions[var_0idx])
-                        .with_context(|| format!("DATRN: failed to multiply DA powers for var {}", var_0idx + 1))?;
+                    power = (&power * &substitutions[var_0idx]).with_context(|| {
+                        format!(
+                            "DATRN: failed to multiply DA powers for var {}",
+                            var_0idx + 1
+                        )
+                    })?;
                 }
-                term = (&term * &power)
-                    .with_context(|| format!("DATRN: failed to multiply term by power for var {}", var_0idx + 1))?;
+                term = (&term * &power).with_context(|| {
+                    format!(
+                        "DATRN: failed to multiply term by power for var {}",
+                        var_0idx + 1
+                    )
+                })?;
             }
 
             // Accumulate into result
@@ -326,15 +337,19 @@ fn build_exp_str(exponents: &[u8], num_vars: usize) -> String {
 /// - `c`:       constant value to substitute for xᵢ
 /// - `result`:  output DA array
 pub fn rosy_daplu(da_in: &Vec<DA>, var_idx: usize, c: f64, result: &mut Vec<DA>) -> Result<()> {
-    use rustc_hash::FxHashMap;
     use crate::rosy_lib::taylor::MAX_VARS;
+    use rustc_hash::FxHashMap;
 
     let config = get_config().context("DAPLU requires DA to be initialized (call OV first)")?;
     let var_0idx = var_idx
         .checked_sub(1)
         .ok_or_else(|| anyhow::anyhow!("DAPLU: var_idx must be >= 1, got {}", var_idx))?;
     if var_0idx >= config.num_vars {
-        bail!("DAPLU: var_idx {} out of range [1, {}]", var_idx, config.num_vars);
+        bail!(
+            "DAPLU: var_idx {} out of range [1, {}]",
+            var_idx,
+            config.num_vars
+        );
     }
 
     result.resize_with(da_in.len(), DA::zero);
@@ -380,7 +395,11 @@ pub fn rosy_dadiu(var_idx: usize, da_in: &Vec<DA>, result: &mut Vec<DA>) -> Resu
         .checked_sub(1)
         .ok_or_else(|| anyhow::anyhow!("DADIU: var_idx must be >= 1, got {}", var_idx))?;
     if var_0idx >= config.num_vars {
-        bail!("DADIU: var_idx {} out of range [1, {}]", var_idx, config.num_vars);
+        bail!(
+            "DADIU: var_idx {} out of range [1, {}]",
+            var_idx,
+            config.num_vars
+        );
     }
 
     result.resize_with(da_in.len(), DA::zero);
@@ -430,10 +449,18 @@ pub fn rosy_dadmu(var_i: usize, var_j: usize, da_in: &Vec<DA>, result: &mut Vec<
         .checked_sub(1)
         .ok_or_else(|| anyhow::anyhow!("DADMU: var_j must be >= 1, got {}", var_j))?;
     if i_0idx >= config.num_vars {
-        bail!("DADMU: var_i {} out of range [1, {}]", var_i, config.num_vars);
+        bail!(
+            "DADMU: var_i {} out of range [1, {}]",
+            var_i,
+            config.num_vars
+        );
     }
     if j_0idx >= config.num_vars {
-        bail!("DADMU: var_j {} out of range [1, {}]", var_j, config.num_vars);
+        bail!(
+            "DADMU: var_j {} out of range [1, {}]",
+            var_j,
+            config.num_vars
+        );
     }
 
     result.resize_with(da_in.len(), DA::zero);

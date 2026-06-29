@@ -46,6 +46,7 @@ fn main() {
     // Re-run if source changes
     println!("cargo:rerun-if-changed=src/program");
     println!("cargo:rerun-if-changed=src/rosy_lib");
+    println!("cargo:rerun-if-changed=assets/output_template/main.rs");
 
     // Generate the embedded files at compile time
     let out_dir = std::env::var("OUT_DIR").unwrap();

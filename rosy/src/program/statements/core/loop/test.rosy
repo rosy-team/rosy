@@ -4,5 +4,8 @@ BEGIN;
     LOOP I 1 5;
         SUM := SUM + I;
     ENDLOOP;
+    LOOP I 5 1 -2;
+        SUM := SUM + I;
+    ENDLOOP;
     WRITE 6 SUM;
 END;

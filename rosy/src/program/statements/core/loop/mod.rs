@@ -34,7 +34,7 @@ use anyhow::{Context, Error, Result, anyhow, ensure};
 use std::collections::BTreeSet;
 
 use crate::{
-    ast::*,
+    ast::{CosyParser, *},
     program::{
         expressions::Expr,
         statements::{SourceLocation, Statement},
@@ -43,6 +43,7 @@ use crate::{
     rosy_lib::RosyType,
     transpile::*,
 };
+use pest::Parser;
 
 /// AST node for the counted `LOOP i start end [step]; ... ENDLOOP;` statement.
 #[derive(Debug)]
@@ -64,10 +65,10 @@ impl FromRule for LoopStatement {
 
         let mut inner = pair.into_inner();
         let (iterator, start, end, step) = {
-            let mut start_loop_inner = inner
+            let start_loop_pair = inner
                 .next()
-                .context("Missing first token `start_loop`!")?
-                .into_inner();
+                .context("Missing first token `start_loop`!")?;
+            let mut start_loop_inner = start_loop_pair.into_inner();
 
             let iterator = start_loop_inner
                 .next()
@@ -85,14 +86,15 @@ impl FromRule for LoopStatement {
             let end_pair = start_loop_inner
                 .next()
                 .context("Missing third token `end_expr`!")?;
-            let end = Expr::from_rule(end_pair)
+            let end_text = end_pair.as_str().to_string();
+            let mut end = Expr::from_rule(end_pair)
                 .context("Failed to build `end` expression in `loop` statement!")?
                 .ok_or_else(|| {
                     anyhow::anyhow!("Expected expression for `end` in `loop` statement")
                 })?;
 
             // Optional step expression
-            let step = if let Some(step_pair) = start_loop_inner.next() {
+            let mut step = if let Some(step_pair) = start_loop_inner.next() {
                 if step_pair.as_rule() == Rule::expr {
                     Some(
                         Expr::from_rule(step_pair)
@@ -109,6 +111,16 @@ impl FromRule for LoopStatement {
             } else {
                 None
             };
+
+            if step.is_none() {
+                if let Some((recovered_end, recovered_step)) =
+                    recover_trailing_signed_numeric_loop_step(&end_text)
+                        .context("Failed to recover signed numeric LOOP step")?
+                {
+                    end = recovered_end;
+                    step = Some(recovered_step);
+                }
+            }
 
             (iterator, start, end, step)
         };
@@ -138,6 +150,44 @@ impl FromRule for LoopStatement {
         }))
     }
 }
+
+fn parse_loop_expr_fragment(src: &str) -> Result<Expr> {
+    let trimmed = src.trim();
+    let mut pairs = CosyParser::parse(Rule::expr, trimmed)
+        .with_context(|| format!("Failed to parse LOOP expression fragment `{trimmed}`"))?;
+    let pair = pairs
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Empty LOOP expression fragment `{trimmed}`"))?;
+    Expr::from_rule(pair)?
+        .ok_or_else(|| anyhow::anyhow!("Expected expression in LOOP fragment `{trimmed}`"))
+}
+
+fn recover_trailing_signed_numeric_loop_step(end_text: &str) -> Result<Option<(Expr, Expr)>> {
+    let trimmed = end_text.trim_end();
+    let Some(split_at) = trimmed.rfind(char::is_whitespace) else {
+        return Ok(None);
+    };
+
+    let step_text = trimmed[split_at..].trim_start();
+    let end_text = trimmed[..split_at].trim_end();
+    if end_text.is_empty() || !is_signed_numeric_literal(step_text) {
+        return Ok(None);
+    }
+
+    Ok(Some((
+        parse_loop_expr_fragment(end_text)?,
+        parse_loop_expr_fragment(step_text)?,
+    )))
+}
+
+fn is_signed_numeric_literal(src: &str) -> bool {
+    if !src.starts_with('-') {
+        return false;
+    }
+    let normalized = src.replace('D', "E").replace('d', "e");
+    normalized.parse::<f64>().is_ok()
+}
+
 impl TranspileableStatement for LoopStatement {
     fn register_typeslot_declaration(
         &self,
@@ -268,11 +318,11 @@ impl Transpile for LoopStatement {
             }
         };
         requested_variables.extend(end_output.requested_variables.iter().cloned());
-        let step_serialization = if let Some(step_expr) = &self.step {
+        let step_value = if let Some(step_expr) = &self.step {
             match step_expr.transpile(context) {
                 Ok(output) => {
                     requested_variables.extend(output.requested_variables.iter().cloned());
-                    format!(".step_by({} as usize)", output.as_value())
+                    output.as_value().to_string()
                 }
                 Err(vec_err) => {
                     for e in vec_err {
@@ -285,18 +335,19 @@ impl Transpile for LoopStatement {
                 }
             }
         } else {
-            String::from("")
+            String::from("1f64")
         };
 
         let serialization = format!(
-            "for {} in (({} as usize)..=({} as usize)){} {{\n\tlet mut {} = {} as RE;\n{}\n}}",
+            "{{\n\tlet __rosy_loop_end = {};\n\tlet __rosy_loop_step = {};\n\tensure!(__rosy_loop_step != 0f64, \"LOOP step cannot be zero\");\n\tlet mut {} = {};\n\twhile (__rosy_loop_step > 0f64 && {} <= __rosy_loop_end) || (__rosy_loop_step < 0f64 && {} >= __rosy_loop_end) {{\n{}\n\t\t{} += __rosy_loop_step;\n\t}}\n}}",
+            end_output.as_value(),
+            step_value,
             self.iterator,
             start_output.as_value(),
-            end_output.as_value(),
-            step_serialization,
             self.iterator,
             self.iterator,
-            indent(serialized_statements.join("\n"))
+            indent(serialized_statements.join("\n")),
+            self.iterator,
         );
         if errors.is_empty() {
             Ok(TranspilationOutput {

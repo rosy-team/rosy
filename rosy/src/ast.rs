@@ -81,7 +81,7 @@ pub fn build_type(pair: pest::iterators::Pair<Rule>) -> Result<(RosyType, Vec<Ex
         pair.as_rule() == Rule::r#type,
         "Expected `type` rule when building type, found: {:?}",
         pair.as_rule()
-);
+    );
 
     let mut inner_pair = pair.into_inner();
     let type_str = inner_pair
@@ -105,4 +105,3 @@ pub fn build_type(pair: pest::iterators::Pair<Rule>) -> Result<(RosyType, Vec<Ex
 
     Ok((r#type, dimensions))
 }
-

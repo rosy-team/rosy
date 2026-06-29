@@ -169,7 +169,7 @@ WRITE 6 'WABS(MAP[1], 0.1) = ' WABS_RESULT '   [order-weighted norm]';
 { ME: matrix-element extraction from MAP. }
 WRITE 6 'ME(1, 1)  [x_1 coefficient of MAP[1]=x_1+2*x_2]      = ' ME(1, 1)  '   [expect 1]';
 WRITE 6 'ME(2, 1)  [x_1 coefficient of MAP[2]=3*x_1-x_2]      = ' ME(2, 1)  '   [expect 3]';
-WRITE 6 'ME(2, 11) [x_1*x_2 coefficient of MAP[2]=3*x_1-x_2]  = ' ME(2, 11) '   [expect 0]';
+WRITE 6 'ME(2, 11) [x_1^2 coefficient of MAP[2]=3*x_1-x_2]    = ' ME(2, 11) '   [expect 0]';
 
 { PB: Poisson bracket {x_1, x_2} = 1 (canonical pair after OV 2 1 0). }
 VARIABLE (DA) PB_RESULT;

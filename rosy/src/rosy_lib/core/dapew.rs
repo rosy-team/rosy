@@ -19,18 +19,23 @@ use crate::rosy_lib::taylor::Monomial;
 
 /// Decode a TRANSPORT notation id to a fixed-size exponent array.
 ///
-/// Each decimal digit of `id` is the exponent for the corresponding variable
-/// (leftmost digit = variable 1).  For example:
-/// - `id = 133` → `[1, 3, 3, 0, 0, 0]`  (x₁¹ · x₂³ · x₃³)
-/// - `id = 10`  → `[1, 0, 0, 0, 0, 0]`  (x₁¹)
+/// Each decimal digit of `id` names a variable factor. Repeated digits raise
+/// that variable's exponent. For example:
+/// - `id = 133` → `[1, 0, 2, 0, 0, 0]`  (x_1 · x_3^2)
+/// - `id = 222` → `[0, 3, 0, 0, 0, 0]`  (x_2^3)
 fn decode_transport_id(id: u64) -> [u8; MAX_VARS] {
     let mut exponents = [0u8; MAX_VARS];
-    let s = id.to_string();
-    for (i, ch) in s.chars().enumerate() {
-        if i >= MAX_VARS {
-            break;
+    for ch in id.to_string().chars() {
+        let Some(digit) = ch.to_digit(10) else {
+            continue;
+        };
+        if digit == 0 {
+            continue;
         }
-        exponents[i] = ch.to_digit(10).unwrap_or(0) as u8;
+        let idx = digit as usize - 1;
+        if idx < MAX_VARS {
+            exponents[idx] = exponents[idx].saturating_add(1);
+        }
     }
     exponents
 }
@@ -188,8 +193,8 @@ pub fn rosy_dapew(unit: u64, da: &Vec<DA>, var_i: usize, order_n: u32) -> Result
 
 /// Return the coefficient of a DA vector identified by a TRANSPORT notation id.
 ///
-/// The id encodes variable exponents as decimal digits (leftmost = variable 1).
-/// Example: `id = 133` → monomial x₁¹ · x₂³ · x₃³.
+/// The id encodes a TRANSPORT/COSY variable list.
+/// Example: `id = 133` → monomial x_1 · x_3^2.
 ///
 /// Arguments:
 /// - `da`: DA array — operates on element 0
@@ -240,7 +245,7 @@ pub fn rosy_dapea(da: &Vec<DA>, exps: &Vec<f64>, size: usize, result: &mut f64) 
 /// Extract a parameter-dependent component from a DA vector.
 ///
 /// Collects all terms whose first `m` variable exponents match the pattern
-/// encoded by `id` (TRANSPORT notation), then strips those exponents and
+/// encoded by `id` (TRANSPORT/COSY variable-list notation), then strips those exponents and
 /// returns the residual polynomial in the result DA.
 ///
 /// Example: DA = 2·x₁ + 3·x₁·x₂ + 4·x₂, id=1, m=1 →
@@ -322,4 +327,22 @@ pub fn rosy_daest(da: &Vec<DA>, i: usize, j: u32, result: &mut f64) -> Result<()
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decode_transport_id;
+
+    #[test]
+    fn transport_id_counts_repeated_variable_digits() {
+        let exponents = decode_transport_id(222);
+        assert_eq!(exponents[0], 0);
+        assert_eq!(exponents[1], 3);
+        assert_eq!(exponents[2], 0);
+
+        let exponents = decode_transport_id(133);
+        assert_eq!(exponents[0], 1);
+        assert_eq!(exponents[1], 0);
+        assert_eq!(exponents[2], 2);
+    }
 }

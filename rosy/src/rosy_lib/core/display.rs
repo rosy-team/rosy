@@ -1,4 +1,7 @@
-use crate::rosy_lib::{RE, ST, LO, CM, VE, DA, CD};
+use crate::rosy_lib::taylor::{MAX_VARS, cosy_display_rank, get_config};
+use crate::rosy_lib::{CD, CM, DA, LO, RE, ST, VE};
+
+const ALL_COMPONENTS_ZERO: &str = "     ALL COMPONENTS ZERO\n     -------------------";
 
 fn sci(x: f64) -> (f64, i32) {
     if x == 0.0 {
@@ -20,19 +23,14 @@ fn sci(x: f64) -> (f64, i32) {
         }
     }
 }
-fn display_re (
-    num: RE,
-    precision: usize,
-    exponent_precision: usize,
-    spaces: usize
-) -> String {
+fn display_re(num: RE, precision: usize, exponent_precision: usize, spaces: usize) -> String {
     if num.abs() < 1f64 && num != 0f64 {
         let (mantissa, exponent) = sci(num.abs());
 
         if num.is_sign_positive() {
             format!(
                 "0.{}{}",
-                format!("{:.precision$}", mantissa, precision=precision)
+                format!("{:.precision$}", mantissa, precision = precision)
                     .chars()
                     .skip(2) // Skip "0."
                     .take(precision)
@@ -41,7 +39,7 @@ fn display_re (
                     format!(
                         "E{:+0exponent_precision$}",
                         exponent,
-                        exponent_precision=exponent_precision
+                        exponent_precision = exponent_precision
                     )
                 } else {
                     " ".repeat(spaces)
@@ -50,7 +48,7 @@ fn display_re (
         } else {
             format!(
                 "-.{}{}",
-                format!("{:.precision$}", mantissa, precision=precision)
+                format!("{:.precision$}", mantissa, precision = precision)
                     .chars()
                     .skip(2) // Skip "0."
                     .take(precision)
@@ -59,7 +57,7 @@ fn display_re (
                     format!(
                         "E{:+0exponent_precision$}",
                         exponent,
-                        exponent_precision=exponent_precision
+                        exponent_precision = exponent_precision
                     )
                 } else {
                     " ".repeat(spaces)
@@ -74,18 +72,16 @@ fn display_re (
 
         format!(
             "{}{}{}",
-            if num.is_sign_negative() {"-"} else {" "},
-            format!(
-                "{:.precision$}",
-                rounded_num.abs(),
-            ).chars().take(precision + 1).collect::<String>(),
+            if num.is_sign_negative() { "-" } else { " " },
+            format!("{:.precision$}", rounded_num.abs(),)
+                .chars()
+                .take(precision + 1)
+                .collect::<String>(),
             " ".repeat(spaces),
         )
     }
 }
-fn build_exp_str (
-    exps: &[u8],
-) -> String {
+fn build_exp_str(exps: &[u8]) -> String {
     exps.iter()
         .enumerate()
         .fold(String::new(), |mut acc, (i, exp)| {
@@ -122,7 +118,7 @@ impl RosyDisplay for &CM {
     fn rosy_display(self) -> String {
         // COSY format: (  real     ,  imag     )
         format!(
-            " ( {}, {})", 
+            " ( {}, {})",
             display_re(self.re, 9, 4, 5),
             display_re(self.im, 9, 4, 5)
         )
@@ -131,40 +127,37 @@ impl RosyDisplay for &CM {
 
 impl RosyDisplay for &VE {
     fn rosy_display(self) -> String {
-        let elements: Vec<String> = self.iter()
+        let elements: Vec<String> = self
+            .iter()
             .map(|x| format!(" {}", display_re(*x, 9, 4, 5)))
             .collect();
-        format!("{}", elements.join("     ") )
+        format!("{}", elements.join("     "))
     }
 }
 
 impl RosyDisplay for &DA {
     fn rosy_display(self) -> String {
         // Output in COSY format: multi-line with all coefficients
-        
+
         // Get all coefficients
         let coeffs: Vec<_> = self.coeffs_iter();
         if coeffs.is_empty() {
-            return "     I  COEFFICIENT            ORDER EXPONENTS\n     1   0.000000000000000       0   0 0\n     -----------------------------------".to_string();
+            return ALL_COMPONENTS_ZERO.to_string();
         }
-        
-        // Sort by graded reverse lexicographic order (COSY format)
-        // First by total order, then by exponents in reverse lexicographic order
+
+        // Sort in COSY display order.
         let mut sorted = coeffs.clone();
-        sorted.sort_by(|(m1, _), (m2, _)| {
-            m1.total_order.cmp(&m2.total_order)
-                .then_with(|| {
-                    // Reverse lexicographic: compare from right to left
-                    for i in (0..m1.exponents.len()).rev() {
-                        match m1.exponents[i].cmp(&m2.exponents[i]) {
-                            std::cmp::Ordering::Equal => continue,
-                            ord => return ord,
-                        }
-                    }
-                    std::cmp::Ordering::Equal
-                })
+        let sort_vars = get_config()
+            .map(|config| config.num_vars)
+            .unwrap_or(MAX_VARS);
+        sorted.sort_by_cached_key(|(m, _)| {
+            (
+                m.total_order,
+                cosy_display_rank(&m.exponents, sort_vars),
+                m.exponents,
+            )
         });
-        
+
         let mut output = String::new();
         output.push_str("I  COEFFICIENT            ORDER EXPONENTS\n");
         for (idx, (monomial, coeff)) in sorted.iter().enumerate() {
@@ -176,7 +169,7 @@ impl RosyDisplay for &DA {
                 build_exp_str(exps)
             };
             output.push_str(&format!(
-                "{}  {} {}  {}\n", 
+                "{}  {} {}  {}\n",
                 idx + 1,
                 coeff.rosy_display(),
                 format!("{:>3}", order),
@@ -186,7 +179,8 @@ impl RosyDisplay for &DA {
 
         let last_line_length = output.lines().last().unwrap_or("").len();
         output.push_str(&"-".repeat(last_line_length));
-        output.lines()
+        output
+            .lines()
             .map(|st| format!("     {}", st))
             .collect::<Vec<String>>()
             .join("\n")
@@ -196,11 +190,11 @@ impl RosyDisplay for &DA {
 impl RosyDisplay for &CD {
     fn rosy_display(self) -> String {
         // Output in COSY format: multi-line with all complex coefficients
-        
+
         // Get real and imaginary parts
         let real_part = self.real_part();
         let imag_part = self.imag_part();
-        
+
         // Combine all monomials from both parts
         let mut all_monomials = std::collections::HashSet::new();
         for (m, _) in real_part.coeffs_iter() {
@@ -209,28 +203,24 @@ impl RosyDisplay for &CD {
         for (m, _) in imag_part.coeffs_iter() {
             all_monomials.insert(m);
         }
-        
+
         if all_monomials.is_empty() {
-            return "     I  COEFFICIENTS                           ORDER EXPONENTS\n     1  0.000000000000000      0.000000000000000       0   0 0\n                                      ".to_string();
+            return ALL_COMPONENTS_ZERO.to_string();
         }
-        
-        // Sort by graded reverse lexicographic order (COSY format)
-        // First by total order, then by exponents in reverse lexicographic order
+
+        // Sort in COSY display order.
         let mut sorted: Vec<_> = all_monomials.into_iter().collect();
-        sorted.sort_by(|m1, m2| {
-            m1.total_order.cmp(&m2.total_order)
-                .then_with(|| {
-                    // Reverse lexicographic: compare from right to left
-                    for i in (0..m1.exponents.len()).rev() {
-                        match m1.exponents[i].cmp(&m2.exponents[i]) {
-                            std::cmp::Ordering::Equal => continue,
-                            ord => return ord,
-                        }
-                    }
-                    std::cmp::Ordering::Equal
-                })
+        let sort_vars = get_config()
+            .map(|config| config.num_vars)
+            .unwrap_or(MAX_VARS);
+        sorted.sort_by_cached_key(|m| {
+            (
+                m.total_order,
+                cosy_display_rank(&m.exponents, sort_vars),
+                m.exponents,
+            )
         });
-        
+
         let mut output = String::new();
         output.push_str("     I  COEFFICIENTS                           ORDER EXPONENTS\n");
         for (idx, monomial) in sorted.iter().enumerate() {
@@ -245,8 +235,8 @@ impl RosyDisplay for &CD {
             };
             output.push_str(&format!(
                 "     {} {} {} {:>3}  {}\n",
-                idx + 1, 
-                real_coeff.rosy_display(), 
+                idx + 1,
+                real_coeff.rosy_display(),
                 imag_coeff.rosy_display(),
                 order,
                 exp_str.trim_end()
@@ -281,5 +271,18 @@ mod tests {
 
         assert!(displayed.contains("0.546920369E-002"));
         assert!(displayed.contains("0.937875496E-010"));
+    }
+
+    #[test]
+    fn zero_da_display_matches_cosy() {
+        crate::rosy_lib::taylor::cleanup_taylor();
+        crate::rosy_lib::taylor::init_taylor(2, 2).unwrap();
+        let value = crate::rosy_lib::DA::zero();
+
+        assert_eq!(
+            value.rosy_display(),
+            "     ALL COMPONENTS ZERO\n     -------------------"
+        );
+        crate::rosy_lib::taylor::cleanup_taylor();
     }
 }

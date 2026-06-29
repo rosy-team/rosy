@@ -146,11 +146,10 @@ impl Transpile for CpusecStatement {
             }
         };
 
-        // Use the `start` Instant created at the top of main_wrapper() in the
-        // output template.  This matches COSY INFINITY's CPUSEC semantics: elapsed
-        // wall-clock time since the program began execution.
+        // Use the timer helper from the output template so CPUSEC works in
+        // generated function/procedure bodies as well as the main wrapper.
         let serialization = format!(
-            "{}{} = start.elapsed().as_secs_f64();",
+            "{}{} = rosy_elapsed_seconds();",
             dereference, serialized_identifier
         );
 

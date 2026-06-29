@@ -2,7 +2,8 @@
 //!
 //! Returns a parameter-dependent component of a DA vector.
 //! Arguments are the DA vector, the coefficient id in TRANSPORT notation
-//! for the first m variables, m, and the resulting DA vector.
+//! for the first m variables, m, and the resulting DA vector. Repeated digits
+//! raise the corresponding variable's exponent; for example, `22` matches x_2^2.
 //!
 //! ## Syntax
 //!

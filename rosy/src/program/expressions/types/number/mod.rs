@@ -10,6 +10,7 @@
 //! 42
 //! -7
 //! 1.23E-4
+//! .05
 //! ```
 //!
 //! All numeric literals produce the `RE` type.
@@ -39,8 +40,8 @@ use crate::{
     ast::{FromRule, Rule},
     rosy_lib::RosyType,
     transpile::{
-        ExprFunctionCallResult, TranspilationInputContext,
-        TranspilationOutput, Transpile, TranspileableExpr, ValueKind,
+        ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
+        TranspileableExpr, ValueKind,
     },
 };
 
@@ -122,8 +123,12 @@ mod tests {
         must_parse_as_number("0");
         must_parse_as_number("42");
         must_parse_as_number("-7");
+        must_parse_as_number("1.");
         must_parse_as_number("3.14");
         must_parse_as_number("-2.71828");
+        must_parse_as_number(".1");
+        must_parse_as_number(".05");
+        must_parse_as_number("-.05");
     }
 
     /// Scientific notation must match in ONE rule application, otherwise
