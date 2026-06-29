@@ -3,12 +3,13 @@
 //! DAPRV writes an array of DA vectors in COSY-format tabular output.
 //! DAREV reads an array of DA vectors back from that format.
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
-use crate::rosy_lib::core::display::RosyDisplay;
-use crate::rosy_lib::taylor::Monomial;
 use crate::rosy_lib::taylor::da::DACoefficient;
-use crate::rosy_lib::taylor::{DA, cosy_display_rank, get_config};
+use crate::rosy_lib::taylor::Monomial;
+use crate::rosy_lib::taylor::{cosy_display_rank, get_config, DA};
+
+const DAPRV_COEFF_WIDTH: usize = 15;
 
 /// Write an array of DA vectors in COSY INFINITY DAPRV format.
 ///
@@ -74,11 +75,15 @@ fn format_daprv(
     }
 
     // Print header
-    output.push_str(&format!("  I  COEFFICIENT          "));
+    output.push_str(&format!("{:>3}  ", "I"));
     for comp in 1..=num_components.min(array.len()) {
-        output.push_str(&format!("     {:>2}             ", comp));
+        output.push_str(&format!(
+            "{:^width$} ",
+            format!("COEF {}", comp),
+            width = DAPRV_COEFF_WIDTH
+        ));
     }
-    output.push_str("ORDER EXPONENTS\n");
+    output.push_str(&format!("  {:<5}   EXPONENTS\n", "ORDER"));
 
     // Print each monomial row
     for (idx, monomial) in all_monomials.iter().enumerate() {
@@ -90,7 +95,7 @@ fn format_daprv(
         // Print coefficient for each component
         for i in 0..num_components.min(array.len()) {
             let coeff = array[i].get_coeff(monomial);
-            output.push_str(&format!("{} ", coeff.rosy_display()));
+            output.push_str(&format!("{} ", format_daprv_coeff(coeff)));
         }
 
         output.push_str(&format!("{:>5}   {}\n", order, exp_str));
@@ -102,6 +107,36 @@ fn format_daprv(
     output.push('\n');
 
     Ok(output)
+}
+
+fn format_daprv_coeff(coeff: f64) -> String {
+    if coeff == 0.0 {
+        return format!("{:>width$}", "0.0000000E+00", width = DAPRV_COEFF_WIDTH);
+    }
+
+    let abs = coeff.abs();
+    if (0.1..10.0).contains(&abs) {
+        return format!("{:>11.7}    ", coeff);
+    }
+
+    let exponent = abs.log10().floor() as i32 + 1;
+    let mantissa = abs / 10f64.powi(exponent);
+    let digits = format!("{:.7}", mantissa)
+        .chars()
+        .skip(2)
+        .take(7)
+        .collect::<String>();
+
+    let sign = if coeff.is_sign_negative() {
+        "-."
+    } else {
+        " 0."
+    };
+    format!(
+        "{:>width$}",
+        format!("{}{}E{:+03}", sign, digits, exponent),
+        width = DAPRV_COEFF_WIDTH
+    )
 }
 
 /// Read an array of DA vectors from COSY DAPRV format.

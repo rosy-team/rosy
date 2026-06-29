@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{CD, CM, DA, LO, RE, ST, VE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, CM, ST, LO, VE, DA, CD};
 
 /// Type registry for TYPE intrinsic function.
 ///
@@ -97,9 +97,11 @@ impl RosyTYPE for CD {
 #[cfg(test)]
 mod tests {
     use super::RosyTYPE;
-    use crate::rosy_lib::{CM, CD, DA, LO, RE, ST, VE};
+    use crate::rosy_lib::{CD, CM, DA, LO, RE, ST, VE};
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn type_codes_match_cosy_order_for_supported_types() -> anyhow::Result<()> {
         crate::rosy_lib::taylor::cleanup_taylor();
         crate::rosy_lib::taylor::init_taylor(1, 1)?;

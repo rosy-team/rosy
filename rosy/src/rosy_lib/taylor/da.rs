@@ -338,8 +338,14 @@ impl<T: DACoefficient> DA<T> {
     pub fn trim(&mut self) {
         let rt = get_runtime().expect("Taylor system not initialized");
         let epsilon = rt.config.epsilon;
-        self.nonzero
-            .retain(|&i| self.coeffs[i as usize].abs() > epsilon);
+        self.nonzero.retain(|&i| {
+            if self.coeffs[i as usize].abs() > epsilon {
+                true
+            } else {
+                self.coeffs[i as usize] = T::zero();
+                false
+            }
+        });
     }
 
     #[inline]
@@ -387,9 +393,11 @@ impl<T: DACoefficient> DA<T> {
 
     /// O(1) amortized. Used by Horner's method.
     pub fn add_constant_in_place(&mut self, value: T) {
-        let was_nz = self.coeffs[0].abs() > 1e-15;
+        let rt = get_runtime().expect("Taylor system not initialized");
+        let epsilon = rt.config.epsilon;
+        let was_nz = self.coeffs[0].abs() > epsilon;
         self.coeffs[0] = self.coeffs[0] + value;
-        let is_nz = self.coeffs[0].abs() > 1e-15;
+        let is_nz = self.coeffs[0].abs() > epsilon;
 
         if is_nz {
             let mut seen_constant = false;
@@ -421,7 +429,9 @@ impl<T: DACoefficient> DA<T> {
     /// this avoids the RwLock acquisition and HashMap lookup in `set_coeff`.
     pub fn make_prime(&self) -> Self {
         let mut prime = self.clone();
-        if prime.coeffs[0].abs() > 1e-15 {
+        let rt = get_runtime().expect("Taylor system not initialized");
+        let epsilon = rt.config.epsilon;
+        if prime.coeffs[0].abs() > epsilon {
             prime.coeffs[0] = T::zero();
             // Remove 0 from nonzero list
             if let Some(pos) = prime.nonzero.iter().position(|&i| i == 0) {
@@ -863,13 +873,15 @@ impl<T: DACoefficient> Mul<T> for &DA<T> {
             return Ok(DA::zero());
         }
         let mut coeffs = T::pool_alloc(rt.num_monomials);
+        let mut nonzero = Vec::with_capacity(self.nonzero.len());
         for &i in &self.nonzero {
-            coeffs[i as usize] = self.coeffs[i as usize] * rhs;
+            let scaled = self.coeffs[i as usize] * rhs;
+            if scaled.abs() > epsilon {
+                coeffs[i as usize] = scaled;
+                nonzero.push(i);
+            }
         }
-        Ok(DA {
-            coeffs,
-            nonzero: self.nonzero.clone(),
-        })
+        Ok(DA { coeffs, nonzero })
     }
 }
 
@@ -1133,5 +1145,43 @@ impl DA<Complex64> {
             }
         }
         DA { coeffs, nonzero }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    use crate::rosy_lib::taylor::config::{cleanup_taylor, init_taylor, set_epsilon};
+
+    #[test]
+    #[serial]
+    fn scalar_multiply_prunes_coefficients_below_runtime_epsilon() {
+        cleanup_taylor();
+        init_taylor(2, 2).unwrap();
+        set_epsilon(1e-16).unwrap();
+
+        let x = DA::<f64>::variable(1).unwrap();
+        let scaled = (&x * 8.0e-17).unwrap();
+
+        assert!(scaled.is_zero());
+
+        cleanup_taylor();
+    }
+
+    #[test]
+    #[serial]
+    fn scalar_multiply_keeps_coefficients_above_runtime_epsilon() {
+        cleanup_taylor();
+        init_taylor(2, 2).unwrap();
+        set_epsilon(1e-16).unwrap();
+
+        let x = DA::<f64>::variable(1).unwrap();
+        let scaled = (&x * 2.0e-16).unwrap();
+
+        assert_eq!(scaled.num_terms(), 1);
+
+        cleanup_taylor();
     }
 }

@@ -263,6 +263,7 @@ impl RosyDisplay for &str {
 #[cfg(test)]
 mod tests {
     use super::RosyDisplay;
+    use serial_test::serial;
 
     #[test]
     fn vector_display_keeps_small_value_exponents() {
@@ -274,6 +275,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn zero_da_display_matches_cosy() {
         crate::rosy_lib::taylor::cleanup_taylor();
         crate::rosy_lib::taylor::init_taylor(2, 2).unwrap();
