@@ -34,8 +34,8 @@ use crate::{
     ast::{FromRule, Rule},
     rosy_lib::RosyType,
     transpile::{
-        ExprFunctionCallResult, TranspilationInputContext,
-        TranspilationOutput, Transpile, TranspileableExpr, ValueKind,
+        ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
+        TranspileableExpr, ValueKind,
     },
 };
 

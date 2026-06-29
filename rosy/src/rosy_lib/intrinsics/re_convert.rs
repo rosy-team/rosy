@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{CM, DA, RE, ST, VE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, CM, VE, ST, DA};
 
 /// Type registry for RE() conversion function.
 ///
@@ -54,7 +54,8 @@ impl RosyREConvert for RE {
 /// ST -> RE (parse string as f64)
 impl RosyREConvert for ST {
     fn rosy_re_convert(&self) -> anyhow::Result<RE> {
-        self.trim().parse::<f64>()
+        self.trim()
+            .parse::<f64>()
             .map_err(|e| anyhow::anyhow!("Failed to convert ST to RE: {}", e))
     }
 }

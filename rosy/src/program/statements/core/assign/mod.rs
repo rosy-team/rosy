@@ -141,7 +141,14 @@ impl TranspileableStatement for AssignStatement {
                 // the declared dimensions by the number of indices.
                 let mut explicit_type = node.resolved.as_ref().unwrap().clone();
                 let num_indices = self.identifier.num_index_dimensions();
-                explicit_type.dimensions = explicit_type.dimensions.saturating_sub(num_indices);
+                if num_indices > 0
+                    && explicit_type.base_type == RosyBaseType::VE
+                    && explicit_type.dimensions == 0
+                {
+                    explicit_type = RosyType::RE();
+                } else {
+                    explicit_type.dimensions = explicit_type.dimensions.saturating_sub(num_indices);
+                }
                 if let Ok(new_type) = resolver.evaluate_recipe(&recipe) {
                     if new_type != explicit_type {
                         let scope_str = if ctx.scope_path.is_empty() {
@@ -203,7 +210,7 @@ impl TranspileableStatement for AssignStatement {
                             }
                         };
                         let msg = format!(
-                                "\n╭─ Type Conflict ──────────────────────────────────────────\n\
+                            "\n╭─ Type Conflict ──────────────────────────────────────────\n\
                                 │\n\
                                 │  Variable '{}' (in {}) is declared as {} but is\n\
                                 │  assigned a value of type {}.{}{}\n\
@@ -213,17 +220,17 @@ impl TranspileableStatement for AssignStatement {
                                 │     • Split into separate variables: {}_{:?}  and  {}_{:?}\n\
                                 │{}\n\
                                 ╰──────────────────────────────────────────────────────────",
-                                var_name,
-                                scope_str,
-                                explicit_type,
-                                new_type,
-                                decl_hint,
-                                assign_hint,
-                                var_name,
-                                explicit_type.base_type,
-                                var_name,
-                                new_type.base_type,
-                                ve_hint,
+                            var_name,
+                            scope_str,
+                            explicit_type,
+                            new_type,
+                            decl_hint,
+                            assign_hint,
+                            var_name,
+                            explicit_type.base_type,
+                            var_name,
+                            new_type.base_type,
+                            ve_hint,
                         );
                         return InferenceEdgeResult::HasEdges {
                             result: Err(RosyError::at(source_location.clone(), msg).into()),
@@ -382,7 +389,7 @@ impl TranspileableStatement for AssignStatement {
                             }
                         };
                         let msg = format!(
-                                "\n╭─ Type Conflict ──────────────────────────────────────────\n\
+                            "\n╭─ Type Conflict ──────────────────────────────────────────\n\
                                 │\n\
                                 │  Variable '{}' (in {}) is assigned conflicting types:\n\
                                 │     • First inferred as:  {}\n\
@@ -395,19 +402,19 @@ impl TranspileableStatement for AssignStatement {
                                 │     • Split into separate variables: {}_{:?}  and  {}_{:?}\n\
                                 │{}\n\
                                 ╰──────────────────────────────────────────────────────────",
-                                var_name,
-                                scope_str,
-                                old_type,
-                                new_type,
-                                first_assign_hint,
-                                second_assign_hint,
-                                old_type.base_type,
-                                var_name,
-                                var_name,
-                                old_type.base_type,
-                                var_name,
-                                new_type.base_type,
-                                ve_hint,
+                            var_name,
+                            scope_str,
+                            old_type,
+                            new_type,
+                            first_assign_hint,
+                            second_assign_hint,
+                            old_type.base_type,
+                            var_name,
+                            var_name,
+                            old_type.base_type,
+                            var_name,
+                            new_type.base_type,
+                            ve_hint,
                         );
                         return InferenceEdgeResult::HasEdges {
                             result: Err(RosyError::at(source_location.clone(), msg).into()),
@@ -509,7 +516,8 @@ impl Transpile for AssignStatement {
                 .get(&self.identifier.name)
                 .ok_or(vec![anyhow::anyhow!(
                     "Variable '{}' is not defined in this scope!{}",
-                    self.identifier.name, context.variable_hint(&self.identifier.name)
+                    self.identifier.name,
+                    context.variable_hint(&self.identifier.name)
                 )])?
                 .scope
             {
@@ -546,7 +554,10 @@ impl Transpile for AssignStatement {
 
         // Optimization: detect `X := X & expr` and generate in-place append
         if self.identifier.num_index_dimensions() == 0 {
-            if let Some(result) = value.inner.try_inplace_append(&self.identifier.name, context) {
+            if let Some(result) = value
+                .inner
+                .try_inplace_append(&self.identifier.name, context)
+            {
                 return result;
             }
         }
@@ -593,7 +604,8 @@ impl Transpile for AssignStatement {
             .get(&self.identifier.name)
             .ok_or(vec![anyhow::anyhow!(
                 "Variable '{}' is not defined in this scope!{}",
-                self.identifier.name, context.variable_hint(&self.identifier.name)
+                self.identifier.name,
+                context.variable_hint(&self.identifier.name)
             )])?
             .scope
             .clone();

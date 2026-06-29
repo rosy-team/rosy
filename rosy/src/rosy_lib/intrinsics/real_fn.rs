@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{CD, CM, DA, RE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, CM, DA, CD};
 
 /// Type registry for REAL intrinsic function.
 ///
@@ -72,4 +72,3 @@ impl RosyREAL for CD {
         Ok(self.real_part())
     }
 }
-

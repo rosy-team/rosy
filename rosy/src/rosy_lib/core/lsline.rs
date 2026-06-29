@@ -20,16 +20,28 @@ pub fn rosy_lsline(x: &Vec<f64>, y: &Vec<f64>, n: usize) -> Result<(f64, f64)> {
         bail!("LSLINE: n must be greater than 0");
     }
     if x.len() < n {
-        bail!("LSLINE: x array has fewer elements ({}) than n ({})", x.len(), n);
+        bail!(
+            "LSLINE: x array has fewer elements ({}) than n ({})",
+            x.len(),
+            n
+        );
     }
     if y.len() < n {
-        bail!("LSLINE: y array has fewer elements ({}) than n ({})", y.len(), n);
+        bail!(
+            "LSLINE: y array has fewer elements ({}) than n ({})",
+            y.len(),
+            n
+        );
     }
 
     let fn_ = n as f64;
     let sum_x: f64 = x[..n].iter().sum();
     let sum_y: f64 = y[..n].iter().sum();
-    let sum_xy: f64 = x[..n].iter().zip(y[..n].iter()).map(|(xi, yi)| xi * yi).sum();
+    let sum_xy: f64 = x[..n]
+        .iter()
+        .zip(y[..n].iter())
+        .map(|(xi, yi)| xi * yi)
+        .sum();
     let sum_x2: f64 = x[..n].iter().map(|xi| xi * xi).sum();
 
     let denom = fn_ * sum_x2 - sum_x * sum_x;

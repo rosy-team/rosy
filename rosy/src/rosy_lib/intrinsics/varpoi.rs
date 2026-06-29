@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{CD, CM, DA, LO, RE, ST, VE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, ST, LO, CM, VE, DA, CD};
 
 /// Type registry for VARPOI intrinsic function.
 ///

@@ -1,12 +1,11 @@
-use crate::rosy_lib::ST;
 use super::IntrinsicTypeRule;
+use crate::rosy_lib::ST;
 
 /// Type registry for LTRIM intrinsic function.
 ///
 /// LTRIM removes leading space characters from a string.
-pub const LTRIM_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("ST", "ST", "'  hello  '"),
-];
+pub const LTRIM_REGISTRY: &[IntrinsicTypeRule] =
+    &[IntrinsicTypeRule::new("ST", "ST", "'  hello  '")];
 
 /// Get the return type of LTRIM for a given input type.
 pub fn get_return_type(input: &crate::rosy_lib::RosyType) -> Option<crate::rosy_lib::RosyType> {

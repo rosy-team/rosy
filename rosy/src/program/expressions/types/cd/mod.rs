@@ -32,8 +32,8 @@ use crate::{
     ast::{FromRule, Rule},
     program::expressions::Expr,
     transpile::{
-        ExprFunctionCallResult, TranspilationInputContext,
-        TranspilationOutput, Transpile, TranspileableExpr, ValueKind,
+        ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
+        TranspileableExpr, ValueKind,
     },
 };
 use anyhow::{Context, Error};

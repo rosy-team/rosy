@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{DA, RE, VE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, VE, DA};
 
 /// Type registry for ISRT3 intrinsic function (x^(-3/2)).
 ///
@@ -78,7 +78,11 @@ fn da_isrt3(da: &DA) -> anyhow::Result<DA> {
     let nocut = rt.config.max_order as usize;
 
     let f0 = da.constant_part();
-    anyhow::ensure!(f0 > 0.0, "ISRT3: constant part of DA must be positive, got {}", f0);
+    anyhow::ensure!(
+        f0 > 0.0,
+        "ISRT3: constant part of DA must be positive, got {}",
+        f0
+    );
 
     let alpha = -1.5_f64;
     let f0_alpha = f0.powf(alpha);
@@ -98,4 +102,3 @@ fn da_isrt3(da: &DA) -> anyhow::Result<DA> {
     result = (&result * DA::from_coeff(f0_alpha))?;
     Ok(result)
 }
-

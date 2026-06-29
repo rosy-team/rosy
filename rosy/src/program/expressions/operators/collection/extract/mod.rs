@@ -73,13 +73,14 @@ impl TranspileableExpr for ExtractExpr {
         })?;
 
         let result_type =
-            crate::rosy_lib::operators::extract::get_return_type(&object_type, &index_type).ok_or(
-                anyhow::anyhow!(
-                    "Cannot extract from type '{}' using index of type '{}'!",
-                    object_type,
-                    index_type
-                ),
-            )?;
+            crate::rosy_lib::operators::extract::get_return_type(&object_type, &index_type)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Cannot extract from type '{}' using index of type '{}'!",
+                        object_type,
+                        index_type
+                    )
+                })?;
 
         Ok(result_type)
     }

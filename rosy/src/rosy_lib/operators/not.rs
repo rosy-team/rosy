@@ -5,8 +5,8 @@
 //!
 //! This module provides the `RosyNot` trait and implementations.
 
+use crate::rosy_lib::{LO, RosyBaseType, RosyType};
 use anyhow::Result;
-use crate::rosy_lib::{RosyType, RosyBaseType, LO};
 
 /// Get the return type for NOT operator (unary).
 pub fn get_return_type(operand: &RosyType) -> Option<RosyType> {

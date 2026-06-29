@@ -107,10 +107,7 @@ impl Transpile for MemwrtStatement {
         requested_variables.extend(unit_output.requested_variables.iter().cloned());
 
         // MEMWRT: no COSY memory pool in Rosy — no-op
-        let serialization = format!(
-            "let _memwrt_unit = {};",
-            unit_output.as_value(),
-        );
+        let serialization = format!("let _memwrt_unit = {};", unit_output.as_value(),);
 
         Ok(TranspilationOutput {
             serialization,

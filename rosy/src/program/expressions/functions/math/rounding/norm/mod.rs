@@ -12,7 +12,7 @@
 //!
 //! | Input | Result |
 //! |-------|--------|
-//! | VE    | VE     |
+//! | VE    | RE     |
 //! | DA    | RE     |
 //! | CD    | RE     |
 //!
@@ -38,8 +38,8 @@ use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
 use crate::rosy_lib::RosyType;
 use crate::transpile::{
-    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput,
-    Transpile, TranspileableExpr, ValueKind,
+    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
+    TranspileableExpr, ValueKind,
 };
 use anyhow::{Context as AnyhowContext, Error, Result};
 use std::collections::HashSet;
@@ -122,8 +122,6 @@ impl TranspileableExpr for NormExpr {
         _ctx: &ScopeContext,
         _deps: &mut HashSet<TypeSlot>,
     ) -> ExprRecipe {
-        // NORM has non-uniform type mapping (DA->RE, VE->VE), so we cannot
-        // represent it with a type-preserving recipe.
-        ExprRecipe::Unknown(None)
+        ExprRecipe::Literal(RosyType::RE())
     }
 }

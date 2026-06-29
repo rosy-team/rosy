@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{CD, CM, DA, LO, RE, ST, VE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, ST, LO, CM, VE, DA, CD};
 
 /// Type registry for LENGTH intrinsic function.
-/// 
+///
 /// According to COSY INFINITY manual, LENGTH returns RE for all types:
 /// - RE -> RE
 /// - ST -> RE  
@@ -23,7 +23,6 @@ pub const LENGTH_REGISTRY: &[IntrinsicTypeRule] = &[
     IntrinsicTypeRule::new("DA", "RE", "1.5+DA(1)"),
     IntrinsicTypeRule::new("CD", "RE", "CM(1.5&2.5)+CD(1)"),
 ];
-
 
 /// Get the return type of LENGTH for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {

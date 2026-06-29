@@ -65,9 +65,7 @@ impl FromRule for LoopStatement {
 
         let mut inner = pair.into_inner();
         let (iterator, start, end, step) = {
-            let start_loop_pair = inner
-                .next()
-                .context("Missing first token `start_loop`!")?;
+            let start_loop_pair = inner.next().context("Missing first token `start_loop`!")?;
             let mut start_loop_inner = start_loop_pair.into_inner();
 
             let iterator = start_loop_inner

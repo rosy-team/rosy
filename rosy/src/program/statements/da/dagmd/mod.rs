@@ -58,22 +58,30 @@ impl FromRule for DagmdStatement {
 
         let mut inner = pair.into_inner();
 
-        let g_pair = inner.next().context("Missing g parameter in DAGMD statement!")?;
+        let g_pair = inner
+            .next()
+            .context("Missing g parameter in DAGMD statement!")?;
         let g = Expr::from_rule(g_pair)
             .context("Failed to build g expression in DAGMD statement!")?
             .ok_or_else(|| anyhow::anyhow!("Expected g expression in DAGMD statement"))?;
 
-        let f_pair = inner.next().context("Missing f parameter in DAGMD statement!")?;
+        let f_pair = inner
+            .next()
+            .context("Missing f parameter in DAGMD statement!")?;
         let f = Expr::from_rule(f_pair)
             .context("Failed to build f expression in DAGMD statement!")?
             .ok_or_else(|| anyhow::anyhow!("Expected f expression in DAGMD statement"))?;
 
-        let result_pair = inner.next().context("Missing result parameter in DAGMD statement!")?;
+        let result_pair = inner
+            .next()
+            .context("Missing result parameter in DAGMD statement!")?;
         let result = Expr::from_rule(result_pair)
             .context("Failed to build result expression in DAGMD statement!")?
             .ok_or_else(|| anyhow::anyhow!("Expected result expression in DAGMD statement"))?;
 
-        let dim_pair = inner.next().context("Missing dim parameter in DAGMD statement!")?;
+        let dim_pair = inner
+            .next()
+            .context("Missing dim parameter in DAGMD statement!")?;
         let dim = Expr::from_rule(dim_pair)
             .context("Failed to build dim expression in DAGMD statement!")?
             .ok_or_else(|| anyhow::anyhow!("Expected dim expression in DAGMD statement"))?;
@@ -115,14 +123,16 @@ impl Transpile for DagmdStatement {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let mut requested_variables = BTreeSet::new();
 
-        let g_output = self.g.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling g in DAGMD".to_string())
-        })?;
+        let g_output = self
+            .g
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling g in DAGMD".to_string()))?;
         requested_variables.extend(g_output.requested_variables.iter().cloned());
 
-        let f_output = self.f.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling f in DAGMD".to_string())
-        })?;
+        let f_output = self
+            .f
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling f in DAGMD".to_string()))?;
         requested_variables.extend(f_output.requested_variables.iter().cloned());
 
         let result_output = self.result.transpile(context).map_err(|e| {
@@ -130,13 +140,13 @@ impl Transpile for DagmdStatement {
         })?;
         requested_variables.extend(result_output.requested_variables.iter().cloned());
 
-        let dim_output = self.dim.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling dim in DAGMD".to_string())
-        })?;
+        let dim_output = self
+            .dim
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling dim in DAGMD".to_string()))?;
         requested_variables.extend(dim_output.requested_variables.iter().cloned());
 
-        let result_ref = result_output
-            .as_mut_ref();
+        let result_ref = result_output.as_mut_ref();
 
         let serialization = format!(
             "rosy_lib::core::da_ops::rosy_dagmd({}, {}, {result_ref}, {} as usize)?;",

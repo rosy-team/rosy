@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{CD, DA, RE, VE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, VE, DA, CD};
 
 /// Type registry for TAN intrinsic function.
-/// 
+///
 /// According to COSY INFINITY manual, TAN supports:
 /// - RE -> RE
 /// - VE -> VE (elementwise)
 /// - DA -> DA (Taylor composition)
-/// 
+///
 /// Note: CM is NOT supported for TAN in COSY.
 pub const TAN_REGISTRY: &[IntrinsicTypeRule] = &[
     IntrinsicTypeRule::new("RE", "RE", "1.5"),
@@ -62,8 +62,8 @@ impl RosyTAN for VE {
 impl RosyTAN for DA {
     type Output = DA;
     fn rosy_tan(&self) -> anyhow::Result<Self::Output> {
-        use crate::rosy_lib::intrinsics::sin::RosySIN;
         use crate::rosy_lib::intrinsics::cos::RosyCOS;
+        use crate::rosy_lib::intrinsics::sin::RosySIN;
 
         let sin_f = self.rosy_sin()?;
         let cos_f = self.rosy_cos()?;
@@ -71,4 +71,3 @@ impl RosyTAN for DA {
         (&sin_f / &cos_f).map_err(|e| e)
     }
 }
-

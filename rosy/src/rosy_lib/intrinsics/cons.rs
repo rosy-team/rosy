@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{CD, CM, DA, RE, VE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, CM, VE, DA, CD};
 
 /// Type registry for CONS intrinsic function.
 ///

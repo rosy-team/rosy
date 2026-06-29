@@ -146,10 +146,10 @@ impl Transpile for CpusecStatement {
             }
         };
 
-        // Use the timer helper from the output template so CPUSEC works in
-        // generated function/procedure bodies as well as the main wrapper.
+        // rosy_cpu_time() returns POSIX clock() / CLOCKS_PER_SEC — CPU time, not wall time.
+        // PWTIME uses start.elapsed() for wall-clock time.
         let serialization = format!(
-            "{}{} = rosy_elapsed_seconds();",
+            "{}{} = rosy_cpu_time();",
             dereference, serialized_identifier
         );
 

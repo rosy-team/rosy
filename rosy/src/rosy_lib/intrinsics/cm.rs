@@ -1,18 +1,18 @@
 use std::collections::HashMap;
 
 use crate::rosy_lib::RosyType;
-use crate::rosy_lib::{RE, CM, VE, CD};
+use crate::rosy_lib::{CD, CM, RE, VE};
 use anyhow::{Result, ensure};
 
-pub fn get_return_type ( lhs: &RosyType ) -> Option<RosyType> {
+pub fn get_return_type(lhs: &RosyType) -> Option<RosyType> {
     let registry: HashMap<RosyType, RosyType> = {
         let mut m = HashMap::new();
-        let all = vec!(
+        let all = vec![
             (RosyType::RE(), RosyType::CM()),
             (RosyType::CM(), RosyType::CM()),
             (RosyType::VE(), RosyType::CM()),
             (RosyType::CD(), RosyType::CM()),
-        );
+        ];
         for (left, result) in all {
             m.insert(left, result);
         }
@@ -21,7 +21,6 @@ pub fn get_return_type ( lhs: &RosyType ) -> Option<RosyType> {
 
     registry.get(&*lhs).copied()
 }
-
 
 pub trait RosyCM {
     fn rosy_cm(self) -> Result<CM>;
@@ -43,7 +42,11 @@ impl RosyCM for &CM {
 impl RosyCM for &VE {
     fn rosy_cm(self) -> Result<CM> {
         use num_complex::Complex64;
-        ensure!(self.len() == 2, "Cannot convert vector of length {} to CM (complex), must have exactly 2 elements!", self.len());
+        ensure!(
+            self.len() == 2,
+            "Cannot convert vector of length {} to CM (complex), must have exactly 2 elements!",
+            self.len()
+        );
 
         Ok(Complex64::new(self[0], self[1]))
     }

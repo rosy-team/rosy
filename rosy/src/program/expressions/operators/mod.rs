@@ -15,7 +15,7 @@
 //! single source of truth for which type combinations are valid.
 
 pub mod arithmetic;
-pub mod comparison;
-pub mod unary;
 pub mod collection;
+pub mod comparison;
 pub mod logical;
+pub mod unary;

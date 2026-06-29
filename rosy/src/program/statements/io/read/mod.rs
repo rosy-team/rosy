@@ -152,7 +152,10 @@ impl Transpile for ReadStatement {
 
         // Transpile unit expression
         let unit_output = self.unit.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling unit expression in READ".to_string())
+            add_context_to_all(
+                e,
+                "...while transpiling unit expression in READ".to_string(),
+            )
         })?;
         requested_variables.extend(unit_output.requested_variables.iter().cloned());
 

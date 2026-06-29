@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{CM, DA, RE, VE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, CM, VE, DA};
 
 /// Type registry for SINH intrinsic function.
 ///
@@ -87,11 +87,12 @@ fn da_sinh(da: &DA) -> anyhow::Result<DA> {
     // Recurrence: xf[i] = xf[i-2] / (i*(i-1))  (no negation for sinh/cosh)
     let mut xf = Vec::with_capacity(nocut + 1);
     xf.push(f0.sinh());
-    if nocut >= 1 { xf.push(f0.cosh()); }
+    if nocut >= 1 {
+        xf.push(f0.cosh());
+    }
     for i in 2..=nocut {
         xf.push(xf[i - 2] / ((i * (i - 1)) as f64));
     }
 
     DA::horner_eval_with_rt(&da_prime, &xf, &rt)
 }
-

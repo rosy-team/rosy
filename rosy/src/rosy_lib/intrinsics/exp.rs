@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{CD, CM, DA, RE, VE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, CM, VE, DA, CD};
 
 /// Type registry for EXP intrinsic function.
-/// 
+///
 /// According to COSY INFINITY manual, EXP supports:
 /// - RE -> RE
 /// - CM -> CM
@@ -130,4 +130,3 @@ fn cd_exp(cd: &CD) -> anyhow::Result<CD> {
     result = (&result * CD::from_coeff(exp_f0))?;
     Ok(result)
 }
-

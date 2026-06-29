@@ -77,7 +77,12 @@ impl FromRule for DafloStatement {
             .context("Failed to build dim expression in DAFLO")?
             .ok_or_else(|| anyhow::anyhow!("Expected dim expression in DAFLO"))?;
 
-        Ok(Some(DafloStatement { rhs, ic, result, dim }))
+        Ok(Some(DafloStatement {
+            rhs,
+            ic,
+            result,
+            dim,
+        }))
     }
 }
 
@@ -114,14 +119,16 @@ impl Transpile for DafloStatement {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let mut requested_variables = BTreeSet::new();
 
-        let rhs_output = self.rhs.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling rhs in DAFLO".to_string())
-        })?;
+        let rhs_output = self
+            .rhs
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling rhs in DAFLO".to_string()))?;
         requested_variables.extend(rhs_output.requested_variables.iter().cloned());
 
-        let ic_output = self.ic.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling ic in DAFLO".to_string())
-        })?;
+        let ic_output = self
+            .ic
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling ic in DAFLO".to_string()))?;
         requested_variables.extend(ic_output.requested_variables.iter().cloned());
 
         let result_output = self.result.transpile(context).map_err(|e| {
@@ -129,13 +136,13 @@ impl Transpile for DafloStatement {
         })?;
         requested_variables.extend(result_output.requested_variables.iter().cloned());
 
-        let dim_output = self.dim.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling dim in DAFLO".to_string())
-        })?;
+        let dim_output = self
+            .dim
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling dim in DAFLO".to_string()))?;
         requested_variables.extend(dim_output.requested_variables.iter().cloned());
 
-        let result_ref = result_output
-            .as_mut_ref();
+        let result_ref = result_output.as_mut_ref();
 
         let serialization = format!(
             "rosy_lib::core::da_ops::rosy_daflo({}, {}, {result_ref}, {} as usize)?;",

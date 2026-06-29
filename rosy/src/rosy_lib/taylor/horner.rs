@@ -7,12 +7,12 @@ use anyhow::Result;
 use num_complex::Complex64;
 
 #[cfg(feature = "nightly-simd")]
-use std::simd::prelude::*;
-#[cfg(feature = "nightly-simd")]
 use std::simd::StdFloat;
+#[cfg(feature = "nightly-simd")]
+use std::simd::prelude::*;
 
+use super::config::{MULT_INVALID, TaylorRuntime, get_runtime};
 use super::da::{DA, DACoefficient};
-use super::config::{get_runtime, MULT_INVALID, TaylorRuntime};
 
 // ============================================================================
 // FixedMultiplier — Cache-optimized multiply for a fixed RHS operand
@@ -87,7 +87,13 @@ impl FixedMultiplier {
             }
         }
 
-        Some(Self { offsets, lhs_indices, rhs_coeffs, num_monomials: n, output_orders: rt.monomial_orders.clone() })
+        Some(Self {
+            offsets,
+            lhs_indices,
+            rhs_coeffs,
+            num_monomials: n,
+            output_orders: rt.monomial_orders.clone(),
+        })
     }
 
     /// Multiply LHS by the fixed RHS, returning a new DA.
@@ -99,20 +105,30 @@ impl FixedMultiplier {
     ///
     /// Only produces output monomials with order <= `trunc_order`.
     /// Used by Horner evaluation for progressive order truncation (#18).
-    pub fn multiply_to_da_truncated(&self, lhs: &DA<f64>, epsilon: f64, trunc_order: u32) -> DA<f64> {
+    pub fn multiply_to_da_truncated(
+        &self,
+        lhs: &DA<f64>,
+        epsilon: f64,
+        trunc_order: u32,
+    ) -> DA<f64> {
         let n = self.num_monomials;
         let mut coeffs = f64::pool_alloc(n);
         let mut nonzero = Vec::new();
 
         for k in 0..n {
             // Progressive truncation: skip output monomials above the current truncation order
-            if self.output_orders[k] as u32 > trunc_order { continue; }
+            if self.output_orders[k] as u32 > trunc_order {
+                continue;
+            }
 
             let start = self.offsets[k] as usize;
             let end = self.offsets[k + 1] as usize;
-            if start == end { continue; }
+            if start == end {
+                continue;
+            }
 
-            let sum = Self::accumulate(&lhs.coeffs, &self.lhs_indices, &self.rhs_coeffs, start, end);
+            let sum =
+                Self::accumulate(&lhs.coeffs, &self.lhs_indices, &self.rhs_coeffs, start, end);
 
             if sum.abs() > epsilon {
                 coeffs[k] = sum;
@@ -127,7 +143,13 @@ impl FixedMultiplier {
     /// With `nightly-simd`: uses f64x4 SIMD FMA.
     /// Without: scalar FMA loop.
     #[inline]
-    fn accumulate(lhs_coeffs: &[f64], lhs_indices: &[u32], rhs_coeffs: &[f64], start: usize, end: usize) -> f64 {
+    fn accumulate(
+        lhs_coeffs: &[f64],
+        lhs_indices: &[u32],
+        rhs_coeffs: &[f64],
+        start: usize,
+        end: usize,
+    ) -> f64 {
         #[cfg(feature = "nightly-simd")]
         {
             const LANES: usize = 4;
@@ -192,10 +214,18 @@ impl DA<f64> {
     /// Avoids the RwLock acquire when the caller already holds it
     /// (e.g. transcendental functions that need config + Horner).
     #[inline(always)]
-    pub fn horner_eval_with_rt(da_prime: &DA<f64>, taylor_coeffs: &[f64], rt: &TaylorRuntime) -> Result<DA<f64>> {
+    pub fn horner_eval_with_rt(
+        da_prime: &DA<f64>,
+        taylor_coeffs: &[f64],
+        rt: &TaylorRuntime,
+    ) -> Result<DA<f64>> {
         let n = taylor_coeffs.len();
-        if n == 0 { return Ok(DA::zero()); }
-        if n == 1 { return Ok(DA::from_coeff(taylor_coeffs[0])); }
+        if n == 0 {
+            return Ok(DA::zero());
+        }
+        if n == 1 {
+            return Ok(DA::from_coeff(taylor_coeffs[0]));
+        }
 
         let full_order = rt.config.max_order;
 
@@ -216,8 +246,12 @@ impl DA<f64> {
     /// if mult_table is unavailable.
     pub fn horner_eval_fixed(da_prime: &DA<f64>, taylor_coeffs: &[f64]) -> Result<DA<f64>> {
         let n = taylor_coeffs.len();
-        if n == 0 { return Ok(DA::zero()); }
-        if n == 1 { return Ok(DA::from_coeff(taylor_coeffs[0])); }
+        if n == 0 {
+            return Ok(DA::zero());
+        }
+        if n == 1 {
+            return Ok(DA::from_coeff(taylor_coeffs[0]));
+        }
 
         let rt = get_runtime()?;
         let epsilon = rt.config.epsilon;
@@ -249,10 +283,17 @@ impl DA<Complex64> {
     /// Horner evaluation for Complex DA with progressive truncation.
     /// Holds runtime lock for the entire loop.
     #[inline]
-    pub fn horner_eval(cd_prime: &DA<Complex64>, taylor_coeffs: &[Complex64]) -> Result<DA<Complex64>> {
+    pub fn horner_eval(
+        cd_prime: &DA<Complex64>,
+        taylor_coeffs: &[Complex64],
+    ) -> Result<DA<Complex64>> {
         let n = taylor_coeffs.len();
-        if n == 0 { return Ok(DA::zero()); }
-        if n == 1 { return Ok(DA::from_coeff(taylor_coeffs[0])); }
+        if n == 0 {
+            return Ok(DA::zero());
+        }
+        if n == 1 {
+            return Ok(DA::from_coeff(taylor_coeffs[0]));
+        }
 
         let rt = get_runtime()?;
         let full_order = rt.config.max_order;

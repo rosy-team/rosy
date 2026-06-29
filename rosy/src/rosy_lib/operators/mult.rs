@@ -5,21 +5,23 @@
 //! `MULT_REGISTRY` constant below.
 //!
 //! # Type Compatibility
-//! 
+//!
 //! See `assets/operators/mult/mult_table.md` for the full compatibility table.
 //!
 //! # Examples
-//! 
-//! See `assets/operators/mult/mult.rosy` for Rosy examples and 
+//!
+//! See `assets/operators/mult/mult.rosy` for Rosy examples and
 //! `assets/operators/mult/mult.fox` for equivalent COSY INFINITY code.
 
-use anyhow::Result;
 use crate::rosy_lib::RosyType;
-use crate::rosy_lib::{RE, CM, VE, DA, CD, LO};
 use crate::rosy_lib::operators::{TypeRule, build_type_registry};
+use crate::rosy_lib::{CD, CM, DA, LO, RE, VE};
+use anyhow::Result;
+use std::collections::HashMap;
+use std::sync::OnceLock;
 
 /// Type compatibility registry for multiplication operator.
-/// 
+///
 /// This is the single source of truth for what type combinations are allowed.
 /// The build script (`build.rs`) parses this to generate:
 /// - Documentation table (`mult_table.md`)
@@ -46,12 +48,22 @@ pub const MULT_REGISTRY: &[TypeRule] = &[
     TypeRule::new("CD", "RE", "CD", "DA(1)+CM(0&1)*DA(2)", "8"),
     TypeRule::new("CD", "CM", "CD", "DA(1)+CM(0&1)*DA(2)", "CM(2&3)"),
     TypeRule::new("CD", "DA", "CD", "DA(1)+CM(0&1)*DA(2)", "DA(3)"),
-    TypeRule::new("CD", "CD", "CD", "DA(1)+CM(0&1)*DA(2)", "DA(3)+CM(4&5)*DA(6)"),
+    TypeRule::new(
+        "CD",
+        "CD",
+        "CD",
+        "DA(1)+CM(0&1)*DA(2)",
+        "DA(3)+CM(4&5)*DA(6)",
+    ),
 ];
 
+static MULT_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
+
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    let registry = build_type_registry(MULT_REGISTRY);
-    registry.get(&(*lhs, *rhs)).copied()
+    MULT_MAP
+        .get_or_init(|| build_type_registry(MULT_REGISTRY))
+        .get(&(*lhs, *rhs))
+        .copied()
 }
 
 pub trait RosyMult<Rhs = Self> {
@@ -120,10 +132,13 @@ impl RosyMult<&RE> for &VE {
 impl RosyMult<&VE> for &VE {
     type Output = VE;
     fn rosy_mult(self, other: &VE) -> Result<Self::Output> {
-        Ok(self.iter()
-            .zip(other.iter())
-            .map(|(x, y)| x * y)
-            .collect())
+        anyhow::ensure!(
+            self.len() == other.len(),
+            "Vector length mismatch in multiplication: {} vs {}",
+            self.len(),
+            other.len()
+        );
+        Ok(self.iter().zip(other.iter()).map(|(x, y)| x * y).collect())
     }
 }
 
@@ -241,4 +256,3 @@ impl RosyMult<&CD> for &CD {
         self * other
     }
 }
-

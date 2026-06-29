@@ -428,10 +428,7 @@ impl TypeResolver {
                     let node = self.nodes.get(&slot);
                     node.map_or(false, |n| {
                         matches!(n.rule, ResolutionRule::Unresolved)
-                            && matches!(
-                                n.slot,
-                                TypeSlot::Variable(..) | TypeSlot::Argument(..)
-                            )
+                            && matches!(n.slot, TypeSlot::Variable(..) | TypeSlot::Argument(..))
                     })
                 };
 
@@ -742,7 +739,8 @@ impl TypeResolver {
                 if remaining > 0 {
                     return Err(anyhow!(
                         "IndexedVariable: too many indices ({} for {} dims)",
-                        num_indices, base.dimensions
+                        num_indices,
+                        base.dimensions
                     ));
                 }
                 Ok(RosyType::new(base.base_type, new_dim))
@@ -811,7 +809,9 @@ impl TypeResolver {
                     .ok_or_else(|| anyhow!("No IMAG rule for {}", input_type))
             }
             ExprRecipe::Unknown(reason) => {
-                let detail = reason.as_deref().unwrap_or("expression type could not be determined statically");
+                let detail = reason
+                    .as_deref()
+                    .unwrap_or("expression type could not be determined statically");
                 Err(anyhow!("{}", detail))
             }
         }

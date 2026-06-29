@@ -2,8 +2,8 @@
 //!
 //! This module provides the `RosyOr` trait and implementations.
 
+use crate::rosy_lib::{LO, RosyBaseType, RosyType};
 use anyhow::Result;
-use crate::rosy_lib::{RosyType, RosyBaseType, LO};
 
 /// Get the return type for OR operator.
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {

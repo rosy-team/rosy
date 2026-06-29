@@ -41,36 +41,39 @@ use pest_derive::Parser;
 pub struct CosyParser;
 
 // Create a static PrattParser for expressions
-lazy_static::lazy_static! {
-    pub static ref PRATT_PARSER: PrattParser<Rule> = {
-        use pest::pratt_parser::{Assoc::*, Op};
-        use Rule::*;
+pub static PRATT_PARSER: std::sync::LazyLock<PrattParser<Rule>> = std::sync::LazyLock::new(|| {
+    use Rule::*;
+    use pest::pratt_parser::{Assoc::*, Op};
 
-        // Precedence is defined from lowest to highest priority
-        // Following COSY INFINITY priorities:
-        // - Priority 2: Concatenation (&), Equality (=), Not-Equals (#), Less/Greater, comparison
-        // - Priority 3: Addition (+), Subtraction (-)
-        // - Priority 4: Multiplication (*), Division (/)
-        // - Priority 5: Exponentiation (^) - right-associative
-        // - Priority 6: Extraction (|), Derivation (%)
-        PrattParser::new()
-            // Lowest precedence (Priority 0): logical OR
-            .op(Op::infix(or_op, Left))
-            // Priority 1: logical AND (binds tighter than OR)
-            .op(Op::infix(and_op, Left))
-            // Priority 2: concatenation, equality, not-equals, comparisons
-            .op(Op::infix(concat, Left) | Op::infix(eq, Left) | Op::infix(neq, Left)
-                | Op::infix(lt, Left) | Op::infix(gt, Left) | Op::infix(lte, Left) | Op::infix(gte, Left))
-            // Priority 3: Addition and Subtraction
-            .op(Op::infix(add, Left) | Op::infix(sub, Left))
-            // Priority 4: Multiplication and Division
-            .op(Op::infix(mult, Left) | Op::infix(div, Left))
-            // Priority 5: Exponentiation (right-associative, like math convention)
-            .op(Op::infix(pow, Right))
-            // Priority 6: Extraction (|) and Derivation (%)
-            .op(Op::infix(extract, Left) | Op::infix(derive, Left))
-    };
-}
+    // Precedence is defined from lowest to highest priority
+    // Following COSY INFINITY priorities:
+    // - Priority 2: Concatenation (&), Equality (=), Not-Equals (#), Less/Greater, comparison
+    // - Priority 3: Addition (+), Subtraction (-)
+    // - Priority 4: Multiplication (*), Division (/)
+    // - Priority 5: Exponentiation (^) - right-associative
+    // - Priority 6: Extraction (|), Derivation (%)
+    PrattParser::new()
+        // Lowest precedence (Priority 0): logical OR
+        .op(Op::infix(or_op, Left))
+        // Priority 1: logical AND (binds tighter than OR)
+        .op(Op::infix(and_op, Left))
+        // Priority 2: concatenation, equality, not-equals, comparisons
+        .op(Op::infix(concat, Left)
+            | Op::infix(eq, Left)
+            | Op::infix(neq, Left)
+            | Op::infix(lt, Left)
+            | Op::infix(gt, Left)
+            | Op::infix(lte, Left)
+            | Op::infix(gte, Left))
+        // Priority 3: Addition and Subtraction
+        .op(Op::infix(add, Left) | Op::infix(sub, Left))
+        // Priority 4: Multiplication and Division
+        .op(Op::infix(mult, Left) | Op::infix(div, Left))
+        // Priority 5: Exponentiation (right-associative, like math convention)
+        .op(Op::infix(pow, Right))
+        // Priority 6: Extraction (|) and Derivation (%)
+        .op(Op::infix(extract, Left) | Op::infix(derive, Left))
+});
 
 pub trait FromRule: Sized {
     fn from_rule(pair: pest::iterators::Pair<Rule>) -> Result<Option<Self>>;

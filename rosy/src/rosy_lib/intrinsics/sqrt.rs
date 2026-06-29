@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{CM, DA, RE, VE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, CM, VE, DA};
 
 /// Type registry for SQRT intrinsic function.
 ///
@@ -91,7 +91,11 @@ fn da_sqrt(da: &DA) -> anyhow::Result<DA> {
     let nocut = rt.config.max_order as usize;
 
     let f0 = da.constant_part();
-    anyhow::ensure!(f0 > 0.0, "SQRT: constant part of DA must be positive, got {}", f0);
+    anyhow::ensure!(
+        f0 > 0.0,
+        "SQRT: constant part of DA must be positive, got {}",
+        f0
+    );
 
     let sqrt_f0 = f0.sqrt();
     let da_prime = da.make_prime();
@@ -110,4 +114,3 @@ fn da_sqrt(da: &DA) -> anyhow::Result<DA> {
     result = (&result * DA::from_coeff(sqrt_f0))?;
     Ok(result)
 }
-

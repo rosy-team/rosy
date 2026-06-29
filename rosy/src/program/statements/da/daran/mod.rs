@@ -61,7 +61,9 @@ impl FromRule for DaranStatement {
             .context("Failed to build da_var expression in DARAN statement!")?
             .ok_or_else(|| anyhow::anyhow!("Expected da_var expression in DARAN statement"))?;
 
-        let sparsity_pair = inner.next().context("Missing sparsity in DARAN statement!")?;
+        let sparsity_pair = inner
+            .next()
+            .context("Missing sparsity in DARAN statement!")?;
         let sparsity = Expr::from_rule(sparsity_pair)
             .context("Failed to build sparsity expression in DARAN statement!")?
             .ok_or_else(|| anyhow::anyhow!("Expected sparsity expression in DARAN statement"))?;
@@ -113,8 +115,7 @@ impl Transpile for DaranStatement {
         })?;
         requested_variables.extend(sparsity_output.requested_variables.iter().cloned());
 
-        let da_ref = da_var_output
-            .as_mut_ref();
+        let da_ref = da_var_output.as_mut_ref();
 
         let serialization = format!(
             "rosy_lib::core::da_ops::rosy_daran({da_ref}, {} as f64)?;",

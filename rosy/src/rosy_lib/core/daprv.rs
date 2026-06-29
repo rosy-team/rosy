@@ -3,11 +3,11 @@
 //! DAPRV writes an array of DA vectors in COSY-format tabular output.
 //! DAREV reads an array of DA vectors back from that format.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
-use crate::rosy_lib::taylor::da::DACoefficient;
 use crate::rosy_lib::taylor::Monomial;
-use crate::rosy_lib::taylor::{cosy_display_rank, get_config, DA};
+use crate::rosy_lib::taylor::da::DACoefficient;
+use crate::rosy_lib::taylor::{DA, cosy_display_rank, get_config};
 
 const DAPRV_COEFF_WIDTH: usize = 15;
 
@@ -139,6 +139,19 @@ fn format_daprv_coeff(coeff: f64) -> String {
     )
 }
 
+/// Build exponent string for DAPRV display.
+fn build_exp_str(exponents: &[u8], num_vars: usize) -> String {
+    let mut result = String::new();
+    for i in 0..num_vars.min(exponents.len()) {
+        if i % 2 == 0 {
+            result.push_str(&format!("{:>2}", exponents[i]));
+        } else {
+            result.push_str(&format!("{:>2} ", exponents[i]));
+        }
+    }
+    result.trim_end().to_string()
+}
+
 /// Read an array of DA vectors from COSY DAPRV format.
 ///
 /// Arguments:
@@ -178,8 +191,6 @@ pub fn rosy_darev(
     while array.len() < num_components {
         array.push(DA::zero());
     }
-
-    // Zero out the components we're reading into
     for i in 0..num_components.min(array.len()) {
         array[i] = DA::zero();
     }
@@ -194,13 +205,11 @@ pub fn rosy_darev(
         // Parse the line: index, coefficients, order, exponents
         let tokens: Vec<&str> = trimmed.split_whitespace().collect();
         if tokens.len() < 2 + num_components {
-            continue; // Skip malformed lines
+            continue;
         }
 
-        // First token is the index (1-based), skip it
-        // Next num_components tokens are coefficients
-        // Then order
-        // Then exponents
+        // First token is the index (1-based), skip it.
+        // Next num_components tokens are coefficients.
         let mut coeffs = Vec::new();
         for i in 0..num_components {
             if let Ok(coeff) = tokens[1 + i].parse::<f64>() {
@@ -226,12 +235,11 @@ pub fn rosy_darev(
                 }
             }
         }
-
         let monomial = Monomial::new(exponents);
 
         // Set coefficients for each component
         for (i, &coeff) in coeffs.iter().enumerate() {
-            if i < array.len() && coeff.abs() > 1e-15 {
+            if coeff.abs() > 1e-15 {
                 array[i].set_coeff(monomial, coeff);
             }
         }
@@ -346,19 +354,6 @@ pub fn rosy_datrn(
     }
 
     Ok(())
-}
-
-/// Build exponent string for DAPRV display.
-fn build_exp_str(exponents: &[u8], num_vars: usize) -> String {
-    let mut result = String::new();
-    for i in 0..num_vars.min(exponents.len()) {
-        if i % 2 == 0 {
-            result.push_str(&format!("{:>2}", exponents[i]));
-        } else {
-            result.push_str(&format!("{:>2} ", exponents[i]));
-        }
-    }
-    result.trim_end().to_string()
 }
 
 /// DAPLU: Replace independent variable xi by constant C in a DA vector.

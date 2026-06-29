@@ -58,15 +58,15 @@ impl FromRule for LtExpr {
 }
 impl TranspileableExpr for LtExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        crate::rosy_lib::operators::lt::get_return_type(
-            &self.left.type_of(context)?,
-            &self.right.type_of(context)?,
-        )
-        .ok_or(anyhow::anyhow!(
-            "Cannot compare types '{}' and '{}' with less-than!",
-            self.left.type_of(context)?,
-            self.right.type_of(context)?
-        ))
+        let left_type = self.left.type_of(context)?;
+        let right_type = self.right.type_of(context)?;
+        crate::rosy_lib::operators::lt::get_return_type(&left_type, &right_type).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Cannot compare types '{}' and '{}' with less-than!",
+                left_type,
+                right_type
+            )
+        })
     }
     fn discover_expr_function_calls(
         &self,

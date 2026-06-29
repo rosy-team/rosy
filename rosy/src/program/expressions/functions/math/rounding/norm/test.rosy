@@ -1,6 +1,6 @@
 BEGIN;
     VARIABLE (VE) V;
-    VARIABLE (VE) N;
+    VARIABLE (RE) N;
     V := 1.5 & -2.5 & 3.5;
     N := NORM(V);
     WRITE 6 ST(N);

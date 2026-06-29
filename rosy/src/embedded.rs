@@ -9,8 +9,8 @@
 //! compile time via `include_str!()` (see `build.rs`). At transpilation time,
 //! they are extracted and path-rewritten (`crate::rosy_lib::` → `crate::`).
 
-use std::path::Path;
 use anyhow::{Context, Result};
+use std::path::Path;
 
 // Include the auto-generated embedded rosy_lib files
 include!(concat!(env!("OUT_DIR"), "/embedded_rosy_lib.rs"));
@@ -38,11 +38,16 @@ fn write_vendored_lib(output_dir: &Path) -> Result<()> {
 
         // Transform the content: replace crate::rosy_lib:: with crate::
         // since when vendored, this IS the rosy_lib crate
-        let mut transformed_content = embedded_file.content.replace("crate::rosy_lib::", "crate::");
+        let mut transformed_content = embedded_file
+            .content
+            .replace("crate::rosy_lib::", "crate::");
 
         // Add warning suppressions and feature gates to the lib.rs file
         if embedded_file.path == "mod.rs" {
-            transformed_content = format!("#![cfg_attr(feature = \"nightly-simd\", feature(portable_simd))]\n#![allow(unused_imports)]\n#![allow(dead_code)]\n\n{}", transformed_content);
+            transformed_content = format!(
+                "#![cfg_attr(feature = \"nightly-simd\", feature(portable_simd))]\n#![allow(unused_imports)]\n#![allow(dead_code)]\n\n{}",
+                transformed_content
+            );
         }
 
         // Write the file content
@@ -70,6 +75,7 @@ rustc-hash = "2"
 rand = "0.9"
 libm = "0.2"
 memory-stats = "1"
+libc = "0.2"
 "#;
 
     std::fs::write(lib_dir.join("Cargo.toml"), lib_cargo_toml)
@@ -81,13 +87,20 @@ memory-stats = "1"
 /// Generates a Cargo.toml for the output project
 fn generate_cargo_toml(uses_mpi: bool, optimized: bool) -> String {
     let mut features = Vec::new();
-    if uses_mpi { features.push("\"mpi\""); }
-    if optimized { features.push("\"nightly-simd\""); }
+    if uses_mpi {
+        features.push("\"mpi\"");
+    }
+    if optimized {
+        features.push("\"nightly-simd\"");
+    }
 
     let mpi_dep = if features.is_empty() {
         "rosy_lib = { path = \"./vendored/rosy_lib\" }".to_string()
     } else {
-        format!("rosy_lib = {{ path = \"./vendored/rosy_lib\", features = [{}] }}", features.join(", "))
+        format!(
+            "rosy_lib = {{ path = \"./vendored/rosy_lib\", features = [{}] }}",
+            features.join(", ")
+        )
     };
 
     let profile_section = if optimized {
@@ -99,7 +112,7 @@ fn generate_cargo_toml(uses_mpi: bool, optimized: bool) -> String {
     };
 
     format!(
-        "[package]\nname = \"rosy_output\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nanyhow = \"1.0\"\n{mpi_dep}\nnum-complex = \"0.4\"\n{profile_section}"
+        "[workspace]\n\n[package]\nname = \"rosy_output\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nanyhow = \"1.0\"\n{mpi_dep}\nnum-complex = \"0.4\"\n{profile_section}"
     )
 }
 
@@ -110,12 +123,14 @@ pub fn create_output_project(output_dir: &Path, uses_mpi: bool, optimized: bool)
         .context("Failed to create output directory structure")?;
 
     // Write vendored rosy_lib
-    write_vendored_lib(output_dir)
-        .context("Failed to write vendored rosy_lib")?;
+    write_vendored_lib(output_dir).context("Failed to write vendored rosy_lib")?;
 
     // Write Cargo.toml
-    std::fs::write(output_dir.join("Cargo.toml"), generate_cargo_toml(uses_mpi, optimized))
-        .context("Failed to write Cargo.toml template")?;
+    std::fs::write(
+        output_dir.join("Cargo.toml"),
+        generate_cargo_toml(uses_mpi, optimized),
+    )
+    .context("Failed to write Cargo.toml template")?;
 
     // Write main.rs template
     std::fs::write(output_dir.join("src/main.rs"), MAIN_RS_TEMPLATE)
@@ -173,8 +188,6 @@ pub fn inject_code(transpiled_code: &str, uses_mpi: bool) -> Result<String> {
 
     Ok(format!(
         "{}// <INJECT_START>\n{}\n\t// <INJECT_END>{}",
-        before_inject,
-        indented_code,
-        after_inject
+        before_inject, indented_code, after_inject
     ))
 }

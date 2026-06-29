@@ -8,6 +8,6 @@
 //! | `/` | [`div`] | Division |
 
 pub mod add;
-pub mod sub;
-pub mod mult;
 pub mod div;
+pub mod mult;
+pub mod sub;

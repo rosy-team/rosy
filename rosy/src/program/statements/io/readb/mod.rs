@@ -143,13 +143,18 @@ impl Transpile for ReadbStatement {
 
         // Transpile unit expression
         let unit_output = self.unit.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling unit expression in READB".to_string())
+            add_context_to_all(
+                e,
+                "...while transpiling unit expression in READB".to_string(),
+            )
         })?;
         requested_variables.extend(unit_output.requested_variables.iter().cloned());
 
         let serialization = format!(
             "{{\n\tlet __rosy_unit = ({}).round() as u64;\n\tlet _readb_data = rosy_lib::core::file_io::rosy_readb_from_unit(__rosy_unit)?;\n\t{} = <{} as rosy_lib::core::file_io::RosyFromBinary>::from_binary(&_readb_data)?;\n}}",
-            unit_output.as_value(), serialized_variable_identifier, serialized_variable_type,
+            unit_output.as_value(),
+            serialized_variable_identifier,
+            serialized_variable_type,
         );
 
         if errors.is_empty() {

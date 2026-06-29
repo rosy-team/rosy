@@ -5,9 +5,9 @@
 //! `epsilon` and `max_order` can be changed at runtime via `set_epsilon()` /
 //! `set_truncation_order()`.
 
-use std::sync::RwLock;
-use anyhow::{Result, Context, bail};
+use anyhow::{Context, Result, bail};
 use rustc_hash::FxHashMap;
+use std::sync::RwLock;
 
 use super::{DEFAULT_EPSILON, MAX_VARS, Monomial, monomial::enumerate_monomials};
 
@@ -27,10 +27,15 @@ impl TaylorConfig {
         if num_vars > MAX_VARS {
             bail!(
                 "Number of variables ({}) exceeds maximum ({})",
-                num_vars, MAX_VARS
+                num_vars,
+                MAX_VARS
             );
         }
-        Ok(Self { max_order, num_vars, epsilon })
+        Ok(Self {
+            max_order,
+            num_vars,
+            epsilon,
+        })
     }
 }
 
@@ -104,10 +109,15 @@ static WEIGHT_VECTOR: RwLock<Option<Vec<u32>>> = RwLock::new(None);
 pub fn set_weight_vector(weights: Vec<u32>) -> Result<()> {
     for (i, &w) in weights.iter().enumerate() {
         if w < 1 {
-            anyhow::bail!("DANOTW: weight for variable {} is {} — weights must be positive integers ≥ 1", i + 1, w);
+            anyhow::bail!(
+                "DANOTW: weight for variable {} is {} — weights must be positive integers ≥ 1",
+                i + 1,
+                w
+            );
         }
     }
-    let mut guard = WEIGHT_VECTOR.write()
+    let mut guard = WEIGHT_VECTOR
+        .write()
         .map_err(|e| anyhow::anyhow!("Failed to acquire weight vector lock: {}", e))?;
     *guard = Some(weights);
     Ok(())
@@ -115,7 +125,8 @@ pub fn set_weight_vector(weights: Vec<u32>) -> Result<()> {
 
 /// Take and clear the weight vector (consumed by init_taylor).
 fn take_weight_vector() -> Result<Option<Vec<u32>>> {
-    let mut guard = WEIGHT_VECTOR.write()
+    let mut guard = WEIGHT_VECTOR
+        .write()
         .map_err(|e| anyhow::anyhow!("Failed to acquire weight vector lock: {}", e))?;
     Ok(guard.take())
 }
@@ -127,7 +138,8 @@ pub static FILTER_DA: RwLock<Option<Vec<super::da::DA<f64>>>> = RwLock::new(None
 
 /// Set the DAFILT template (DAFSET). Pass `None` to disable filtering.
 pub fn set_filter_da(template: Option<Vec<super::da::DA<f64>>>) -> Result<()> {
-    let mut guard = FILTER_DA.write()
+    let mut guard = FILTER_DA
+        .write()
         .map_err(|e| anyhow::anyhow!("Failed to acquire filter lock: {}", e))?;
     *guard = template;
     Ok(())
@@ -135,7 +147,8 @@ pub fn set_filter_da(template: Option<Vec<super::da::DA<f64>>>) -> Result<()> {
 
 /// Get a snapshot of the current filter template (cloned).
 pub fn get_filter_da() -> Result<Option<Vec<super::da::DA<f64>>>> {
-    let guard = FILTER_DA.read()
+    let guard = FILTER_DA
+        .read()
         .map_err(|e| anyhow::anyhow!("Failed to acquire filter lock: {}", e))?;
     Ok(guard.clone())
 }
@@ -151,7 +164,8 @@ pub fn get_filter_da() -> Result<Option<Vec<super::da::DA<f64>>>> {
 /// * `max_order` - Maximum order of Taylor expansions
 /// * `num_vars` - Number of variables (≤ MAX_VARS)
 pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
-    let mut guard = TAYLOR_RUNTIME.write()
+    let mut guard = TAYLOR_RUNTIME
+        .write()
         .map_err(|e| anyhow::anyhow!("Failed to acquire runtime lock: {}", e))?;
 
     if guard.is_some() {
@@ -283,7 +297,12 @@ pub fn dump_addressing_arrays() -> Result<()> {
             .iter()
             .map(|e| format!("{}", e))
             .collect();
-        eprintln!("    {:>6}  {:>6}  {}", i + 1, mono.total_order, exps.join(" "));
+        eprintln!(
+            "    {:>6}  {:>6}  {}",
+            i + 1,
+            mono.total_order,
+            exps.join(" ")
+        );
     }
     Ok(())
 }
@@ -294,7 +313,8 @@ pub fn dump_addressing_arrays() -> Result<()> {
 /// In single-threaded Rosy programs, this has no contention.
 #[inline]
 pub fn get_runtime() -> Result<RuntimeRef> {
-    let guard = TAYLOR_RUNTIME.read()
+    let guard = TAYLOR_RUNTIME
+        .read()
         .map_err(|e| anyhow::anyhow!("Failed to acquire runtime lock: {}", e))?;
     if guard.is_none() {
         bail!("Taylor system not initialized. Call init_taylor() first.");
@@ -313,9 +333,11 @@ pub fn get_config() -> Result<TaylorConfig> {
 /// # Returns
 /// The previous epsilon value
 pub fn set_epsilon(epsilon: f64) -> Result<f64> {
-    let mut guard = TAYLOR_RUNTIME.write()
+    let mut guard = TAYLOR_RUNTIME
+        .write()
         .map_err(|e| anyhow::anyhow!("Failed to acquire runtime lock: {}", e))?;
-    let rt = guard.as_mut()
+    let rt = guard
+        .as_mut()
         .ok_or_else(|| anyhow::anyhow!("Taylor system not initialized"))?;
     let old = rt.config.epsilon;
     rt.config.epsilon = epsilon;
@@ -329,14 +351,17 @@ pub fn set_epsilon(epsilon: f64) -> Result<f64> {
 /// # Returns
 /// The previous truncation order
 pub fn set_truncation_order(order: u32) -> Result<u32> {
-    let mut guard = TAYLOR_RUNTIME.write()
+    let mut guard = TAYLOR_RUNTIME
+        .write()
         .map_err(|e| anyhow::anyhow!("Failed to acquire runtime lock: {}", e))?;
-    let rt = guard.as_mut()
+    let rt = guard
+        .as_mut()
         .ok_or_else(|| anyhow::anyhow!("Taylor system not initialized"))?;
     if order > rt.init_order {
         bail!(
             "Cannot set truncation order ({}) above init order ({})",
-            order, rt.init_order
+            order,
+            rt.init_order
         );
     }
     let old = rt.config.max_order;
@@ -346,9 +371,7 @@ pub fn set_truncation_order(order: u32) -> Result<u32> {
 
 /// Check if Taylor system is initialized.
 pub fn is_initialized() -> bool {
-    TAYLOR_RUNTIME.read()
-        .map(|g| g.is_some())
-        .unwrap_or(false)
+    TAYLOR_RUNTIME.read().map(|g| g.is_some()).unwrap_or(false)
 }
 
 /// Clean up the Taylor system (for re-initialization).
@@ -427,10 +450,18 @@ mod tests {
                 let product = rt.monomial_list[i].multiply(&rt.monomial_list[j]);
                 let k = table[i * n + j];
                 if product.within_order(3) {
-                    assert_ne!(k, MULT_INVALID, "Product of monomials {} and {} should be valid", i, j);
+                    assert_ne!(
+                        k, MULT_INVALID,
+                        "Product of monomials {} and {} should be valid",
+                        i, j
+                    );
                     assert_eq!(rt.monomial_list[k as usize], product);
                 } else {
-                    assert_eq!(k, MULT_INVALID, "Product of monomials {} and {} should be INVALID", i, j);
+                    assert_eq!(
+                        k, MULT_INVALID,
+                        "Product of monomials {} and {} should be INVALID",
+                        i, j
+                    );
                 }
             }
         }

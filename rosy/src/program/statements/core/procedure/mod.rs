@@ -344,8 +344,7 @@ impl Transpile for ProcedureStatement {
                 // procedure call chain as a typed reference so PLOOP works
                 // inside nested procedures, not just at top-level.
                 if var_name == "rosy_mpi_context" {
-                    serialized_args
-                        .push("rosy_mpi_context: &mut RosyMPIContext".to_string());
+                    serialized_args.push("rosy_mpi_context: &mut RosyMPIContext".to_string());
                     continue;
                 }
 

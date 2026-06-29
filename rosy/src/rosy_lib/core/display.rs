@@ -1,4 +1,4 @@
-use crate::rosy_lib::taylor::{MAX_VARS, cosy_display_rank, get_config};
+use crate::rosy_lib::taylor::{MAX_VARS, cosy_display_rank, get_config, get_runtime};
 use crate::rosy_lib::{CD, CM, DA, LO, RE, ST, VE};
 
 const ALL_COMPONENTS_ZERO: &str = "     ALL COMPONENTS ZERO\n     -------------------";
@@ -23,6 +23,45 @@ fn sci(x: f64) -> (f64, i32) {
         }
     }
 }
+fn display_ve_element(x: f64) -> String {
+    let sign = if x.is_sign_negative() { '-' } else { ' ' };
+    let abs_x = x.abs();
+
+    if (abs_x != 0.0 && abs_x < 0.1) || abs_x >= 1e7 {
+        // Scientific: ±0.xxxxxxxE±eee  (1+2+7+5 = 15 chars)
+        let (mantissa, exp) = if abs_x < 1.0 {
+            sci(abs_x)
+        } else {
+            let e = abs_x.log10().floor() as i32 + 1;
+            let m = abs_x / 10f64.powi(e);
+            (m, e)
+        };
+        let digits: String = format!("{:.7}", mantissa).chars().skip(2).take(7).collect();
+        format!("{}0.{}E{:+04}", sign, digits, exp)
+    } else {
+        // Fixed: sign + right-justified-10 + 4 blanks = 15 chars (G15.7 = F11.7 + 4 blanks)
+        let dec_places: usize = if abs_x < 1.0 {
+            7
+        } else if abs_x < 10.0 {
+            6
+        } else if abs_x < 100.0 {
+            5
+        } else if abs_x < 1_000.0 {
+            4
+        } else if abs_x < 10_000.0 {
+            3
+        } else if abs_x < 100_000.0 {
+            2
+        } else if abs_x < 1_000_000.0 {
+            1
+        } else {
+            0
+        };
+        let value_str = format!("{:.prec$}", abs_x, prec = dec_places);
+        format!("{}{:>10}    ", sign, value_str)
+    }
+}
+
 fn display_re(num: RE, precision: usize, exponent_precision: usize, spaces: usize) -> String {
     if num.abs() < 1f64 && num != 0f64 {
         let (mantissa, exponent) = sci(num.abs());
@@ -81,8 +120,9 @@ fn display_re(num: RE, precision: usize, exponent_precision: usize, spaces: usiz
         )
     }
 }
-fn build_exp_str(exps: &[u8]) -> String {
-    exps.iter()
+fn build_exp_str(exps: &[u8], num_vars: usize) -> String {
+    exps[..num_vars.min(exps.len())]
+        .iter()
         .enumerate()
         .fold(String::new(), |mut acc, (i, exp)| {
             if i % 2 == 0 {
@@ -98,7 +138,7 @@ pub trait RosyDisplay {
 }
 impl RosyDisplay for &RE {
     fn rosy_display(self) -> String {
-        display_re(*self, 16, 3, 4)
+        display_re(*self, 16, 4, 4)
     }
 }
 
@@ -127,11 +167,10 @@ impl RosyDisplay for &CM {
 
 impl RosyDisplay for &VE {
     fn rosy_display(self) -> String {
-        let elements: Vec<String> = self
-            .iter()
-            .map(|x| format!(" {}", display_re(*x, 9, 4, 5)))
-            .collect();
-        format!("{}", elements.join("     "))
+        self.iter()
+            .map(|x| display_ve_element(*x))
+            .collect::<Vec<String>>()
+            .join("")
     }
 }
 
@@ -163,10 +202,11 @@ impl RosyDisplay for &DA {
         for (idx, (monomial, coeff)) in sorted.iter().enumerate() {
             let order = monomial.total_order;
             let exp_str = {
-                // For 6 exponents, should match: '1 0  1 0  0 0'
                 let exps = &monomial.exponents;
-
-                build_exp_str(exps)
+                let nv = get_runtime()
+                    .map(|rt| rt.config.num_vars)
+                    .unwrap_or(exps.len());
+                build_exp_str(exps, nv)
             };
             output.push_str(&format!(
                 "{}  {} {}  {}\n",
@@ -228,10 +268,11 @@ impl RosyDisplay for &CD {
             let imag_coeff = imag_part.get_coeff(monomial);
             let order = monomial.total_order;
             let exp_str = {
-                // For 6 exponents, should match: '1 0  1 0  0 0'
                 let exps = &monomial.exponents;
-
-                build_exp_str(exps)
+                let nv = get_runtime()
+                    .map(|rt| rt.config.num_vars)
+                    .unwrap_or(exps.len());
+                build_exp_str(exps, nv)
             };
             output.push_str(&format!(
                 "     {} {} {} {:>3}  {}\n",
@@ -270,8 +311,8 @@ mod tests {
         let values = vec![0.546920369e-2, 0.937875496e-10];
         let displayed = values.rosy_display();
 
-        assert!(displayed.contains("0.546920369E-002"));
-        assert!(displayed.contains("0.937875496E-010"));
+        assert!(displayed.contains(" 0.5469204E-002"), "got: {displayed:?}");
+        assert!(displayed.contains(" 0.9378755E-010"), "got: {displayed:?}");
     }
 
     #[test]

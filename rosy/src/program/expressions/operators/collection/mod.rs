@@ -7,5 +7,5 @@
 //! | `%` | [`mod@derive`] | DA partial derivative |
 
 pub mod concat;
-pub mod extract;
 pub mod derive;
+pub mod extract;

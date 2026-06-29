@@ -4,20 +4,33 @@
 //! supported type combinations. The compatibility rules are defined in the
 //! `LT_REGISTRY` constant below.
 
-use anyhow::Result;
 use crate::rosy_lib::RosyType;
-use crate::rosy_lib::{RE, ST, LO};
 use crate::rosy_lib::operators::{TypeRule, build_type_registry};
+use crate::rosy_lib::{LO, RE, ST};
+use anyhow::Result;
+use std::collections::HashMap;
+use std::sync::OnceLock;
 
 /// Type compatibility registry for less-than operator.
 pub const LT_REGISTRY: &[TypeRule] = &[
     TypeRule::with_comment("RE", "RE", "LO", "1.0", "2.0", "Numeric less-than"),
-    TypeRule::with_comment("ST", "ST", "LO", "'apple'", "'banana'", "Lexicographic ordering"),
+    TypeRule::with_comment(
+        "ST",
+        "ST",
+        "LO",
+        "'apple'",
+        "'banana'",
+        "Lexicographic ordering",
+    ),
 ];
 
+static LT_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
+
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    let registry = build_type_registry(LT_REGISTRY);
-    registry.get(&(*lhs, *rhs)).copied()
+    LT_MAP
+        .get_or_init(|| build_type_registry(LT_REGISTRY))
+        .get(&(*lhs, *rhs))
+        .copied()
 }
 
 pub trait RosyLt<Rhs = Self> {

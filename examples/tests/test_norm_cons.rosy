@@ -1,8 +1,8 @@
 { Test NORM and CONS functions }
 BEGIN;
-    { NORM of VE - elementwise abs }
+    { NORM of VE - L1 norm (sum of absolute values) }
     VARIABLE (VE) v;
-    VARIABLE (VE) vnorm;
+    VARIABLE (RE) vnorm;
     v := 1.5&-2.5&3.5;
     vnorm := NORM(v);
     WRITE 6 ST(vnorm);

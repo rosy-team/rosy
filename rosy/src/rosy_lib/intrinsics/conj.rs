@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{CD, CM, RE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, CM, CD};
 
 /// Type registry for CONJ intrinsic function (complex conjugate).
 ///
@@ -67,4 +67,3 @@ impl RosyCONJ for CD {
         Ok(result)
     }
 }
-

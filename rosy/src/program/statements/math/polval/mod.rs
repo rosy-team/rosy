@@ -37,8 +37,8 @@ use crate::{
     rosy_lib::RosyBaseType,
     transpile::{
         InferenceEdgeResult, TranspilationInputContext, TranspilationOutput, Transpile,
-        TranspileableExpr, TranspileableStatement, TypeHydrationResult,
-        TypeslotDeclarationResult, add_context_to_all,
+        TranspileableExpr, TranspileableStatement, TypeHydrationResult, TypeslotDeclarationResult,
+        add_context_to_all,
     },
 };
 

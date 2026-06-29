@@ -9,7 +9,6 @@
 ///
 /// Randomness is drawn from the global seeded RNG (see [`crate::core::rng`]),
 /// ensuring reproducible results when the seed is fixed (default: 0).
-
 use super::super::core::rng;
 
 /// Evaluate the merit function (sum of squares of objectives)
@@ -49,13 +48,10 @@ where
     let mut best_cost = current_cost;
 
     // Determine initial step sizes based on variable values
-    let mut step_sizes: Vec<f64> = current.iter().map(|v| {
-        if v.abs() > 1e-10 {
-            v.abs() * 0.5
-        } else {
-            1.0
-        }
-    }).collect();
+    let mut step_sizes: Vec<f64> = current
+        .iter()
+        .map(|v| if v.abs() > 1e-10 { v.abs() * 0.5 } else { 1.0 })
+        .collect();
 
     // SA parameters
     // Initial temperature: set relative to the initial cost

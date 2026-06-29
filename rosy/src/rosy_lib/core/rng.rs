@@ -8,8 +8,8 @@
 //! A negative value switches to system-entropy seeding; a positive value is
 //! truncated to `u64` and used as a deterministic seed.
 
-use std::sync::RwLock;
 use rand::{Rng, SeedableRng, rngs::StdRng};
+use std::sync::RwLock;
 
 /// The global RNG, seeded to 0 by default for reproducibility.
 static GLOBAL_RNG: RwLock<Option<StdRng>> = RwLock::new(None);

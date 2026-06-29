@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{DA, RE, VE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, VE, DA};
 
 /// Type registry for ATAN intrinsic function.
 ///
@@ -91,7 +91,8 @@ fn da_atan(da: &DA) -> anyhow::Result<DA> {
         let denom = 1.0 + f0 * f0;
         for n in 1..nocut {
             let n_f = n as f64;
-            derivs[n + 1] = -(2.0 * n_f * f0 * derivs[n] + n_f * (n_f - 1.0) * derivs[n - 1]) / denom;
+            derivs[n + 1] =
+                -(2.0 * n_f * f0 * derivs[n] + n_f * (n_f - 1.0) * derivs[n - 1]) / denom;
         }
     }
 
@@ -99,10 +100,11 @@ fn da_atan(da: &DA) -> anyhow::Result<DA> {
     let mut xf = Vec::with_capacity(nocut + 1);
     let mut factorial = 1.0;
     for n in 0..=nocut {
-        if n > 0 { factorial *= n as f64; }
+        if n > 0 {
+            factorial *= n as f64;
+        }
         xf.push(derivs[n] / factorial);
     }
 
     DA::horner_eval_with_rt(&da_prime, &xf, &rt)
 }
-

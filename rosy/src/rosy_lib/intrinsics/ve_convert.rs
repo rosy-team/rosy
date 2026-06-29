@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
 use crate::rosy_lib::{CM, RE, VE};
+use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
 
 /// Type registry for VE() conversion function.
 ///

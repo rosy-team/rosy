@@ -66,6 +66,8 @@ pub fn rosy_mblock(
 
 fn eye(n: usize) -> Vec<Vec<f64>> {
     let mut m = vec![vec![0.0; n]; n];
-    for i in 0..n { m[i][i] = 1.0; }
+    for i in 0..n {
+        m[i][i] = 1.0;
+    }
     m
 }

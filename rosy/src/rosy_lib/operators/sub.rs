@@ -5,22 +5,24 @@
 //! `SUB_REGISTRY` constant below.
 //!
 //! # Type Compatibility
-//! 
+//!
 //! See `assets/operators/sub/sub_table.md` for the full compatibility table.
 //!
 //! # Examples
-//! 
-//! See `assets/operators/sub/sub.rosy` for Rosy examples and 
+//!
+//! See `assets/operators/sub/sub.rosy` for Rosy examples and
 //! `assets/operators/sub/sub.fox` for equivalent COSY INFINITY code.
 
+use crate::rosy_lib::RosyType;
+use crate::rosy_lib::operators::{TypeRule, build_type_registry};
+use crate::rosy_lib::{CD, CM, DA, RE, VE};
 use anyhow::Result;
 use num_complex::Complex64;
-use crate::rosy_lib::RosyType;
-use crate::rosy_lib::{RE, CM, VE, DA, CD};
-use crate::rosy_lib::operators::{TypeRule, build_type_registry};
+use std::collections::HashMap;
+use std::sync::OnceLock;
 
 /// Type compatibility registry for subtraction operator.
-/// 
+///
 /// This is the single source of truth for what type combinations are allowed.
 /// The build script (`build.rs`) parses this to generate:
 /// - Documentation table (`sub_table.md`)
@@ -30,7 +32,14 @@ use crate::rosy_lib::operators::{TypeRule, build_type_registry};
 pub const SUB_REGISTRY: &[TypeRule] = &[
     TypeRule::new("RE", "RE", "RE", "2", "1"),
     TypeRule::new("RE", "CM", "CM", "3", "CM(1&2)"),
-    TypeRule::with_comment("RE", "VE", "VE", "5", "1&2", "Subtract componentwise from Real"),
+    TypeRule::with_comment(
+        "RE",
+        "VE",
+        "VE",
+        "5",
+        "1&2",
+        "Subtract componentwise from Real",
+    ),
     TypeRule::new("RE", "DA", "DA", "4", "DA(1)"),
     TypeRule::new("RE", "CD", "CD", "5", "DA(1)+CM(1&2)*DA(2)"),
     TypeRule::new("CM", "RE", "CM", "CM(3&4)", "2"),
@@ -46,12 +55,22 @@ pub const SUB_REGISTRY: &[TypeRule] = &[
     TypeRule::new("CD", "RE", "CD", "DA(1)+CM(1&2)*DA(2)", "4"),
     TypeRule::new("CD", "CM", "CD", "DA(1)+CM(1&2)*DA(2)", "CM(3&4)"),
     TypeRule::new("CD", "DA", "CD", "DA(1)+CM(1&2)*DA(2)", "DA(3)"),
-    TypeRule::new("CD", "CD", "CD", "DA(1)+CM(1&2)*DA(2)", "DA(3)+CM(5&6)*DA(4)"),
+    TypeRule::new(
+        "CD",
+        "CD",
+        "CD",
+        "DA(1)+CM(1&2)*DA(2)",
+        "DA(3)+CM(5&6)*DA(4)",
+    ),
 ];
 
+static SUB_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
+
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    let registry = build_type_registry(SUB_REGISTRY);
-    registry.get(&(*lhs, *rhs)).copied()
+    SUB_MAP
+        .get_or_init(|| build_type_registry(SUB_REGISTRY))
+        .get(&(*lhs, *rhs))
+        .copied()
 }
 
 pub trait RosySub<Rhs = Self> {
@@ -152,10 +171,13 @@ impl RosySub<&RE> for &VE {
 impl RosySub<&VE> for &VE {
     type Output = VE;
     fn rosy_sub(self, other: &VE) -> Result<Self::Output> {
-        Ok(self.iter()
-            .zip(other.iter())
-            .map(|(x, y)| x - y)
-            .collect())
+        anyhow::ensure!(
+            self.len() == other.len(),
+            "Vector length mismatch in subtraction: {} vs {}",
+            self.len(),
+            other.len()
+        );
+        Ok(self.iter().zip(other.iter()).map(|(x, y)| x - y).collect())
     }
 }
 
@@ -233,4 +255,3 @@ impl RosySub<&CD> for &CD {
         self - other
     }
 }
-

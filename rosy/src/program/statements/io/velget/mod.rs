@@ -168,8 +168,12 @@ impl Transpile for VelgetStatement {
 
         let serialization = format!(
             "{{\n    \
-                let __rosy_velget_idx = {component} as usize - 1usize;\n    \
-                {deref}{dest} = {vec}[__rosy_velget_idx];\n\
+                let __rosy_velget_vec = {vec};\n    \
+                let __rosy_velget_component = ({component}) as isize;\n    \
+                if __rosy_velget_component < 1 || __rosy_velget_component as usize > __rosy_velget_vec.len() {{\n        \
+                    bail!(\"VELGET: component index {{}} is out of bounds for vector of length {{}}\", __rosy_velget_component, __rosy_velget_vec.len());\n    \
+                }}\n    \
+                {deref}{dest} = __rosy_velget_vec[(__rosy_velget_component - 1) as usize];\n\
             }}",
             component = component_output.as_value(),
             deref = dereference,

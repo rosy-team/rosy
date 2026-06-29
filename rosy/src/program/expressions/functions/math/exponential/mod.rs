@@ -10,6 +10,6 @@
 
 pub mod exp;
 pub mod log;
+pub mod pow;
 pub mod sqr;
 pub mod sqrt;
-pub mod pow;

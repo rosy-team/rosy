@@ -6,6 +6,6 @@
 //! | `ISRT(v)` | Sort a vector in ascending order |
 //! | `ISRT3(v, u)` | Sort vector *v* and apply the same permutation to *u* |
 
-pub mod type_fn;
 pub mod isrt;
 pub mod isrt3;
+pub mod type_fn;

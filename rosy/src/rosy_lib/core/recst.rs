@@ -44,10 +44,12 @@ pub fn rosy_recst(value: f64, format: &str) -> String {
 
 fn parse_width_decimals(spec: &str) -> (usize, usize) {
     let parts: Vec<&str> = spec.split('.').collect();
-    let width = parts.first()
+    let width = parts
+        .first()
         .and_then(|s| s.trim().parse::<usize>().ok())
         .unwrap_or(0);
-    let decimals = parts.get(1)
+    let decimals = parts
+        .get(1)
         .and_then(|s| s.trim().parse::<usize>().ok())
         .unwrap_or(6);
     (width, decimals)
@@ -56,7 +58,12 @@ fn parse_width_decimals(spec: &str) -> (usize, usize) {
 fn parse_f_format(spec: &str, value: f64) -> String {
     let (width, decimals) = parse_width_decimals(spec);
     if width > 0 {
-        format!("{:>width$.decimals$}", value, width = width, decimals = decimals)
+        format!(
+            "{:>width$.decimals$}",
+            value,
+            width = width,
+            decimals = decimals
+        )
     } else {
         format!("{:.decimals$}", value, decimals = decimals)
     }
@@ -65,7 +72,12 @@ fn parse_f_format(spec: &str, value: f64) -> String {
 fn parse_e_format(spec: &str, value: f64) -> String {
     let (width, decimals) = parse_width_decimals(spec);
     if width > 0 {
-        format!("{:>width$.decimals$E}", value, width = width, decimals = decimals)
+        format!(
+            "{:>width$.decimals$E}",
+            value,
+            width = width,
+            decimals = decimals
+        )
     } else {
         format!("{:.decimals$E}", value, decimals = decimals)
     }

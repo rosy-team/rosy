@@ -3,11 +3,11 @@
 //! Provides a file handle registry that maps COSY-style unit numbers
 //! to Rust file handles. Supports both ASCII and binary I/O modes.
 
+use anyhow::{Context, Result, bail};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::sync::Mutex;
-use anyhow::{Result, Context, bail};
 
 use crate::rosy_lib::core::display::RosyDisplay;
 
@@ -72,17 +72,26 @@ fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> R
                 .write(true)
                 .create(true)
                 .open(filename)
-                .with_context(|| format!("Failed to open file '{}' (unit {})", filename, unit_num))?;
+                .with_context(|| {
+                    format!("Failed to open file '{}' (unit {})", filename, unit_num)
+                })?;
 
-            let read_handle = file.try_clone()
-                .with_context(|| format!("Failed to clone file handle for '{}' (unit {})", filename, unit_num))?;
+            let read_handle = file.try_clone().with_context(|| {
+                format!(
+                    "Failed to clone file handle for '{}' (unit {})",
+                    filename, unit_num
+                )
+            })?;
 
-            registry.insert(unit_num, FileHandle {
-                reader: Some(BufReader::new(read_handle)),
-                writer: Some(BufWriter::new(file)),
-                path: filename.to_string(),
-                is_binary,
-            });
+            registry.insert(
+                unit_num,
+                FileHandle {
+                    reader: Some(BufReader::new(read_handle)),
+                    writer: Some(BufWriter::new(file)),
+                    path: filename.to_string(),
+                    is_binary,
+                },
+            );
         }
         "replace" => {
             // Always create or truncate, then open for writing.
@@ -91,42 +100,68 @@ fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> R
                 .create(true)
                 .truncate(true)
                 .open(filename)
-                .with_context(|| format!("Failed to open file '{}' for writing (unit {})", filename, unit_num))?;
+                .with_context(|| {
+                    format!(
+                        "Failed to open file '{}' for writing (unit {})",
+                        filename, unit_num
+                    )
+                })?;
 
-            registry.insert(unit_num, FileHandle {
-                reader: None,
-                writer: Some(BufWriter::new(file)),
-                path: filename.to_string(),
-                is_binary,
-            });
+            registry.insert(
+                unit_num,
+                FileHandle {
+                    reader: None,
+                    writer: Some(BufWriter::new(file)),
+                    path: filename.to_string(),
+                    is_binary,
+                },
+            );
         }
         "old" => {
             // Open existing for reading
-            let file = File::open(filename)
-                .with_context(|| format!("Failed to open existing file '{}' for reading (unit {})", filename, unit_num))?;
+            let file = File::open(filename).with_context(|| {
+                format!(
+                    "Failed to open existing file '{}' for reading (unit {})",
+                    filename, unit_num
+                )
+            })?;
 
-            registry.insert(unit_num, FileHandle {
-                reader: Some(BufReader::new(file)),
-                writer: None,
-                path: filename.to_string(),
-                is_binary,
-            });
+            registry.insert(
+                unit_num,
+                FileHandle {
+                    reader: Some(BufReader::new(file)),
+                    writer: None,
+                    path: filename.to_string(),
+                    is_binary,
+                },
+            );
         }
         "new" => {
             let file = OpenOptions::new()
                 .write(true)
                 .create_new(true)
                 .open(filename)
-                .with_context(|| format!("Failed to create new file '{}' (unit {}). File may already exist.", filename, unit_num))?;
+                .with_context(|| {
+                    format!(
+                        "Failed to create new file '{}' (unit {}). File may already exist.",
+                        filename, unit_num
+                    )
+                })?;
 
-            registry.insert(unit_num, FileHandle {
-                reader: None,
-                writer: Some(BufWriter::new(file)),
-                path: filename.to_string(),
-                is_binary,
-            });
+            registry.insert(
+                unit_num,
+                FileHandle {
+                    reader: None,
+                    writer: Some(BufWriter::new(file)),
+                    path: filename.to_string(),
+                    is_binary,
+                },
+            );
         }
-        _ => bail!("Unknown file status '{}' for OPENF/OPENFB. Expected 'unknown', 'old', 'new', or 'replace'.", status),
+        _ => bail!(
+            "Unknown file status '{}' for OPENF/OPENFB. Expected 'unknown', 'old', 'new', or 'replace'.",
+            status
+        ),
     }
 
     Ok(())
@@ -142,12 +177,16 @@ pub fn rosy_rewf(unit: f64) -> Result<()> {
 
     if let Some(handle) = registry.get_mut(&unit_num) {
         if let Some(ref mut reader) = handle.reader {
-            reader.seek(SeekFrom::Start(0))
+            reader
+                .seek(SeekFrom::Start(0))
                 .with_context(|| format!("Failed to rewind file on unit {}", unit_num))?;
         } else if let Some(ref mut writer) = handle.writer {
-            writer.flush()
+            writer
+                .flush()
                 .with_context(|| format!("Failed to flush before rewind on unit {}", unit_num))?;
-            writer.get_mut().seek(SeekFrom::Start(0))
+            writer
+                .get_mut()
+                .seek(SeekFrom::Start(0))
                 .with_context(|| format!("Failed to rewind writer on unit {}", unit_num))?;
         }
         Ok(())
@@ -173,7 +212,8 @@ pub fn rosy_backf(unit: f64) -> Result<()> {
         if let Some(ref mut reader) = handle.reader {
             // stream_position() goes through BufReader and reflects the
             // logical read position (i.e. after any prior read_line calls).
-            let current_pos = reader.stream_position()
+            let current_pos = reader
+                .stream_position()
                 .with_context(|| format!("Failed to get stream position on unit {}", unit_num))?;
 
             if current_pos == 0 {
@@ -181,13 +221,18 @@ pub fn rosy_backf(unit: f64) -> Result<()> {
             }
 
             // Seek to the beginning through BufReader so its buffer is flushed.
-            reader.seek(SeekFrom::Start(0))
-                .with_context(|| format!("Failed to seek to start for backf scan on unit {}", unit_num))?;
+            reader.seek(SeekFrom::Start(0)).with_context(|| {
+                format!(
+                    "Failed to seek to start for backf scan on unit {}",
+                    unit_num
+                )
+            })?;
 
             // Read all bytes up to current_pos through BufReader.
             let mut buf = vec![0u8; current_pos as usize];
-            reader.read_exact(&mut buf)
-                .with_context(|| format!("Failed to read bytes for backf scan on unit {}", unit_num))?;
+            reader.read_exact(&mut buf).with_context(|| {
+                format!("Failed to read bytes for backf scan on unit {}", unit_num)
+            })?;
 
             // The buffer ends exactly at current_pos, which is just after the
             // newline that terminated the last record we read.  We must skip
@@ -195,10 +240,7 @@ pub fn rosy_backf(unit: f64) -> Result<()> {
             // land at the start of the record we just read rather than the one
             // before it.  Trim one trailing newline (and optional \r) before
             // searching.
-            let search_end = buf
-                .iter()
-                .rposition(|&b| b == b'\n')
-                .unwrap_or(buf.len());
+            let search_end = buf.iter().rposition(|&b| b == b'\n').unwrap_or(buf.len());
             let newline_pos = buf[..search_end]
                 .iter()
                 .rposition(|&b| b == b'\n')
@@ -206,8 +248,9 @@ pub fn rosy_backf(unit: f64) -> Result<()> {
                 .unwrap_or(0);
 
             // Seek to that position through BufReader.
-            reader.seek(SeekFrom::Start(newline_pos))
-                .with_context(|| format!("Failed to seek to previous record on unit {}", unit_num))?;
+            reader.seek(SeekFrom::Start(newline_pos)).with_context(|| {
+                format!("Failed to seek to previous record on unit {}", unit_num)
+            })?;
 
             Ok(())
         } else {
@@ -230,8 +273,9 @@ pub fn rosy_closef(unit: f64) -> Result<()> {
     if let Some(mut handle) = registry.remove(&unit_num) {
         // Flush the writer if present
         if let Some(ref mut writer) = handle.writer {
-            writer.flush()
-                .with_context(|| format!("Failed to flush file on unit {} before closing", unit_num))?;
+            writer.flush().with_context(|| {
+                format!("Failed to flush file on unit {} before closing", unit_num)
+            })?;
         }
         Ok(())
     } else {
@@ -243,19 +287,27 @@ pub fn rosy_closef(unit: f64) -> Result<()> {
 /// Write a string to a file unit (ASCII WRITE to file).
 pub fn rosy_write_to_unit(unit: u64, content: &str) -> Result<()> {
     ensure_registry();
-    
+
     let mut reg = FILE_REGISTRY.lock().unwrap();
     let registry = reg.as_mut().unwrap();
 
-    let handle = registry.get_mut(&unit)
-        .with_context(|| format!("No file open on unit {}. Use OPENF to open a file first.", unit))?;
-    
-    let writer = handle.writer.as_mut()
-        .with_context(|| format!("File on unit {} is not open for writing (opened as 'old'?)", unit))?;
-    
+    let handle = registry.get_mut(&unit).with_context(|| {
+        format!(
+            "No file open on unit {}. Use OPENF to open a file first.",
+            unit
+        )
+    })?;
+
+    let writer = handle.writer.as_mut().with_context(|| {
+        format!(
+            "File on unit {} is not open for writing (opened as 'old'?)",
+            unit
+        )
+    })?;
+
     writeln!(writer, "{}", content)
         .with_context(|| format!("Failed to write to file on unit {}", unit))?;
-    
+
     Ok(())
 }
 
@@ -269,21 +321,33 @@ pub fn rosy_read_from_unit(unit: u64) -> Result<String> {
     let mut reg = FILE_REGISTRY.lock().unwrap();
     let registry = reg.as_mut().unwrap();
 
-    let handle = registry.get_mut(&unit)
-        .with_context(|| format!("No file open on unit {}. Use OPENF to open a file first.", unit))?;
+    let handle = registry.get_mut(&unit).with_context(|| {
+        format!(
+            "No file open on unit {}. Use OPENF to open a file first.",
+            unit
+        )
+    })?;
 
-    let reader = handle.reader.as_mut()
-        .with_context(|| format!("File on unit {} is not open for reading (opened as 'unknown'?)", unit))?;
+    let reader = handle.reader.as_mut().with_context(|| {
+        format!(
+            "File on unit {} is not open for reading (opened as 'unknown'?)",
+            unit
+        )
+    })?;
 
     let mut line = String::new();
-    let bytes_read = reader.read_line(&mut line)
+    let bytes_read = reader
+        .read_line(&mut line)
         .with_context(|| format!("Failed to read from file on unit {}", unit))?;
 
     if bytes_read == 0 {
         bail!("End of file reached on unit {}", unit);
     }
 
-    Ok(line.trim_end_matches('\n').trim_end_matches('\r').to_string())
+    Ok(line
+        .trim_end_matches('\n')
+        .trim_end_matches('\r')
+        .to_string())
 }
 
 /// READS variant: returns empty string on EOF instead of bailing.
@@ -300,45 +364,65 @@ pub fn rosy_reads_string_from_unit(unit: u64) -> Result<String> {
     let mut reg = FILE_REGISTRY.lock().unwrap();
     let registry = reg.as_mut().unwrap();
 
-    let handle = registry.get_mut(&unit)
-        .with_context(|| format!("No file open on unit {}. Use OPENF to open a file first.", unit))?;
+    let handle = registry.get_mut(&unit).with_context(|| {
+        format!(
+            "No file open on unit {}. Use OPENF to open a file first.",
+            unit
+        )
+    })?;
 
-    let reader = handle.reader.as_mut()
-        .with_context(|| format!("File on unit {} is not open for reading (opened as 'unknown'?)", unit))?;
+    let reader = handle.reader.as_mut().with_context(|| {
+        format!(
+            "File on unit {} is not open for reading (opened as 'unknown'?)",
+            unit
+        )
+    })?;
 
     let mut line = String::new();
-    let bytes_read = reader.read_line(&mut line)
+    let bytes_read = reader
+        .read_line(&mut line)
         .with_context(|| format!("Failed to read from file on unit {}", unit))?;
 
     if bytes_read == 0 {
         return Ok(String::new());
     }
 
-    Ok(line.trim_end_matches('\n').trim_end_matches('\r').to_string())
+    Ok(line
+        .trim_end_matches('\n')
+        .trim_end_matches('\r')
+        .to_string())
 }
 
 /// Write binary data to a file unit (WRITEB).
 pub fn rosy_writeb_to_unit(unit: u64, data: &[u8]) -> Result<()> {
     ensure_registry();
-    
+
     let mut reg = FILE_REGISTRY.lock().unwrap();
     let registry = reg.as_mut().unwrap();
 
-    let handle = registry.get_mut(&unit)
-        .with_context(|| format!("No file open on unit {}. Use OPENFB to open a file first.", unit))?;
-    
-    let writer = handle.writer.as_mut()
+    let handle = registry.get_mut(&unit).with_context(|| {
+        format!(
+            "No file open on unit {}. Use OPENFB to open a file first.",
+            unit
+        )
+    })?;
+
+    let writer = handle
+        .writer
+        .as_mut()
         .with_context(|| format!("File on unit {} is not open for writing", unit))?;
-    
+
     // Write the length prefix (8 bytes, little-endian u64)
     let len = data.len() as u64;
-    writer.write_all(&len.to_le_bytes())
+    writer
+        .write_all(&len.to_le_bytes())
         .with_context(|| format!("Failed to write length prefix to file on unit {}", unit))?;
-    
+
     // Write the data
-    writer.write_all(data)
+    writer
+        .write_all(data)
         .with_context(|| format!("Failed to write binary data to file on unit {}", unit))?;
-    
+
     Ok(())
 }
 
@@ -346,27 +430,35 @@ pub fn rosy_writeb_to_unit(unit: u64, data: &[u8]) -> Result<()> {
 /// Returns the raw bytes.
 pub fn rosy_readb_from_unit(unit: u64) -> Result<Vec<u8>> {
     ensure_registry();
-    
+
     let mut reg = FILE_REGISTRY.lock().unwrap();
     let registry = reg.as_mut().unwrap();
 
-    let handle = registry.get_mut(&unit)
-        .with_context(|| format!("No file open on unit {}. Use OPENFB to open a file first.", unit))?;
-    
-    let reader = handle.reader.as_mut()
+    let handle = registry.get_mut(&unit).with_context(|| {
+        format!(
+            "No file open on unit {}. Use OPENFB to open a file first.",
+            unit
+        )
+    })?;
+
+    let reader = handle
+        .reader
+        .as_mut()
         .with_context(|| format!("File on unit {} is not open for reading", unit))?;
-    
+
     // Read length prefix
     let mut len_buf = [0u8; 8];
-    reader.read_exact(&mut len_buf)
+    reader
+        .read_exact(&mut len_buf)
         .with_context(|| format!("Failed to read length prefix from file on unit {}", unit))?;
     let len = u64::from_le_bytes(len_buf) as usize;
-    
+
     // Read the data
     let mut data = vec![0u8; len];
-    reader.read_exact(&mut data)
+    reader
+        .read_exact(&mut data)
         .with_context(|| format!("Failed to read binary data from file on unit {}", unit))?;
-    
+
     Ok(data)
 }
 
@@ -390,7 +482,10 @@ impl RosyToBinary for f64 {
 impl RosyFromBinary for f64 {
     fn from_binary(data: &[u8]) -> Result<Self> {
         if data.len() < 8 {
-            bail!("Not enough data to deserialize f64: expected 8 bytes, got {}", data.len());
+            bail!(
+                "Not enough data to deserialize f64: expected 8 bytes, got {}",
+                data.len()
+            );
         }
         let mut buf = [0u8; 8];
         buf.copy_from_slice(&data[..8]);
@@ -418,7 +513,7 @@ impl RosyFromBinary for String {
         if data.len() < 8 + len {
             bail!("Not enough data to deserialize String body");
         }
-        String::from_utf8(data[8..8+len].to_vec())
+        String::from_utf8(data[8..8 + len].to_vec())
             .context("Failed to deserialize String from binary")
     }
 }
@@ -449,7 +544,7 @@ impl RosyFromBinary for Vec<f64> {
                 bail!("Not enough data to deserialize Vec<f64> element");
             }
             let mut buf = [0u8; 8];
-            buf.copy_from_slice(&data[offset..offset+8]);
+            buf.copy_from_slice(&data[offset..offset + 8]);
             result.push(f64::from_le_bytes(buf));
             offset += 8;
         }
@@ -473,15 +568,43 @@ impl RosyFromBinary for bool {
     }
 }
 
-// Binary serialization for DA (stub — DA binary I/O not yet fully supported)
+// Binary serialization for CM (Complex64): 8 bytes real + 8 bytes imag (little-endian)
+impl RosyToBinary for num_complex::Complex64 {
+    fn to_binary(&self) -> Vec<u8> {
+        let mut bytes = self.re.to_le_bytes().to_vec();
+        bytes.extend(self.im.to_le_bytes());
+        bytes
+    }
+}
+
+impl RosyFromBinary for num_complex::Complex64 {
+    fn from_binary(data: &[u8]) -> Result<Self> {
+        if data.len() < 16 {
+            bail!(
+                "Not enough data to deserialize Complex64: expected 16 bytes, got {}",
+                data.len()
+            );
+        }
+        let mut re_buf = [0u8; 8];
+        let mut im_buf = [0u8; 8];
+        re_buf.copy_from_slice(&data[..8]);
+        im_buf.copy_from_slice(&data[8..16]);
+        Ok(num_complex::Complex64::new(
+            f64::from_le_bytes(re_buf),
+            f64::from_le_bytes(im_buf),
+        ))
+    }
+}
+
+// Binary serialization for DA (stub — DA binary I/O not yet implemented)
 impl RosyToBinary for crate::rosy_lib::taylor::DA {
     fn to_binary(&self) -> Vec<u8> {
-        unimplemented!("Binary I/O for DA vectors is not yet supported in Rosy. Use DAPRV/DAREV for ASCII DA I/O.")
+        panic!("Binary I/O for DA is not yet supported in Rosy. Use DAPRV/DAREV for ASCII DA I/O.")
     }
 }
 
 impl RosyFromBinary for crate::rosy_lib::taylor::DA {
     fn from_binary(_data: &[u8]) -> Result<Self> {
-        unimplemented!("Binary I/O for DA vectors is not yet supported in Rosy. Use DAPRV/DAREV for ASCII DA I/O.")
+        bail!("Binary I/O for DA is not yet supported in Rosy. Use DAPRV/DAREV for ASCII DA I/O.")
     }
 }

@@ -13,6 +13,7 @@
 //! - **[`veunit`]** — `VEUNIT vec result;` — normalize to unit vector
 //! - **[`vezero`]** — `VEZERO arr n thresh;` — zero components past threshold
 
+pub mod cpolval;
 pub mod fit;
 pub mod intpol;
 pub mod ldet;
@@ -21,7 +22,6 @@ pub mod linv;
 pub mod lsline;
 pub mod mblock;
 pub mod polval;
-pub mod cpolval;
 pub mod rkco;
 pub mod vedot;
 pub mod veunit;

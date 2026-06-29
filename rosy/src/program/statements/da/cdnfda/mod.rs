@@ -57,10 +57,20 @@ impl FromRule for CdnfdaStatement {
         );
 
         let mut inner = pair.into_inner();
-        let fields = ["input", "moduli", "arguments", "coord", "total", "epsilon", "result"];
+        let fields = [
+            "input",
+            "moduli",
+            "arguments",
+            "coord",
+            "total",
+            "epsilon",
+            "result",
+        ];
         let mut exprs = Vec::new();
         for name in &fields {
-            let p = inner.next().context(format!("Missing {} in CDNFDA", name))?;
+            let p = inner
+                .next()
+                .context(format!("Missing {} in CDNFDA", name))?;
             let e = Expr::from_rule(p)
                 .context(format!("Failed to build {} expression in CDNFDA", name))?
                 .ok_or_else(|| anyhow::anyhow!("Expected {} expression in CDNFDA", name))?;
@@ -81,14 +91,28 @@ impl FromRule for CdnfdaStatement {
 
 impl TranspileableStatement for CdnfdaStatement {
     fn register_typeslot_declaration(
-        &self, _resolver: &mut TypeResolver, _ctx: &mut ScopeContext, _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult { TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl }
+        &self,
+        _resolver: &mut TypeResolver,
+        _ctx: &mut ScopeContext,
+        _source_location: SourceLocation,
+    ) -> TypeslotDeclarationResult {
+        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
+    }
     fn wire_inference_edges(
-        &self, _resolver: &mut TypeResolver, _ctx: &mut ScopeContext, _source_location: SourceLocation,
-    ) -> InferenceEdgeResult { InferenceEdgeResult::NoEdges }
+        &self,
+        _resolver: &mut TypeResolver,
+        _ctx: &mut ScopeContext,
+        _source_location: SourceLocation,
+    ) -> InferenceEdgeResult {
+        InferenceEdgeResult::NoEdges
+    }
     fn hydrate_resolved_types(
-        &mut self, _resolver: &TypeResolver, _current_scope: &[String],
-    ) -> TypeHydrationResult { TypeHydrationResult::NothingToHydrate }
+        &mut self,
+        _resolver: &TypeResolver,
+        _current_scope: &[String],
+    ) -> TypeHydrationResult {
+        TypeHydrationResult::NothingToHydrate
+    }
 }
 
 impl Transpile for CdnfdaStatement {
@@ -98,25 +122,39 @@ impl Transpile for CdnfdaStatement {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let mut requested_variables = BTreeSet::new();
 
-        let input_o = self.input.transpile(context).map_err(|e| add_context_to_all(e, "...while transpiling input in CDNFDA".to_string()))?;
+        let input_o = self.input.transpile(context).map_err(|e| {
+            add_context_to_all(e, "...while transpiling input in CDNFDA".to_string())
+        })?;
         requested_variables.extend(input_o.requested_variables.iter().cloned());
 
-        let mod_o = self.moduli.transpile(context).map_err(|e| add_context_to_all(e, "...while transpiling moduli in CDNFDA".to_string()))?;
+        let mod_o = self.moduli.transpile(context).map_err(|e| {
+            add_context_to_all(e, "...while transpiling moduli in CDNFDA".to_string())
+        })?;
         requested_variables.extend(mod_o.requested_variables.iter().cloned());
 
-        let arg_o = self.arguments.transpile(context).map_err(|e| add_context_to_all(e, "...while transpiling arguments in CDNFDA".to_string()))?;
+        let arg_o = self.arguments.transpile(context).map_err(|e| {
+            add_context_to_all(e, "...while transpiling arguments in CDNFDA".to_string())
+        })?;
         requested_variables.extend(arg_o.requested_variables.iter().cloned());
 
-        let coord_o = self.coord.transpile(context).map_err(|e| add_context_to_all(e, "...while transpiling coord in CDNFDA".to_string()))?;
+        let coord_o = self.coord.transpile(context).map_err(|e| {
+            add_context_to_all(e, "...while transpiling coord in CDNFDA".to_string())
+        })?;
         requested_variables.extend(coord_o.requested_variables.iter().cloned());
 
-        let total_o = self.total.transpile(context).map_err(|e| add_context_to_all(e, "...while transpiling total in CDNFDA".to_string()))?;
+        let total_o = self.total.transpile(context).map_err(|e| {
+            add_context_to_all(e, "...while transpiling total in CDNFDA".to_string())
+        })?;
         requested_variables.extend(total_o.requested_variables.iter().cloned());
 
-        let eps_o = self.epsilon.transpile(context).map_err(|e| add_context_to_all(e, "...while transpiling epsilon in CDNFDA".to_string()))?;
+        let eps_o = self.epsilon.transpile(context).map_err(|e| {
+            add_context_to_all(e, "...while transpiling epsilon in CDNFDA".to_string())
+        })?;
         requested_variables.extend(eps_o.requested_variables.iter().cloned());
 
-        let result_o = self.result.transpile(context).map_err(|e| add_context_to_all(e, "...while transpiling result in CDNFDA".to_string()))?;
+        let result_o = self.result.transpile(context).map_err(|e| {
+            add_context_to_all(e, "...while transpiling result in CDNFDA".to_string())
+        })?;
         requested_variables.extend(result_o.requested_variables.iter().cloned());
 
         let result_ref = result_o.as_mut_ref();

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{CD, CM, DA, RE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, CM, DA, CD};
 
 /// Type registry for CMPLX intrinsic function (convert to complex).
 ///
@@ -71,4 +71,3 @@ impl RosyCMPLX for CD {
         Ok(self.clone())
     }
 }
-

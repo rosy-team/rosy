@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{CM, DA, RE, VE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, CM, VE, DA};
 
 /// Type registry for LOG intrinsic function.
 ///
@@ -86,7 +86,10 @@ fn da_log(da: &DA) -> anyhow::Result<DA> {
     let nocut = rt.config.max_order as usize;
 
     let f0 = da.constant_part();
-    anyhow::ensure!(f0 != 0.0, "LOG: constant part of DA argument must be non-zero");
+    anyhow::ensure!(
+        f0 != 0.0,
+        "LOG: constant part of DA argument must be non-zero"
+    );
 
     let ln_f0 = f0.ln();
     let da_prime = da.make_prime();
@@ -105,4 +108,3 @@ fn da_log(da: &DA) -> anyhow::Result<DA> {
 
     DA::horner_eval_with_rt(&u, &xf, &rt)
 }
-

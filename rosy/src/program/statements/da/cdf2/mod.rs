@@ -121,24 +121,28 @@ impl Transpile for Cdf2Statement {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let mut requested_variables = BTreeSet::new();
 
-        let input_output = self.input.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling input in CDF2".to_string())
-        })?;
+        let input_output = self
+            .input
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling input in CDF2".to_string()))?;
         requested_variables.extend(input_output.requested_variables.iter().cloned());
 
-        let t1_output = self.tune1.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling tune1 in CDF2".to_string())
-        })?;
+        let t1_output = self
+            .tune1
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling tune1 in CDF2".to_string()))?;
         requested_variables.extend(t1_output.requested_variables.iter().cloned());
 
-        let t2_output = self.tune2.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling tune2 in CDF2".to_string())
-        })?;
+        let t2_output = self
+            .tune2
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling tune2 in CDF2".to_string()))?;
         requested_variables.extend(t2_output.requested_variables.iter().cloned());
 
-        let t3_output = self.tune3.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling tune3 in CDF2".to_string())
-        })?;
+        let t3_output = self
+            .tune3
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling tune3 in CDF2".to_string()))?;
         requested_variables.extend(t3_output.requested_variables.iter().cloned());
 
         let result_output = self.result.transpile(context).map_err(|e| {
@@ -146,8 +150,7 @@ impl Transpile for Cdf2Statement {
         })?;
         requested_variables.extend(result_output.requested_variables.iter().cloned());
 
-        let result_ref = result_output
-            .as_mut_ref();
+        let result_ref = result_output.as_mut_ref();
 
         let serialization = format!(
             "rosy_lib::core::da_ops::rosy_cdf2({}, {}, {}, {}, {})?;",

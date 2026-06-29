@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use crate::rosy_lib::{DA, RE, VE};
 use crate::rosy_lib::{IntrinsicTypeRule, RosyType};
-use crate::rosy_lib::{RE, VE, DA};
 
 /// Type registry for TANH intrinsic function.
 ///
@@ -62,8 +62,8 @@ impl RosyTANH for VE {
 impl RosyTANH for DA {
     type Output = DA;
     fn rosy_tanh(&self) -> anyhow::Result<Self::Output> {
-        use crate::rosy_lib::intrinsics::sinh::RosySINH;
         use crate::rosy_lib::intrinsics::cosh::RosyCOSH;
+        use crate::rosy_lib::intrinsics::sinh::RosySINH;
 
         let sinh_f = self.rosy_sinh()?;
         let cosh_f = self.rosy_cosh()?;
@@ -71,4 +71,3 @@ impl RosyTANH for DA {
         (&sinh_f / &cosh_f).map_err(|e| e)
     }
 }
-
