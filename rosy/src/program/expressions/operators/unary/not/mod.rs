@@ -37,10 +37,10 @@ use std::collections::HashSet;
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::RosyType;
 use crate::transpile::{ExprFunctionCallResult, TranspileableExpr};
 use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, ValueKind};
 use anyhow::{Error, Result, anyhow};
+use rosy_lib::RosyType;
 
 /// Logical NOT expression (unary operator).
 /// Supports both `!x` and `NOT x` syntax.
@@ -57,11 +57,8 @@ impl FromRule for NotExpr {
 impl TranspileableExpr for NotExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
         let operand_type = self.operand.type_of(context)?;
-        crate::rosy_lib::operators::not::get_return_type(&operand_type)
-            .ok_or_else(|| anyhow::anyhow!(
-                "Cannot apply NOT to type '{}'!",
-                operand_type
-            ))
+        rosy_lib::operators::not::get_return_type(&operand_type)
+            .ok_or_else(|| anyhow::anyhow!("Cannot apply NOT to type '{}'!", operand_type))
     }
     fn discover_expr_function_calls(
         &self,
@@ -87,7 +84,7 @@ impl Transpile for NotExpr {
         context: &mut TranspilationInputContext,
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let operand_type = self.operand.type_of(context).map_err(|e| vec![e])?;
-        if crate::rosy_lib::operators::not::get_return_type(&operand_type).is_none() {
+        if rosy_lib::operators::not::get_return_type(&operand_type).is_none() {
             return Err(vec![anyhow!(
                 "Cannot apply NOT to type '{}'!",
                 operand_type

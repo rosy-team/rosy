@@ -133,8 +133,7 @@ impl Transpile for DapeeStatement {
             "rosy_lib::core::dapew::rosy_dapee({}, {} as u64, {})?;",
             da_var_output.as_ref(),
             id_output.as_value(),
-            result_output
-                .as_mut_ref(),
+            result_output.as_mut_ref(),
         );
 
         Ok(TranspilationOutput {

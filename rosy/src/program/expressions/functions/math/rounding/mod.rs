@@ -9,7 +9,7 @@
 //! | `CONS(x)` | Constant part (zeroth-order coefficient of DA) |
 
 pub mod abs;
+pub mod cons;
 pub mod int_fn;
 pub mod nint;
 pub mod norm;
-pub mod cons;

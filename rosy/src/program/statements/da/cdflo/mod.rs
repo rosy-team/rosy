@@ -74,7 +74,12 @@ impl FromRule for CdfloStatement {
             .context("Failed to build dim expression in CDFLO")?
             .ok_or_else(|| anyhow::anyhow!("Expected dim expression in CDFLO"))?;
 
-        Ok(Some(CdfloStatement { rhs, ic, result, dim }))
+        Ok(Some(CdfloStatement {
+            rhs,
+            ic,
+            result,
+            dim,
+        }))
     }
 }
 
@@ -111,14 +116,16 @@ impl Transpile for CdfloStatement {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let mut requested_variables = BTreeSet::new();
 
-        let rhs_output = self.rhs.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling rhs in CDFLO".to_string())
-        })?;
+        let rhs_output = self
+            .rhs
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling rhs in CDFLO".to_string()))?;
         requested_variables.extend(rhs_output.requested_variables.iter().cloned());
 
-        let ic_output = self.ic.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling ic in CDFLO".to_string())
-        })?;
+        let ic_output = self
+            .ic
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling ic in CDFLO".to_string()))?;
         requested_variables.extend(ic_output.requested_variables.iter().cloned());
 
         let result_output = self.result.transpile(context).map_err(|e| {
@@ -126,13 +133,13 @@ impl Transpile for CdfloStatement {
         })?;
         requested_variables.extend(result_output.requested_variables.iter().cloned());
 
-        let dim_output = self.dim.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling dim in CDFLO".to_string())
-        })?;
+        let dim_output = self
+            .dim
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling dim in CDFLO".to_string()))?;
         requested_variables.extend(dim_output.requested_variables.iter().cloned());
 
-        let result_ref = result_output
-            .as_mut_ref();
+        let result_ref = result_output.as_mut_ref();
 
         let serialization = format!(
             "rosy_lib::core::da_ops::rosy_cdflo({}, {}, {result_ref}, {} as usize)?;",

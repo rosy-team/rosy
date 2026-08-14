@@ -14,8 +14,7 @@ pub async fn run() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) =
-        tower_lsp::LspService::new(server::RosyLanguageServer::new);
+    let (service, socket) = tower_lsp::LspService::new(server::RosyLanguageServer::new);
     tower_lsp::Server::new(stdin, stdout, socket)
         .serve(service)
         .await;

@@ -25,7 +25,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build documentation
-        run: cargo doc --document-private-items --no-deps -p rosy
+        run: cargo doc --document-private-items --no-deps -p rosy -p rosy_lib
 
       - name: Add redirect index.html
         run: echo '<meta http-equiv="refresh" content="0;url=rosy/index.html">' > target/doc/index.html

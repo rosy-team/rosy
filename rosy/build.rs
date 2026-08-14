@@ -45,7 +45,7 @@ fn main() {
 
     // Re-run if source changes
     println!("cargo:rerun-if-changed=src/program");
-    println!("cargo:rerun-if-changed=src/rosy_lib");
+    println!("cargo:rerun-if-changed=../rosy-lib/src");
 
     // Generate the embedded files at compile time
     let out_dir = std::env::var("OUT_DIR").unwrap();
@@ -61,8 +61,8 @@ fn main() {
     writeln!(f, "").unwrap();
     writeln!(f, "pub const ROSY_LIB_FILES: &[EmbeddedFile] = &[").unwrap();
 
-    // Walk the rosy_lib directory
-    let lib_path = PathBuf::from("src/rosy_lib");
+    // Walk the workspace rosy-lib crate
+    let lib_path = PathBuf::from("../rosy-lib/src");
     let files = collect_files(&lib_path, &lib_path);
 
     let _file_count = files.len();
@@ -459,7 +459,6 @@ fn generate_hover_file(
 
     writeln!(f).unwrap();
     writeln!(f, "pub const ROSY_TYPE_HOVER: &[(&str, &str, &str)] = &[").unwrap();
-    let base = BASE_DOC_URL;
     for (name, rust_type, desc) in [
         ("RE", "f64", "Real number"),
         ("ST", "String", "String"),
@@ -473,7 +472,7 @@ fn generate_hover_file(
             "Complex Differential Algebra",
         ),
     ] {
-        writeln!(f, "    (\"{name}\", \"**{name}** \\u{{2014}} {desc} (`{rust_type}`)\\n\\n[Documentation]({base}/rosy_lib/enum.RosyBaseType.html#variant.{name})\", \"{desc}\"),").unwrap();
+        writeln!(f, "    (\"{name}\", \"**{name}** \\u{{2014}} {desc} (`{rust_type}`)\\n\\n[Documentation](https://rosy-team.github.io/rosy/rosy_lib/enum.RosyBaseType.html#variant.{name})\", \"{desc}\"),").unwrap();
     }
     writeln!(f, "];").unwrap();
 }

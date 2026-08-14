@@ -117,7 +117,8 @@ impl Transpile for ProcedureCallStatement {
                 let hint = context.procedure_hint(&self.name);
                 return Err(vec![anyhow!(
                     "procedure '{}' is not defined in this scope!{}",
-                    self.name, hint
+                    self.name,
+                    hint
                 )]);
             }
         }
@@ -196,8 +197,7 @@ impl Transpile for ProcedureCallStatement {
                                 format!("{} = {};", arg_name, temp_name),
                             ),
                         };
-                        prelude_decls
-                            .push(format!("let mut {} = {};", temp_name, value_expr));
+                        prelude_decls.push(format!("let mut {} = {};", temp_name, value_expr));
                         prelude_overrides.insert(i, format!("&mut {}", temp_name));
                         writeback_decls.push(writeback);
                     }
@@ -245,8 +245,7 @@ impl Transpile for ProcedureCallStatement {
                         // expression takes are released before the call.
                         let temp_name = format!("__rosy_arg_tmp_{}", i);
                         let value_serial = arg_output.as_owned(&expected_type);
-                        prelude_decls
-                            .push(format!("let mut {} = {};", temp_name, value_serial));
+                        prelude_decls.push(format!("let mut {} = {};", temp_name, value_serial));
                         serialized_args.push(format!("&mut {}", temp_name));
                         requested_variables.extend(arg_output.requested_variables);
                     }

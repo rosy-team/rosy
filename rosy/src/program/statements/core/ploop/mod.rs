@@ -49,9 +49,9 @@ use crate::{
         statements::{SourceLocation, Statement},
     },
     resolve::*,
-    rosy_lib::RosyType,
     transpile::*,
 };
+use rosy_lib::RosyType;
 
 /// AST node for the parallel loop `PLOOP ... ENDPLOOP output;`.
 #[derive(Debug)]
@@ -195,7 +195,9 @@ impl TranspileableStatement for PLoopStatement {
             Some(&RosyType::RE()),
             Some(source_location),
         );
-        InferenceEdgeResult::HasEdges { result: resolver.discover_slots(&self.body, &mut inner_ctx) }
+        InferenceEdgeResult::HasEdges {
+            result: resolver.discover_slots(&self.body, &mut inner_ctx),
+        }
     }
     fn hydrate_resolved_types(
         &mut self,
@@ -344,10 +346,7 @@ impl Transpile for PLoopStatement {
             let mut opens = String::new();
             for i in 0..outer_loop_count {
                 let idx = format!("__ploop_dim_{}", i);
-                opens.push_str(&format!(
-                    "for {} in 0..{}.len() {{\n\t",
-                    idx, accessor
-                ));
+                opens.push_str(&format!("for {} in 0..{}.len() {{\n\t", idx, accessor));
                 accessor = format!("{}[{}]", accessor, idx);
             }
             let inner_call = format!(

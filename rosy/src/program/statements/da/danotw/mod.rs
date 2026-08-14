@@ -57,13 +57,21 @@ impl FromRule for DanotwStatement {
 
         let mut inner = pair.into_inner();
 
-        let weights = Expr::from_rule(inner.next().ok_or_else(|| anyhow::anyhow!("Missing weights in DANOTW"))?)
-            .map_err(|e| e)?
-            .ok_or_else(|| anyhow::anyhow!("Expected weights expression in DANOTW"))?;
+        let weights = Expr::from_rule(
+            inner
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("Missing weights in DANOTW"))?,
+        )
+        .map_err(|e| e)?
+        .ok_or_else(|| anyhow::anyhow!("Expected weights expression in DANOTW"))?;
 
-        let size = Expr::from_rule(inner.next().ok_or_else(|| anyhow::anyhow!("Missing size in DANOTW"))?)
-            .map_err(|e| e)?
-            .ok_or_else(|| anyhow::anyhow!("Expected size expression in DANOTW"))?;
+        let size = Expr::from_rule(
+            inner
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("Missing size in DANOTW"))?,
+        )
+        .map_err(|e| e)?
+        .ok_or_else(|| anyhow::anyhow!("Expected size expression in DANOTW"))?;
 
         Ok(Some(DanotwStatement { weights, size }))
     }

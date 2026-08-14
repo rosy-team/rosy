@@ -37,10 +37,10 @@ use std::collections::HashSet;
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{BinaryOpKind, ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::RosyType;
 use crate::transpile::{ExprFunctionCallResult, TranspileableExpr};
 use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, ValueKind};
 use anyhow::{Error, Result, anyhow};
+use rosy_lib::RosyType;
 
 /// AST node for the power/exponentiation operator (`^`).
 #[derive(Debug)]
@@ -57,7 +57,7 @@ impl FromRule for PowExpr {
 }
 impl TranspileableExpr for PowExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        crate::rosy_lib::operators::pow::get_return_type(
+        rosy_lib::operators::pow::get_return_type(
             &self.left.type_of(context)?,
             &self.right.type_of(context)?,
         )
@@ -102,7 +102,7 @@ impl Transpile for PowExpr {
         // First, ensure the types are compatible
         let left_type = self.left.type_of(context).map_err(|e| vec![e])?;
         let right_type = self.right.type_of(context).map_err(|e| vec![e])?;
-        if crate::rosy_lib::operators::pow::get_return_type(&left_type, &right_type).is_none() {
+        if rosy_lib::operators::pow::get_return_type(&left_type, &right_type).is_none() {
             return Err(vec![anyhow!(
                 "Cannot raise type '{}' to the power of type '{}'!",
                 left_type,

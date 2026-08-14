@@ -31,12 +31,12 @@ use std::collections::HashSet;
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::RosyType;
 use crate::transpile::{
-    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput,
-    Transpile, TranspileableExpr, ValueKind,
+    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
+    TranspileableExpr, ValueKind,
 };
 use anyhow::{Context, Error, Result, anyhow};
+use rosy_lib::RosyType;
 
 /// AST node for the `ST(expr)` type conversion function.
 #[derive(Debug)]
@@ -65,7 +65,7 @@ impl FromRule for StringConvertExpr {
 impl TranspileableExpr for StringConvertExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
         let expr_type = self.expr.type_of(context)?;
-        crate::rosy_lib::intrinsics::st::get_return_type(&expr_type).ok_or(anyhow::anyhow!(
+        rosy_lib::intrinsics::st::get_return_type(&expr_type).ok_or(anyhow::anyhow!(
             "Cannot convert type '{expr_type}' to 'ST'!"
         ))
     }
@@ -102,7 +102,7 @@ pub fn string_convert_transpile_helper(
 ) -> Result<TranspilationOutput, Vec<Error>> {
     // First, ensure the type is convertible to ST
     let expr_type = expr.type_of(context).map_err(|e| vec![e])?;
-    let _ = crate::rosy_lib::intrinsics::st::get_return_type(&expr_type).ok_or(vec![anyhow!(
+    let _ = rosy_lib::intrinsics::st::get_return_type(&expr_type).ok_or(vec![anyhow!(
         "Cannot convert type '{}' to 'ST'!",
         expr_type
     )])?;

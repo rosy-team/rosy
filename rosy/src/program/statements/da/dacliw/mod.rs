@@ -141,8 +141,7 @@ impl Transpile for DacliwStatement {
             "rosy_lib::core::daprv::rosy_dacliw({}, {} as usize, {})?;",
             da_output.as_ref(),
             n_output.as_value(),
-            linear_output
-                .as_mut_ref(),
+            linear_output.as_mut_ref(),
         );
 
         Ok(TranspilationOutput {

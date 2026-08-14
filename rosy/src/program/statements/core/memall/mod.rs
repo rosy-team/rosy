@@ -121,10 +121,7 @@ impl Transpile for MemallStatement {
 
         // Return the process's current physical memory usage via rosy_lib helper.
         // Falls back to 0.0 if the platform does not support the query.
-        let serialization = format!(
-            "{}{} = rosy_memall();",
-            dereference, output.serialization
-        );
+        let serialization = format!("{}{} = rosy_memall();", dereference, output.serialization);
 
         Ok(TranspilationOutput {
             serialization,

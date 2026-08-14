@@ -69,20 +69,21 @@ pub use da::da_init::DAInitStatement;
 pub use da::daprv::DaprvStatement;
 pub use da::darev::DarevStatement;
 
+pub use io::backf::BackfStatement;
 pub use io::closef::ClosefStatement;
 pub use io::openf::OpenfStatement;
 pub use io::openfb::OpenfbStatement;
 pub use io::read::ReadStatement;
 pub use io::readb::ReadbStatement;
 pub use io::readm::ReadmStatement;
+pub use io::reads::ReadsStatement;
+pub use io::rewf::RewfStatement;
+pub use io::save::SaveStatement;
 pub use io::write::WriteStatement;
 pub use io::writeb::WritebStatement;
 pub use io::writem::WritemStatement;
-pub use io::rewf::RewfStatement;
-pub use io::backf::BackfStatement;
-pub use io::reads::ReadsStatement;
-pub use io::save::SaveStatement;
 
+pub use math::cpolval::CpolvalStatement;
 pub use math::fit::FitStatement;
 pub use math::intpol::IntpolStatement;
 pub use math::ldet::LdetStatement;
@@ -91,7 +92,6 @@ pub use math::linv::LinvStatement;
 pub use math::lsline::LslineStatement;
 pub use math::mblock::MblockStatement;
 pub use math::polval::PolvalStatement;
-pub use math::cpolval::CpolvalStatement;
 pub use math::rkco::RkcoStatement;
 
 pub use core::quit::QuitStatement;
@@ -108,56 +108,56 @@ pub use math::vedot::VedotStatement;
 pub use math::veunit::VeunitStatement;
 pub use math::vezero::VezeroStatement;
 
-pub use core::imunit::ImunitStatement;
-pub use core::pnpro::PnproStatement;
-pub use core::recst::RecstStatement;
-pub use core::ranseed::RanseedStatement;
-pub use core::reran::ReranStatement;
-pub use core::sleepm::SleepmStatement;
 pub use core::argget::ArggetStatement;
+pub use core::imunit::ImunitStatement;
+pub use core::lfalse::LfalseStatement;
+pub use core::ltrue::LtrueStatement;
+pub use core::memall::MemallStatement;
 pub use core::memdpv::MemdpvStatement;
 pub use core::memfre::MemfreStatement;
-pub use core::memall::MemallStatement;
 pub use core::memwrt::MemwrtStatement;
-pub use core::ltrue::LtrueStatement;
-pub use core::lfalse::LfalseStatement;
+pub use core::pnpro::PnproStatement;
+pub use core::ranseed::RanseedStatement;
+pub use core::recst::RecstStatement;
+pub use core::reran::ReranStatement;
+pub use core::sleepm::SleepmStatement;
 pub use core::stcre::StcreStatement;
 
+pub use da::cdf2::Cdf2Statement;
+pub use da::cdflo::CdfloStatement;
+pub use da::cdnf::CdnfStatement;
+pub use da::cdnfda::CdnfdaStatement;
+pub use da::cdnfds::CdnfdsStatement;
 pub use da::dacliw::DacliwStatement;
+pub use da::dacode::DacodeStatement;
 pub use da::dacqlc::DacqlcStatement;
 pub use da::dader::DaderStatement;
 pub use da::dadiu::DadiuStatement;
 pub use da::dadmu::DadmuStatement;
 pub use da::daeps::DaepsStatement;
-pub use da::daest::DaestStatement;
 pub use da::daepsm::DaepsmStatement;
-pub use da::epsmin::EpsminStatement;
-pub use da::dafset::DafsetStatement;
+pub use da::daest::DaestStatement;
 pub use da::dafilt::DafiltStatement;
-pub use da::danotw::DanotwStatement;
 pub use da::daflo::DafloStatement;
-pub use da::cdflo::CdfloStatement;
+pub use da::dafset::DafsetStatement;
 pub use da::dagmd::DagmdStatement;
-pub use da::danow::DanowStatement;
-pub use da::cdf2::Cdf2Statement;
-pub use da::cdnf::CdnfStatement;
-pub use da::cdnfda::CdnfdaStatement;
-pub use da::cdnfds::CdnfdsStatement;
-pub use da::daran::DaranStatement;
-pub use da::dacode::DacodeStatement;
 pub use da::daint::DaintStatement;
 pub use da::danoro::DanoroStatement;
 pub use da::danors::DanorsStatement;
 pub use da::danot::DanotStatement;
+pub use da::danotw::DanotwStatement;
+pub use da::danow::DanowStatement;
 pub use da::dapea::DapeaStatement;
 pub use da::dapee::DapeeStatement;
 pub use da::dapep::DapepStatement;
 pub use da::dapew::DapewStatement;
 pub use da::daplu::DapluStatement;
+pub use da::daran::DaranStatement;
 pub use da::darea::DareaStatement;
 pub use da::dascl::DasclStatement;
 pub use da::dasgn::DasgnStatement;
 pub use da::datrn::DatrnStatement;
+pub use da::epsmin::EpsminStatement;
 pub use da::mtree::MtreeStatement;
 
 use crate::{
@@ -182,7 +182,14 @@ pub struct SourceLocation {
 impl std::fmt::Display for SourceLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(ref path) = self.file {
-            write!(f, "{}:{}:{}: {}", path.display(), self.line, self.col, self.snippet)
+            write!(
+                f,
+                "{}:{}:{}: {}",
+                path.display(),
+                self.line,
+                self.col,
+                self.snippet
+            )
         } else {
             write!(f, "line {}, col {}: {}", self.line, self.col, self.snippet)
         }
@@ -201,7 +208,12 @@ impl SourceLocation {
         } else {
             first_line.to_string()
         };
-        SourceLocation { line, col, snippet, file: None }
+        SourceLocation {
+            line,
+            col,
+            snippet,
+            file: None,
+        }
     }
 
     /// Set the originating file path on this location.

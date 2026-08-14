@@ -127,8 +127,7 @@ impl Transpile for DanorsStatement {
         })?;
         requested_variables.extend(threshold_output.requested_variables.iter().cloned());
 
-        let da_mut = da_output
-            .as_mut_ref();
+        let da_mut = da_output.as_mut_ref();
 
         let serialization = format!(
             "rosy_lib::core::da_ops::rosy_danors({}, {} as f64)?;",

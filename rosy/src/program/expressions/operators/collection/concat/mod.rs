@@ -38,12 +38,12 @@
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::{RosyBaseType, RosyType};
 use crate::transpile::{
-    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput,
-    Transpile, TranspileableExpr, ValueKind, VariableScope,
+    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
+    TranspileableExpr, ValueKind, VariableScope,
 };
 use anyhow::{Context, Error, Result};
+use rosy_lib::{RosyBaseType, RosyType};
 use std::collections::BTreeSet;
 use std::collections::HashSet;
 
@@ -70,12 +70,13 @@ impl TranspileableExpr for ConcatExpr {
             .type_of(context)
             .context("...while determining type of right side of concatenation")?;
 
-        crate::rosy_lib::operators::concat::get_return_type(&left_type, &right_type)
-            .ok_or_else(|| anyhow::anyhow!(
+        rosy_lib::operators::concat::get_return_type(&left_type, &right_type).ok_or_else(|| {
+            anyhow::anyhow!(
                 "Cannot concatenate types '{}' and '{}' together!",
                 left_type,
                 right_type
-            ))
+            )
+        })
     }
     fn discover_expr_function_calls(
         &self,
@@ -116,7 +117,12 @@ impl TranspileableExpr for ConcatExpr {
         let right_type = self.right.type_of(context).ok()?;
 
         // Determine the append operation
-        let is_push = match (left_type.base_type, left_type.dimensions, right_type.base_type, right_type.dimensions) {
+        let is_push = match (
+            left_type.base_type,
+            left_type.dimensions,
+            right_type.base_type,
+            right_type.dimensions,
+        ) {
             // VE & RE → push (f64 is Copy, no clone needed)
             (RosyBaseType::VE, 0, RosyBaseType::RE, 0) => true,
             // VE & VE → extend
@@ -147,11 +153,7 @@ impl TranspileableExpr for ConcatExpr {
         // (auto-captured global) and Arg-scope (procedure parameter) vars
         // arrive as `&mut Vec<_>` / `&mut Vec<DA>` etc., so the method call
         // needs a `(*target).` deref. Local vars resolve to bare names.
-        let target_deref = match context
-            .variables
-            .get(target_var)
-            .map(|v| &v.scope)
-        {
+        let target_deref = match context.variables.get(target_var).map(|v| &v.scope) {
             Some(VariableScope::Local) => "",
             Some(VariableScope::Arg) => "*",
             Some(VariableScope::Higher) => {
@@ -172,7 +174,9 @@ impl TranspileableExpr for ConcatExpr {
             }
         } else {
             let val_ref = right_output.as_ref();
-            format!("{{ let __v: Vec<_> = ({val_ref}).to_vec(); ({target_deref}{target_var}).extend_from_slice(&__v); }}")
+            format!(
+                "{{ let __v: Vec<_> = ({val_ref}).to_vec(); ({target_deref}{target_var}).extend_from_slice(&__v); }}"
+            )
         };
 
         Some(Ok(TranspilationOutput {
@@ -192,14 +196,16 @@ impl Transpile for ConcatExpr {
             .type_of(context)
             .map_err(|e| vec![e.context("...while verifying types of concatenation expression")])?;
 
-        let left_output = self.left.transpile(context)
-            .map_err(|errs| errs.into_iter()
+        let left_output = self.left.transpile(context).map_err(|errs| {
+            errs.into_iter()
                 .map(|e| e.context("...while transpiling left side of concatenation"))
-                .collect::<Vec<_>>())?;
-        let right_output = self.right.transpile(context)
-            .map_err(|errs| errs.into_iter()
+                .collect::<Vec<_>>()
+        })?;
+        let right_output = self.right.transpile(context).map_err(|errs| {
+            errs.into_iter()
                 .map(|e| e.context("...while transpiling right side of concatenation"))
-                .collect::<Vec<_>>())?;
+                .collect::<Vec<_>>()
+        })?;
 
         let mut requested_variables = BTreeSet::new();
         requested_variables.extend(left_output.requested_variables.iter().cloned());

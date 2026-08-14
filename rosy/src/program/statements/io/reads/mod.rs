@@ -120,7 +120,10 @@ impl Transpile for ReadsStatement {
                 output.as_value()
             }
             Err(e) => {
-                for err in add_context_to_all(e, "...while transpiling unit expression for READS".to_string()) {
+                for err in add_context_to_all(
+                    e,
+                    "...while transpiling unit expression for READS".to_string(),
+                ) {
                     errors.push(err);
                 }
                 String::new()

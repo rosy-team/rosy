@@ -171,12 +171,9 @@ impl Transpile for DacqlcStatement {
             "rosy_lib::core::daprv::rosy_dacqlc({}, {} as usize, {}, {}, {})?;",
             da_output.as_ref(),
             n_output.as_value(),
-            hessian_output
-                .as_mut_ref(),
-            linear_output
-                .as_mut_ref(),
-            constant_output
-                .as_mut_ref(),
+            hessian_output.as_mut_ref(),
+            linear_output.as_mut_ref(),
+            constant_output.as_mut_ref(),
         );
 
         Ok(TranspilationOutput {

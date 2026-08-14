@@ -72,7 +72,11 @@ impl FromRule for DacodeStatement {
             .context("Failed to build result expression in DACODE")?
             .ok_or_else(|| anyhow::anyhow!("Expected result expression in DACODE"))?;
 
-        Ok(Some(DacodeStatement { params, size, result }))
+        Ok(Some(DacodeStatement {
+            params,
+            size,
+            result,
+        }))
     }
 }
 
@@ -124,8 +128,7 @@ impl Transpile for DacodeStatement {
         })?;
         requested_variables.extend(result_output.requested_variables.iter().cloned());
 
-        let result_ref = result_output
-            .as_mut_ref();
+        let result_ref = result_output.as_mut_ref();
 
         let serialization = format!(
             "rosy_lib::core::da_ops::rosy_dacode({}, {} as usize, {result_ref})?;",

@@ -40,8 +40,7 @@ use crate::{
     resolve::{ScopeContext, TypeResolver},
     transpile::{
         InferenceEdgeResult, TranspilationInputContext, TranspilationOutput, Transpile,
-        TranspileableStatement, TypeHydrationResult, TypeslotDeclarationResult,
-        add_context_to_all,
+        TranspileableStatement, TypeHydrationResult, TypeslotDeclarationResult, add_context_to_all,
     },
 };
 
@@ -69,11 +68,10 @@ impl FromRule for CpolvalStatement {
 
         macro_rules! next_expr {
             ($name:literal) => {{
-                let p = inner.next().context(concat!(
-                    "Missing `",
-                    $name,
-                    "` parameter in CPOLVAL!"
-                ))?;
+                let p =
+                    inner
+                        .next()
+                        .context(concat!("Missing `", $name, "` parameter in CPOLVAL!"))?;
                 Expr::from_rule(p)
                     .context(concat!(
                         "Failed to build `",

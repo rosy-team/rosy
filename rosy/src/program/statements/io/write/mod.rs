@@ -141,7 +141,10 @@ impl Transpile for WriteStatement {
 
         // Transpile the unit expression
         let unit_output = self.unit.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling unit expression in WRITE".to_string())
+            add_context_to_all(
+                e,
+                "...while transpiling unit expression in WRITE".to_string(),
+            )
         })?;
         requested_variables.extend(unit_output.requested_variables.iter().cloned());
 

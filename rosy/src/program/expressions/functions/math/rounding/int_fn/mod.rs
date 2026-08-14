@@ -35,12 +35,12 @@
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::RosyType;
 use crate::transpile::{
-    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput,
-    Transpile, TranspileableExpr, ValueKind,
+    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
+    TranspileableExpr, ValueKind,
 };
 use anyhow::{Context as AnyhowContext, Error, Result};
+use rosy_lib::RosyType;
 use std::collections::HashSet;
 
 /// AST node for the `INT(expr)` intrinsic function (truncate toward zero).
@@ -92,7 +92,7 @@ impl Transpile for IntExpr {
 }
 impl TranspileableExpr for IntExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        use crate::rosy_lib::intrinsics::int_fn;
+        use rosy_lib::intrinsics::int_fn;
 
         let inner_type = self
             .expr

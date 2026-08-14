@@ -38,12 +38,12 @@
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::RosyType;
 use crate::transpile::{
-    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput,
-    Transpile, TranspileableExpr, ValueKind,
+    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
+    TranspileableExpr, ValueKind,
 };
 use anyhow::{Context as AnyhowContext, Error, Result};
+use rosy_lib::RosyType;
 use std::collections::HashSet;
 
 /// AST node for the `TANH(expr)` intrinsic function.
@@ -95,7 +95,7 @@ impl Transpile for TanhExpr {
 }
 impl TranspileableExpr for TanhExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        use crate::rosy_lib::intrinsics::tanh;
+        use rosy_lib::intrinsics::tanh;
 
         let inner_type = self
             .expr

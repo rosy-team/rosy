@@ -184,8 +184,7 @@ impl Transpile for DatrnStatement {
             shifts_output.as_ref(),
             m1_output.as_value(),
             m2_output.as_value(),
-            out_output
-                .as_mut_ref(),
+            out_output.as_mut_ref(),
         );
 
         Ok(TranspilationOutput {

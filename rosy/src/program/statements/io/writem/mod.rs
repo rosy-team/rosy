@@ -30,8 +30,8 @@ use crate::{
     },
     resolve::{ScopeContext, TypeResolver},
     transpile::{
-        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
-        TypeslotDeclarationResult, InferenceEdgeResult, TypeHydrationResult, ValueKind,
+        InferenceEdgeResult, TranspilationInputContext, TranspilationOutput, Transpile,
+        TranspileableStatement, TypeHydrationResult, TypeslotDeclarationResult, ValueKind,
         add_context_to_all,
     },
 };
@@ -71,7 +71,9 @@ impl FromRule for WritemStatement {
             .ok_or_else(|| anyhow::anyhow!("Expected input expression in WRITEM"))?;
 
         // arg 2: var_info variable_identifier
-        let var_info_pair = inner.next().context("Missing arg 2 (var_info) in WRITEM!")?;
+        let var_info_pair = inner
+            .next()
+            .context("Missing arg 2 (var_info) in WRITEM!")?;
         let var_info = VariableIdentifier::from_rule(var_info_pair)
             .context("Failed to parse var_info identifier in WRITEM")?
             .ok_or_else(|| anyhow::anyhow!("Expected var_info identifier in WRITEM"))?;
@@ -83,19 +85,25 @@ impl FromRule for WritemStatement {
             .ok_or_else(|| anyhow::anyhow!("Expected length expression in WRITEM"))?;
 
         // arg 4: dp_array variable_identifier
-        let dp_pair = inner.next().context("Missing arg 4 (dp_array) in WRITEM!")?;
+        let dp_pair = inner
+            .next()
+            .context("Missing arg 4 (dp_array) in WRITEM!")?;
         let dp_array = VariableIdentifier::from_rule(dp_pair)
             .context("Failed to parse dp_array identifier in WRITEM")?
             .ok_or_else(|| anyhow::anyhow!("Expected dp_array identifier in WRITEM"))?;
 
         // arg 5: int_array variable_identifier
-        let int_pair = inner.next().context("Missing arg 5 (int_array) in WRITEM!")?;
+        let int_pair = inner
+            .next()
+            .context("Missing arg 5 (int_array) in WRITEM!")?;
         let int_array = VariableIdentifier::from_rule(int_pair)
             .context("Failed to parse int_array identifier in WRITEM")?
             .ok_or_else(|| anyhow::anyhow!("Expected int_array identifier in WRITEM"))?;
 
         // arg 6: da_params variable_identifier
-        let da_pair = inner.next().context("Missing arg 6 (da_params) in WRITEM!")?;
+        let da_pair = inner
+            .next()
+            .context("Missing arg 6 (da_params) in WRITEM!")?;
         let da_params = VariableIdentifier::from_rule(da_pair)
             .context("Failed to parse da_params identifier in WRITEM")?
             .ok_or_else(|| anyhow::anyhow!("Expected da_params identifier in WRITEM"))?;
@@ -152,7 +160,10 @@ impl Transpile for WritemStatement {
                 o
             }
             Err(e) => {
-                errors.extend(add_context_to_all(e, "...while transpiling input in WRITEM".to_string()));
+                errors.extend(add_context_to_all(
+                    e,
+                    "...while transpiling input in WRITEM".to_string(),
+                ));
                 return Err(errors);
             }
         };
@@ -164,7 +175,10 @@ impl Transpile for WritemStatement {
                 o
             }
             Err(e) => {
-                errors.extend(add_context_to_all(e, "...while transpiling var_info in WRITEM".to_string()));
+                errors.extend(add_context_to_all(
+                    e,
+                    "...while transpiling var_info in WRITEM".to_string(),
+                ));
                 return Err(errors);
             }
         };
@@ -175,7 +189,10 @@ impl Transpile for WritemStatement {
                 o
             }
             Err(e) => {
-                errors.extend(add_context_to_all(e, "...while transpiling dp_array in WRITEM".to_string()));
+                errors.extend(add_context_to_all(
+                    e,
+                    "...while transpiling dp_array in WRITEM".to_string(),
+                ));
                 return Err(errors);
             }
         };
@@ -186,7 +203,10 @@ impl Transpile for WritemStatement {
                 o
             }
             Err(e) => {
-                errors.extend(add_context_to_all(e, "...while transpiling int_array in WRITEM".to_string()));
+                errors.extend(add_context_to_all(
+                    e,
+                    "...while transpiling int_array in WRITEM".to_string(),
+                ));
                 return Err(errors);
             }
         };
@@ -197,7 +217,10 @@ impl Transpile for WritemStatement {
                 o
             }
             Err(e) => {
-                errors.extend(add_context_to_all(e, "...while transpiling da_params in WRITEM".to_string()));
+                errors.extend(add_context_to_all(
+                    e,
+                    "...while transpiling da_params in WRITEM".to_string(),
+                ));
                 return Err(errors);
             }
         };
@@ -222,21 +245,13 @@ impl Transpile for WritemStatement {
             var_info_output.value_kind,
             "_writem_var_info",
         );
-        let dp_assign = make_lvalue(
-            &dp_output.serialization,
-            dp_output.value_kind,
-            "_writem_dp",
-        );
+        let dp_assign = make_lvalue(&dp_output.serialization, dp_output.value_kind, "_writem_dp");
         let int_assign = make_lvalue(
             &int_output.serialization,
             int_output.value_kind,
             "_writem_int",
         );
-        let da_assign = make_lvalue(
-            &da_output.serialization,
-            da_output.value_kind,
-            "_writem_da",
-        );
+        let da_assign = make_lvalue(&da_output.serialization, da_output.value_kind, "_writem_da");
 
         let input_ref = input_output.as_ref();
 

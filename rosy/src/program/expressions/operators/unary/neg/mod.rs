@@ -35,12 +35,12 @@ use std::collections::HashSet;
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::RosyType;
 use crate::transpile::{
-    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput,
-    Transpile, TranspileableExpr, ValueKind,
+    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
+    TranspileableExpr, ValueKind,
 };
 use anyhow::{Error, Result, anyhow};
+use rosy_lib::RosyType;
 
 /// Unary negation expression: `-expr`
 /// Transpiled as `0 - expr` using the existing subtraction operator.
@@ -62,14 +62,12 @@ impl TranspileableExpr for NegExpr {
         let operand_type = self.operand.type_of(context)?;
         // Use the sub registry to check: RE - operand_type should work
         let zero_type = RosyType::RE();
-        crate::rosy_lib::operators::sub::get_return_type(&zero_type, &operand_type).ok_or_else(
-            || {
-                anyhow!(
-                    "Cannot negate type '{}' (no subtraction from RE defined)",
-                    operand_type
-                )
-            },
-        )
+        rosy_lib::operators::sub::get_return_type(&zero_type, &operand_type).ok_or_else(|| {
+            anyhow!(
+                "Cannot negate type '{}' (no subtraction from RE defined)",
+                operand_type
+            )
+        })
     }
     fn discover_expr_function_calls(
         &self,
@@ -110,7 +108,7 @@ impl Transpile for NegExpr {
         };
         requested_variables.extend(operand_output.requested_variables.iter().cloned());
 
-        use crate::rosy_lib::RosyBaseType;
+        use rosy_lib::RosyBaseType;
         let serialization =
             if operand_type.base_type == RosyBaseType::RE && operand_type.dimensions == 0 {
                 format!("(-{})", operand_output.as_value())

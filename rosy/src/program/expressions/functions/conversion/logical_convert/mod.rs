@@ -28,10 +28,10 @@
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::RosyType;
 use crate::transpile::{ExprFunctionCallResult, TranspileableExpr};
 use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, ValueKind};
 use anyhow::{Context, Error, Result, anyhow};
+use rosy_lib::RosyType;
 use std::collections::HashSet;
 
 /// AST node for the `LO(expr)` type conversion function.
@@ -60,7 +60,7 @@ impl FromRule for LogicalConvertExpr {
 impl TranspileableExpr for LogicalConvertExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
         let expr_type = self.expr.type_of(context)?;
-        crate::rosy_lib::intrinsics::lo::get_return_type(&expr_type).ok_or(anyhow::anyhow!(
+        rosy_lib::intrinsics::lo::get_return_type(&expr_type).ok_or(anyhow::anyhow!(
             "Cannot convert type '{expr_type}' to 'LO'!"
         ))
     }
@@ -89,11 +89,10 @@ impl Transpile for LogicalConvertExpr {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         // First, ensure the type is convertible to LO
         let expr_type = self.expr.type_of(context).map_err(|e| vec![e])?;
-        let _ =
-            crate::rosy_lib::intrinsics::lo::get_return_type(&expr_type).ok_or(vec![anyhow!(
-                "Cannot convert type '{}' to 'LO'!",
-                expr_type
-            )])?;
+        let _ = rosy_lib::intrinsics::lo::get_return_type(&expr_type).ok_or(vec![anyhow!(
+            "Cannot convert type '{}' to 'LO'!",
+            expr_type
+        )])?;
 
         // Then, transpile the expression
         let inner_output = self.expr.transpile(context).map_err(|e| {

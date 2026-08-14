@@ -24,9 +24,9 @@
 use crate::{
     program::statements::SourceLocation,
     resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot},
-    rosy_lib::RosyType,
 };
 use anyhow::{Error, Result};
+use rosy_lib::RosyType;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 pub enum TypeslotDeclarationResult {

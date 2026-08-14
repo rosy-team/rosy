@@ -43,13 +43,13 @@ use crate::{
         statements::{SourceLocation, Statement},
     },
     resolve::{ScopeContext, TypeResolver},
-    rosy_lib::RosyType,
     transpile::{
         InferenceEdgeResult, TranspilationInputContext, TranspilationOutput, Transpile,
         TranspileableExpr, TranspileableStatement, TypeHydrationResult, TypeslotDeclarationResult,
         indent,
     },
 };
+use rosy_lib::RosyType;
 
 #[derive(Debug)]
 pub struct FitStatement {

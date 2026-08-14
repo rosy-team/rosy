@@ -34,13 +34,13 @@ use crate::{
     ast::*,
     program::{expressions::Expr, statements::SourceLocation},
     resolve::{ScopeContext, TypeResolver},
-    rosy_lib::RosyBaseType,
     transpile::{
         InferenceEdgeResult, TranspilationInputContext, TranspilationOutput, Transpile,
-        TranspileableExpr, TranspileableStatement, TypeHydrationResult,
-        TypeslotDeclarationResult, add_context_to_all,
+        TranspileableExpr, TranspileableStatement, TypeHydrationResult, TypeslotDeclarationResult,
+        add_context_to_all,
     },
 };
+use rosy_lib::RosyBaseType;
 
 /// AST node for `POLVAL L P NP A NA R NR;`.
 #[derive(Debug)]

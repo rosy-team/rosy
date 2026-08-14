@@ -6,8 +6,8 @@
 //! - **[`ltrim`]** — `LTRIM(s)` — remove leading whitespace
 
 pub mod length;
+pub mod ltrim;
 pub mod position;
 pub mod trim;
-pub mod ltrim;
 pub mod varmem;
 pub mod varpoi;

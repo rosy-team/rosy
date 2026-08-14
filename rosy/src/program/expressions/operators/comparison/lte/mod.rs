@@ -31,10 +31,10 @@ use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
 
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
-use crate::rosy_lib::RosyType;
 use crate::transpile::{ExprFunctionCallResult, TranspileableExpr};
 use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, ValueKind};
 use anyhow::{Error, Result, anyhow};
+use rosy_lib::RosyType;
 
 /// AST node for the less-than-or-equal operator (`<=`).
 #[derive(Debug)]
@@ -52,11 +52,13 @@ impl TranspileableExpr for LteExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
         let left_type = self.left.type_of(context)?;
         let right_type = self.right.type_of(context)?;
-        crate::rosy_lib::operators::lte::get_return_type(&left_type, &right_type)
-            .ok_or_else(|| anyhow::anyhow!(
+        rosy_lib::operators::lte::get_return_type(&left_type, &right_type).ok_or_else(|| {
+            anyhow::anyhow!(
                 "Cannot compare types '{}' and '{}' with less-than-or-equal!",
-                left_type, right_type
-            ))
+                left_type,
+                right_type
+            )
+        })
     }
     fn discover_expr_function_calls(
         &self,
@@ -86,7 +88,7 @@ impl Transpile for LteExpr {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let left_type = self.left.type_of(context).map_err(|e| vec![e])?;
         let right_type = self.right.type_of(context).map_err(|e| vec![e])?;
-        if crate::rosy_lib::operators::lte::get_return_type(&left_type, &right_type).is_none() {
+        if rosy_lib::operators::lte::get_return_type(&left_type, &right_type).is_none() {
             return Err(vec![anyhow!(
                 "Cannot compare types '{}' and '{}' with less-than-or-equal!",
                 left_type,
@@ -123,7 +125,7 @@ impl Transpile for LteExpr {
         };
         requested_variables.extend(right_output.requested_variables.iter().cloned());
 
-        use crate::rosy_lib::RosyBaseType;
+        use rosy_lib::RosyBaseType;
         let serialization = match (&left_type.base_type, &right_type.base_type) {
             (RosyBaseType::RE, RosyBaseType::RE) | (RosyBaseType::ST, RosyBaseType::ST)
                 if left_type.dimensions == 0 && right_type.dimensions == 0 =>

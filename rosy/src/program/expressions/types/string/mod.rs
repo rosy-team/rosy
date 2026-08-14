@@ -35,12 +35,12 @@ use std::collections::{BTreeSet, HashSet};
 
 use crate::{
     ast::{FromRule, Rule},
-    rosy_lib::RosyType,
     transpile::{
-        ExprFunctionCallResult, TranspilationInputContext,
-        TranspilationOutput, Transpile, TranspileableExpr, ValueKind,
+        ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
+        TranspileableExpr, ValueKind,
     },
 };
+use rosy_lib::RosyType;
 
 impl FromRule for String {
     fn from_rule(pair: pest::iterators::Pair<Rule>) -> Result<Option<Self>> {
