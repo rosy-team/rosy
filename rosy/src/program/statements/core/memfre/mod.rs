@@ -120,10 +120,7 @@ impl Transpile for MemfreStatement {
 
         // Approximate "available budget" as isize::MAX minus current physical usage.
         // Falls back to f64::MAX if the platform does not support the query.
-        let serialization = format!(
-            "{}{} = rosy_memfre();",
-            dereference, output.serialization
-        );
+        let serialization = format!("{}{} = rosy_memfre();", dereference, output.serialization);
 
         Ok(TranspilationOutput {
             serialization,

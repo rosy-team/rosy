@@ -148,8 +148,7 @@ impl Transpile for DapeaStatement {
             da_var_output.as_ref(),
             exps_array_output.as_ref(),
             size_output.as_value(),
-            result_output
-                .as_mut_ref(),
+            result_output.as_mut_ref(),
         );
 
         Ok(TranspilationOutput {

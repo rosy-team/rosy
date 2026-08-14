@@ -10,11 +10,11 @@
 //! - **[`query`]** — `TYPE`, `ISRT`, `ISRT3`
 //! - **[`memory`]** — `LST`, `LCM`, `LCD` (COSY compatibility, always return 0)
 
-pub mod trig;
-pub mod exponential;
 pub mod complex;
-pub mod rounding;
-pub mod vector;
+pub mod exponential;
 pub mod memory;
 pub mod query;
+pub mod rounding;
 pub mod special;
+pub mod trig;
+pub mod vector;

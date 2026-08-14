@@ -104,12 +104,9 @@ impl Transpile for DaepsmStatement {
         })?;
         requested_variables.extend(result_output.requested_variables.iter().cloned());
 
-        let result_ref = result_output
-            .as_mut_ref();
+        let result_ref = result_output.as_mut_ref();
 
-        let serialization = format!(
-            "*{result_ref} = taylor::get_config()?.epsilon;"
-        );
+        let serialization = format!("*{result_ref} = taylor::get_config()?.epsilon;");
 
         Ok(TranspilationOutput {
             serialization,

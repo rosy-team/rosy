@@ -45,12 +45,12 @@
 use super::variable_identifier::VariableIdentifier;
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
-use crate::rosy_lib::RosyType;
 use crate::transpile::{ExprFunctionCallResult, TranspileableExpr};
 use crate::transpile::{
     TranspilationInputContext, TranspilationOutput, Transpile, ValueKind, VariableScope,
 };
 use anyhow::{Context, Error, Result, anyhow};
+use rosy_lib::RosyType;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
 
@@ -118,13 +118,13 @@ impl VarExpr {
                         let v = context.variables.get(&ident.name).unwrap();
                         // VE only accepts a single index, so it can never satisfy
                         // a multi-arg group; fall through to function-call routing.
-                        v.data.r#type.base_type != crate::rosy_lib::RosyBaseType::VE
+                        v.data.r#type.base_type != rosy_lib::RosyBaseType::VE
                             && num_args <= v.data.r#type.dimensions
                     };
 
                     let route_as_call = match (func_accepts, var_accepts) {
-                        (true, _) => true,           // function arity matches — prefer call
-                        (false, true) => false,      // only variable fits — multi-dim index
+                        (true, _) => true,                    // function arity matches — prefer call
+                        (false, true) => false, // only variable fits — multi-dim index
                         (false, false) => is_func || !is_var, // surface the more informative error downstream
                     };
 
@@ -218,8 +218,14 @@ impl TranspileableExpr for VarExpr {
                     .functions
                     .get(&self.identifier.name)
                     .ok_or_else(|| {
-                        anyhow::anyhow!("Function '{}' not found{}", self.identifier.name,
-                        TranspilationInputContext::case_hint(&self.identifier.name, context.functions.keys()))
+                        anyhow::anyhow!(
+                            "Function '{}' not found{}",
+                            self.identifier.name,
+                            TranspilationInputContext::case_hint(
+                                &self.identifier.name,
+                                context.functions.keys()
+                            )
+                        )
                     })?;
                 Ok(func_ctx.return_type.clone())
             }
@@ -248,7 +254,9 @@ impl TranspileableExpr for VarExpr {
                     // matches; otherwise treat as multi-dim variable indexing
                     // when the variable can absorb that many indices.
                     let func_accepts = is_func
-                        && ctx.functions.get(&ident.name)
+                        && ctx
+                            .functions
+                            .get(&ident.name)
                             .map(|(_, args)| args.len() == num_args)
                             .unwrap_or(false);
                     if func_accepts {
@@ -320,7 +328,9 @@ impl TranspileableExpr for VarExpr {
                 let num_args = ident.paren_groups[0].len();
                 if num_args > 1 {
                     let func_accepts = is_func
-                        && ctx.functions.get(&ident.name)
+                        && ctx
+                            .functions
+                            .get(&ident.name)
                             .map(|(_, args)| args.len() == num_args)
                             .unwrap_or(false);
                     if func_accepts {
@@ -344,7 +354,10 @@ impl TranspileableExpr for VarExpr {
                 ExprRecipe::Variable(ret_slot.clone())
             } else {
                 let hint = find_case_similar(&ident.name, ctx.functions.keys());
-                ExprRecipe::Unknown(Some(format!("undeclared function '{}'{}",  ident.name, hint)))
+                ExprRecipe::Unknown(Some(format!(
+                    "undeclared function '{}'{}",
+                    ident.name, hint
+                )))
             }
         } else if let Some(slot) = ctx.variables.get(&ident.name) {
             deps.insert(slot.clone());
@@ -356,7 +369,10 @@ impl TranspileableExpr for VarExpr {
             }
         } else {
             let hint = find_case_similar(&ident.name, ctx.variables.keys());
-            ExprRecipe::Unknown(Some(format!("undeclared variable '{}'{}",  ident.name, hint)))
+            ExprRecipe::Unknown(Some(format!(
+                "undeclared variable '{}'{}",
+                ident.name, hint
+            )))
         }
     }
     fn as_bare_variable_name(&self) -> Option<&str> {
@@ -444,7 +460,8 @@ pub fn function_call_transpile_helper(
             let hint = TranspilationInputContext::case_hint(name, context.functions.keys());
             return Err(vec![anyhow!(
                 "Function '{}' is not defined in this scope!{}",
-                name, hint
+                name,
+                hint
             )]);
         }
     }
@@ -576,8 +593,7 @@ pub fn function_call_transpile_helper(
                     // reference.
                     let temp_name = format!("__rosy_arg_tmp_{}", i);
                     let value_serial = arg_output.as_owned(&expected_type);
-                    prelude_decls
-                        .push(format!("let mut {} = {};", temp_name, value_serial));
+                    prelude_decls.push(format!("let mut {} = {};", temp_name, value_serial));
                     serialized_args.push(format!("&mut {}", temp_name));
                     requested_variables.extend(arg_output.requested_variables);
                 }

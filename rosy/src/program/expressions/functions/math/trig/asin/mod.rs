@@ -36,12 +36,12 @@
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::RosyType;
 use crate::transpile::{
-    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput,
-    Transpile, TranspileableExpr, ValueKind,
+    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
+    TranspileableExpr, ValueKind,
 };
 use anyhow::{Context as AnyhowContext, Error, Result};
+use rosy_lib::RosyType;
 use std::collections::HashSet;
 
 /// AST node for the `ASIN(expr)` intrinsic function.
@@ -93,7 +93,7 @@ impl Transpile for AsinExpr {
 }
 impl TranspileableExpr for AsinExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        use crate::rosy_lib::intrinsics::asin;
+        use rosy_lib::intrinsics::asin;
 
         let inner_type = self
             .expr

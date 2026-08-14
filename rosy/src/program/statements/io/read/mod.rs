@@ -138,7 +138,7 @@ impl Transpile for ReadStatement {
                 return Err(errors); // Cannot continue without the type
             }
         };
-        if !crate::rosy_lib::intrinsics::from_st::can_be_obtained(&variable_type) {
+        if !rosy_lib::intrinsics::from_st::can_be_obtained(&variable_type) {
             errors.push(anyhow!(
                 "Cannot READ into variable '{}' of type {}!",
                 self.identifier.name,
@@ -152,7 +152,10 @@ impl Transpile for ReadStatement {
 
         // Transpile unit expression
         let unit_output = self.unit.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling unit expression in READ".to_string())
+            add_context_to_all(
+                e,
+                "...while transpiling unit expression in READ".to_string(),
+            )
         })?;
         requested_variables.extend(unit_output.requested_variables.iter().cloned());
 

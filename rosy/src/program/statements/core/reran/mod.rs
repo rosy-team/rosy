@@ -35,9 +35,9 @@ use crate::{
     program::expressions::core::variable_identifier::VariableIdentifier,
     program::statements::SourceLocation,
     resolve::{ExprRecipe, ResolutionRule, ScopeContext, TypeResolver},
-    rosy_lib::RosyType,
     transpile::*,
 };
+use rosy_lib::RosyType;
 
 #[derive(Debug)]
 pub struct ReranStatement {

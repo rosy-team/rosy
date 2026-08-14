@@ -37,12 +37,12 @@
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::RosyType;
 use crate::transpile::{
-    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput,
-    Transpile, TranspileableExpr, ValueKind,
+    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
+    TranspileableExpr, ValueKind,
 };
 use anyhow::{Context as AnyhowContext, Error, Result};
+use rosy_lib::RosyType;
 use std::collections::HashSet;
 
 /// AST node for the `SQR(expr)` intrinsic function (square root).
@@ -96,7 +96,7 @@ impl Transpile for SqrExpr {
 }
 impl TranspileableExpr for SqrExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        use crate::rosy_lib::intrinsics::sqr;
+        use rosy_lib::intrinsics::sqr;
 
         // Get the type of the inner expression
         let inner_type = self

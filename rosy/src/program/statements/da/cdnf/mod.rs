@@ -93,21 +93,42 @@ impl FromRule for CdnfStatement {
             .ok_or_else(|| anyhow::anyhow!("Expected result expression in CDNF"))?;
 
         Ok(Some(CdnfStatement {
-            input, tune1, tune2, tune3, resonances, res_dims, n_res, result,
+            input,
+            tune1,
+            tune2,
+            tune3,
+            resonances,
+            res_dims,
+            n_res,
+            result,
         }))
     }
 }
 
 impl TranspileableStatement for CdnfStatement {
     fn register_typeslot_declaration(
-        &self, _resolver: &mut TypeResolver, _ctx: &mut ScopeContext, _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult { TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl }
+        &self,
+        _resolver: &mut TypeResolver,
+        _ctx: &mut ScopeContext,
+        _source_location: SourceLocation,
+    ) -> TypeslotDeclarationResult {
+        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
+    }
     fn wire_inference_edges(
-        &self, _resolver: &mut TypeResolver, _ctx: &mut ScopeContext, _source_location: SourceLocation,
-    ) -> InferenceEdgeResult { InferenceEdgeResult::NoEdges }
+        &self,
+        _resolver: &mut TypeResolver,
+        _ctx: &mut ScopeContext,
+        _source_location: SourceLocation,
+    ) -> InferenceEdgeResult {
+        InferenceEdgeResult::NoEdges
+    }
     fn hydrate_resolved_types(
-        &mut self, _resolver: &TypeResolver, _current_scope: &[String],
-    ) -> TypeHydrationResult { TypeHydrationResult::NothingToHydrate }
+        &mut self,
+        _resolver: &TypeResolver,
+        _current_scope: &[String],
+    ) -> TypeHydrationResult {
+        TypeHydrationResult::NothingToHydrate
+    }
 }
 
 impl Transpile for CdnfStatement {
@@ -117,24 +138,28 @@ impl Transpile for CdnfStatement {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let mut requested_variables = BTreeSet::new();
 
-        let input_output = self.input.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling input in CDNF".to_string())
-        })?;
+        let input_output = self
+            .input
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling input in CDNF".to_string()))?;
         requested_variables.extend(input_output.requested_variables.iter().cloned());
 
-        let t1_output = self.tune1.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling tune1 in CDNF".to_string())
-        })?;
+        let t1_output = self
+            .tune1
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling tune1 in CDNF".to_string()))?;
         requested_variables.extend(t1_output.requested_variables.iter().cloned());
 
-        let t2_output = self.tune2.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling tune2 in CDNF".to_string())
-        })?;
+        let t2_output = self
+            .tune2
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling tune2 in CDNF".to_string()))?;
         requested_variables.extend(t2_output.requested_variables.iter().cloned());
 
-        let t3_output = self.tune3.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling tune3 in CDNF".to_string())
-        })?;
+        let t3_output = self
+            .tune3
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling tune3 in CDNF".to_string()))?;
         requested_variables.extend(t3_output.requested_variables.iter().cloned());
 
         let res_output = self.resonances.transpile(context).map_err(|e| {
@@ -147,9 +172,10 @@ impl Transpile for CdnfStatement {
         })?;
         requested_variables.extend(dims_output.requested_variables.iter().cloned());
 
-        let nres_output = self.n_res.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling n_res in CDNF".to_string())
-        })?;
+        let nres_output = self
+            .n_res
+            .transpile(context)
+            .map_err(|e| add_context_to_all(e, "...while transpiling n_res in CDNF".to_string()))?;
         requested_variables.extend(nres_output.requested_variables.iter().cloned());
 
         let result_output = self.result.transpile(context).map_err(|e| {
@@ -157,8 +183,7 @@ impl Transpile for CdnfStatement {
         })?;
         requested_variables.extend(result_output.requested_variables.iter().cloned());
 
-        let result_ref = result_output
-            .as_mut_ref();
+        let result_ref = result_output.as_mut_ref();
 
         let serialization = format!(
             "rosy_lib::core::da_ops::rosy_cdnf({}, {}, {}, {}, {}, {}, {} as usize, {})?;",

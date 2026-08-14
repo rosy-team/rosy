@@ -151,8 +151,7 @@ impl Transpile for DadmuStatement {
             var_i_output.as_value(),
             var_j_output.as_value(),
             da_in_output.as_ref(),
-            result_output
-                .as_mut_ref(),
+            result_output.as_mut_ref(),
         );
 
         Ok(TranspilationOutput {

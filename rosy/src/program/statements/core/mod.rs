@@ -39,13 +39,20 @@
 //! - **[`scrlen`]** — `SCRLEN c;` — scratch memory (no-op, COSY compat)
 //! - **[`pnpro`]** — `PNPRO var;` — number of concurrent processes
 
+pub mod argget;
 pub mod assign;
 pub mod r#break;
 pub mod function;
 pub mod function_call;
 pub mod r#if;
 pub mod imunit;
+pub mod lfalse;
 pub mod r#loop;
+pub mod ltrue;
+pub mod memall;
+pub mod memdpv;
+pub mod memfre;
+pub mod memwrt;
 pub mod ploop;
 pub mod pnpro;
 pub mod procedure;
@@ -55,16 +62,9 @@ pub mod ranseed;
 pub mod recst;
 pub mod reran;
 pub mod scrlen;
+pub mod sleepm;
 pub mod stcre;
 pub mod substr;
 pub mod var_decl;
 pub mod velset;
 pub mod while_loop;
-pub mod sleepm;
-pub mod argget;
-pub mod memdpv;
-pub mod memfre;
-pub mod memall;
-pub mod memwrt;
-pub mod ltrue;
-pub mod lfalse;

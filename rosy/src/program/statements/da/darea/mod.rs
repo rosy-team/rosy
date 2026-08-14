@@ -134,8 +134,7 @@ impl Transpile for DareaStatement {
         let serialization = format!(
             "rosy_lib::core::dapew::rosy_darea({} as u64, {}, {} as usize)?;",
             unit_output.as_value(),
-            da_var_output
-                .as_mut_ref(),
+            da_var_output.as_mut_ref(),
             num_vars_output.as_value(),
         );
 

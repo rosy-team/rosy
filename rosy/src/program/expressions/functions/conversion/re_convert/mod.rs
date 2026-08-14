@@ -38,10 +38,10 @@
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::RosyType;
 use crate::transpile::{ExprFunctionCallResult, TranspileableExpr};
 use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, ValueKind};
 use anyhow::{Context, Error, Result};
+use rosy_lib::RosyType;
 use std::collections::HashSet;
 
 /// AST node for the `RE(expr)` type conversion function.
@@ -74,10 +74,9 @@ impl TranspileableExpr for ReConvertExpr {
             .expr
             .type_of(context)
             .map_err(|e| e.context("...while determining type of expression for RE conversion"))?;
-        let result_type =
-            crate::rosy_lib::intrinsics::re_convert::get_return_type(&expr_type).ok_or(
-                anyhow::anyhow!("Cannot convert type '{}' to 'RE'!", expr_type),
-            )?;
+        let result_type = rosy_lib::intrinsics::re_convert::get_return_type(&expr_type).ok_or(
+            anyhow::anyhow!("Cannot convert type '{}' to 'RE'!", expr_type),
+        )?;
         Ok(result_type)
     }
     fn discover_expr_function_calls(

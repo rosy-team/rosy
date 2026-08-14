@@ -14,10 +14,10 @@
 //! | `LVE(x)` | Vector memory estimate |
 //! | `LDA(x)` | DA memory estimate |
 
-pub mod lst;
-pub mod lcm;
 pub mod lcd;
-pub mod lre;
-pub mod llo;
-pub mod lve;
+pub mod lcm;
 pub mod lda;
+pub mod llo;
+pub mod lre;
+pub mod lst;
+pub mod lve;

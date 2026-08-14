@@ -29,10 +29,10 @@
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::RosyType;
 use crate::transpile::{ExprFunctionCallResult, TranspileableExpr};
 use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, ValueKind};
 use anyhow::{Context, Error, Result};
+use rosy_lib::RosyType;
 use std::collections::HashSet;
 
 /// AST node for the `CM(expr)` type conversion function.
@@ -63,7 +63,7 @@ impl TranspileableExpr for ComplexConvertExpr {
         let expr_type = self.expr.type_of(context).map_err(|e| {
             e.context("...while determining type of expression for complex conversion")
         })?;
-        let result_type = crate::rosy_lib::intrinsics::cm::get_return_type(&expr_type).ok_or(
+        let result_type = rosy_lib::intrinsics::cm::get_return_type(&expr_type).ok_or(
             anyhow::anyhow!("Cannot convert type '{}' to 'CM'!", expr_type),
         )?;
         Ok(result_type)

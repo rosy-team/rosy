@@ -27,16 +27,16 @@
 //! ```
 
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::RosyType;
 use crate::{
     ast::{FromRule, Rule},
     program::expressions::Expr,
     transpile::{
-        ExprFunctionCallResult, TranspilationInputContext,
-        TranspilationOutput, Transpile, TranspileableExpr, ValueKind,
+        ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
+        TranspileableExpr, ValueKind,
     },
 };
 use anyhow::{Context, Error};
+use rosy_lib::RosyType;
 use std::collections::HashSet;
 
 /// AST node for the `DA(n)` constructor expression.

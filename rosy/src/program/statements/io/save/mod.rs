@@ -56,7 +56,9 @@ impl FromRule for SaveStatement {
 
         let mut inner = pair.into_inner();
 
-        let filename_pair = inner.next().context("Missing filename expression in SAVE!")?;
+        let filename_pair = inner
+            .next()
+            .context("Missing filename expression in SAVE!")?;
         let filename_expr = Expr::from_rule(filename_pair)
             .context("Failed to build filename expression in SAVE")?
             .ok_or_else(|| anyhow::anyhow!("Expected filename expression in SAVE"))?;

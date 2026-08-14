@@ -16,11 +16,11 @@ use crate::errors::RosyError;
 use crate::program::Program;
 use crate::program::expressions::*;
 use crate::program::statements::*;
-use crate::rosy_lib::RosyType;
 use crate::transpile::{
     ExprFunctionCallResult, InferenceEdgeResult, TypeHydrationResult, TypeslotDeclarationResult,
 };
 use anyhow::{Result, anyhow};
+use rosy_lib::RosyType;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 // ─── Type Slot ──────────────────────────────────────────────────────────────
@@ -428,10 +428,7 @@ impl TypeResolver {
                     let node = self.nodes.get(&slot);
                     node.map_or(false, |n| {
                         matches!(n.rule, ResolutionRule::Unresolved)
-                            && matches!(
-                                n.slot,
-                                TypeSlot::Variable(..) | TypeSlot::Argument(..)
-                            )
+                            && matches!(n.slot, TypeSlot::Variable(..) | TypeSlot::Argument(..))
                     })
                 };
 
@@ -733,16 +730,14 @@ impl TypeResolver {
                 let dim_peel = remaining.min(base.dimensions);
                 let new_dim = base.dimensions - dim_peel;
                 remaining -= dim_peel;
-                if remaining == 1
-                    && new_dim == 0
-                    && base.base_type == crate::rosy_lib::RosyBaseType::VE
-                {
+                if remaining == 1 && new_dim == 0 && base.base_type == rosy_lib::RosyBaseType::VE {
                     return Ok(RosyType::RE());
                 }
                 if remaining > 0 {
                     return Err(anyhow!(
                         "IndexedVariable: too many indices ({} for {} dims)",
-                        num_indices, base.dimensions
+                        num_indices,
+                        base.dimensions
                     ));
                 }
                 Ok(RosyType::new(base.base_type, new_dim))
@@ -757,21 +752,20 @@ impl TypeResolver {
                 let right_type = self.evaluate_recipe(right)?;
                 let result = match op {
                     BinaryOpKind::Add => {
-                        crate::rosy_lib::operators::add::get_return_type(&left_type, &right_type)
+                        rosy_lib::operators::add::get_return_type(&left_type, &right_type)
                     }
                     BinaryOpKind::Sub => {
-                        crate::rosy_lib::operators::sub::get_return_type(&left_type, &right_type)
+                        rosy_lib::operators::sub::get_return_type(&left_type, &right_type)
                     }
                     BinaryOpKind::Mult => {
-                        crate::rosy_lib::operators::mult::get_return_type(&left_type, &right_type)
+                        rosy_lib::operators::mult::get_return_type(&left_type, &right_type)
                     }
                     BinaryOpKind::Div => {
-                        crate::rosy_lib::operators::div::get_return_type(&left_type, &right_type)
+                        rosy_lib::operators::div::get_return_type(&left_type, &right_type)
                     }
-                    BinaryOpKind::Extract => crate::rosy_lib::operators::extract::get_return_type(
-                        &left_type,
-                        &right_type,
-                    ),
+                    BinaryOpKind::Extract => {
+                        rosy_lib::operators::extract::get_return_type(&left_type, &right_type)
+                    }
                     BinaryOpKind::Derive => {
                         // Derive preserves the object type: DA%RE -> DA, CD%RE -> CD
                         match left_type {
@@ -781,7 +775,7 @@ impl TypeResolver {
                         }
                     }
                     BinaryOpKind::Pow => {
-                        crate::rosy_lib::operators::pow::get_return_type(&left_type, &right_type)
+                        rosy_lib::operators::pow::get_return_type(&left_type, &right_type)
                     }
                 };
                 result.ok_or_else(|| {
@@ -796,22 +790,24 @@ impl TypeResolver {
             ExprRecipe::Concat(left, right) => {
                 let left_type = self.evaluate_recipe(left)?;
                 let right_type = self.evaluate_recipe(right)?;
-                crate::rosy_lib::operators::concat::get_return_type(&left_type, &right_type)
+                rosy_lib::operators::concat::get_return_type(&left_type, &right_type)
                     .ok_or_else(|| anyhow!("No concat rule for {} & {}", left_type, right_type))
             }
             ExprRecipe::TypePreserving(inner) => self.evaluate_recipe(inner),
             ExprRecipe::RealFn(inner) => {
                 let input_type = self.evaluate_recipe(inner)?;
-                crate::rosy_lib::intrinsics::real_fn::get_return_type(&input_type)
+                rosy_lib::intrinsics::real_fn::get_return_type(&input_type)
                     .ok_or_else(|| anyhow!("No REAL rule for {}", input_type))
             }
             ExprRecipe::ImagFn(inner) => {
                 let input_type = self.evaluate_recipe(inner)?;
-                crate::rosy_lib::intrinsics::imag_fn::get_return_type(&input_type)
+                rosy_lib::intrinsics::imag_fn::get_return_type(&input_type)
                     .ok_or_else(|| anyhow!("No IMAG rule for {}", input_type))
             }
             ExprRecipe::Unknown(reason) => {
-                let detail = reason.as_deref().unwrap_or("expression type could not be determined statically");
+                let detail = reason
+                    .as_deref()
+                    .unwrap_or("expression type could not be determined statically");
                 Err(anyhow!("{}", detail))
             }
         }

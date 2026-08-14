@@ -40,9 +40,9 @@ use crate::{
         statements::{SourceLocation, Statement},
     },
     resolve::*,
-    rosy_lib::RosyType,
     transpile::*,
 };
+use rosy_lib::RosyType;
 
 /// AST node for the counted `LOOP i start end [step]; ... ENDLOOP;` statement.
 #[derive(Debug)]

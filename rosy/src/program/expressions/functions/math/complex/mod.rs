@@ -9,5 +9,5 @@
 
 pub mod cmplx;
 pub mod conj;
-pub mod real_fn;
 pub mod imag_fn;
+pub mod real_fn;

@@ -28,13 +28,11 @@
 //! All AST nodes implement [`FromRule`] to construct themselves from a pest
 //! parse pair.
 
-use crate::{
-    program::expressions::Expr,
-    rosy_lib::{RosyBaseType, RosyType},
-};
+use crate::program::expressions::Expr;
 use anyhow::{Context, Result, ensure};
 use pest::pratt_parser::PrattParser;
 use pest_derive::Parser;
+use rosy_lib::{RosyBaseType, RosyType};
 
 #[derive(Parser)]
 #[grammar = "../assets/rosy.pest"]
@@ -42,8 +40,8 @@ pub struct CosyParser;
 
 // Create a static PrattParser for expressions
 pub static PRATT_PARSER: std::sync::LazyLock<PrattParser<Rule>> = std::sync::LazyLock::new(|| {
-    use pest::pratt_parser::{Assoc::*, Op};
     use Rule::*;
+    use pest::pratt_parser::{Assoc::*, Op};
 
     // Precedence is defined from lowest to highest priority
     // Following COSY INFINITY priorities:
@@ -58,8 +56,13 @@ pub static PRATT_PARSER: std::sync::LazyLock<PrattParser<Rule>> = std::sync::Laz
         // Priority 1: logical AND (binds tighter than OR)
         .op(Op::infix(and_op, Left))
         // Priority 2: concatenation, equality, not-equals, comparisons
-        .op(Op::infix(concat, Left) | Op::infix(eq, Left) | Op::infix(neq, Left)
-            | Op::infix(lt, Left) | Op::infix(gt, Left) | Op::infix(lte, Left) | Op::infix(gte, Left))
+        .op(Op::infix(concat, Left)
+            | Op::infix(eq, Left)
+            | Op::infix(neq, Left)
+            | Op::infix(lt, Left)
+            | Op::infix(gt, Left)
+            | Op::infix(lte, Left)
+            | Op::infix(gte, Left))
         // Priority 3: Addition and Subtraction
         .op(Op::infix(add, Left) | Op::infix(sub, Left))
         // Priority 4: Multiplication and Division
@@ -79,7 +82,7 @@ pub fn build_type(pair: pest::iterators::Pair<Rule>) -> Result<(RosyType, Vec<Ex
         pair.as_rule() == Rule::r#type,
         "Expected `type` rule when building type, found: {:?}",
         pair.as_rule()
-);
+    );
 
     let mut inner_pair = pair.into_inner();
     let type_str = inner_pair
@@ -103,4 +106,3 @@ pub fn build_type(pair: pest::iterators::Pair<Rule>) -> Result<(RosyType, Vec<Ex
 
     Ok((r#type, dimensions))
 }
-

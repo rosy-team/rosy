@@ -44,10 +44,10 @@ use std::collections::{BTreeSet, HashSet};
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{BinaryOpKind, ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::RosyType;
 use crate::transpile::{ExprFunctionCallResult, TranspileableExpr};
 use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, ValueKind};
 use anyhow::{Error, Result};
+use rosy_lib::RosyType;
 
 /// AST node for the extraction operator (`|`).
 #[derive(Debug)]
@@ -72,13 +72,14 @@ impl TranspileableExpr for ExtractExpr {
             e.context("...while determining type of index expression for extraction")
         })?;
 
-        let result_type =
-            crate::rosy_lib::operators::extract::get_return_type(&object_type, &index_type)
-            .ok_or_else(|| anyhow::anyhow!(
-                "Cannot extract from type '{}' using index of type '{}'!",
-                object_type,
-                index_type
-            ))?;
+        let result_type = rosy_lib::operators::extract::get_return_type(&object_type, &index_type)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Cannot extract from type '{}' using index of type '{}'!",
+                    object_type,
+                    index_type
+                )
+            })?;
 
         Ok(result_type)
     }

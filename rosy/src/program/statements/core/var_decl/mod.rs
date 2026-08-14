@@ -39,10 +39,10 @@ use crate::{
     ast::*,
     program::{expressions::Expr, statements::SourceLocation},
     resolve::{ScopeContext, TypeResolver, TypeSlot},
-    rosy_lib::{RosyBaseType, RosyType},
     syntax_config,
     transpile::*,
 };
+use rosy_lib::{RosyBaseType, RosyType};
 
 #[derive(Debug)]
 pub struct VariableDeclarationData {

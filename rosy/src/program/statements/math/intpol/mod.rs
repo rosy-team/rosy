@@ -132,7 +132,10 @@ impl Transpile for IntpolStatement {
         requested_variables.extend(coeff_out.requested_variables.clone());
 
         let n_out = self.n_expr.transpile(context).map_err(|e| {
-            add_context_to_all(e, "...while transpiling order expression in INTPOL".to_string())
+            add_context_to_all(
+                e,
+                "...while transpiling order expression in INTPOL".to_string(),
+            )
         })?;
         requested_variables.extend(n_out.requested_variables.iter().cloned());
 

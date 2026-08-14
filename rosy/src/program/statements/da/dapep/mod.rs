@@ -148,8 +148,7 @@ impl Transpile for DapepStatement {
             da_var_output.as_ref(),
             id_output.as_value(),
             m_output.as_value(),
-            result_output
-                .as_mut_ref(),
+            result_output.as_mut_ref(),
         );
 
         Ok(TranspilationOutput {

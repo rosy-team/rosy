@@ -137,8 +137,7 @@ impl Transpile for DadiuStatement {
             "rosy_lib::core::daprv::rosy_dadiu({} as usize, {}, {})?;",
             var_idx_output.as_value(),
             da_in_output.as_ref(),
-            result_output
-                .as_mut_ref(),
+            result_output.as_mut_ref(),
         );
 
         Ok(TranspilationOutput {

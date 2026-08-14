@@ -16,20 +16,20 @@
 //! - **[`velget`]** — `VELGET unit var;` — read a vector from a file
 //! - **[`save`]** — `SAVE name;` — save compiled code (no-op, COSY compat)
 
+pub mod backf;
 pub mod closef;
 pub mod cpusec;
 pub mod openf;
 pub mod openfb;
 pub mod os_call;
+pub mod pwtime;
 pub mod read;
 pub mod readb;
+pub mod readm;
+pub mod reads;
+pub mod rewf;
+pub mod save;
 pub mod velget;
-pub mod pwtime;
 pub mod write;
 pub mod writeb;
-pub mod readm;
 pub mod writem;
-pub mod rewf;
-pub mod backf;
-pub mod reads;
-pub mod save;

@@ -46,9 +46,9 @@ use crate::{
         statements::{SourceLocation, Statement},
     },
     resolve::*,
-    rosy_lib::RosyType,
     transpile::*,
 };
+use rosy_lib::RosyType;
 
 /// AST node for the `IF ... [ELSEIF ...] [ELSE] ENDIF;` statement.
 #[derive(Debug)]

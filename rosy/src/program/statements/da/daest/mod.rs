@@ -148,8 +148,7 @@ impl Transpile for DaestStatement {
             da_var_output.as_ref(),
             i_output.as_value(),
             j_output.as_value(),
-            result_output
-                .as_mut_ref(),
+            result_output.as_mut_ref(),
         );
 
         Ok(TranspilationOutput {

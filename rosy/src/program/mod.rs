@@ -232,9 +232,8 @@ impl Program {
             );
         }
 
-        let included_source = std::fs::read_to_string(&canonical).with_context(|| {
-            format!("Failed to read included file '{}'", canonical.display())
-        })?;
+        let included_source = std::fs::read_to_string(&canonical)
+            .with_context(|| format!("Failed to read included file '{}'", canonical.display()))?;
 
         let mut pairs = CosyParser::parse(Rule::program, &included_source)
             .with_context(|| format!("Failed to parse included file '{}'", canonical.display()))?;
@@ -386,13 +385,9 @@ impl Program {
     fn fetch_github_release(owner_repo: &str, version: &str, dest: &Path) -> Result<()> {
         use std::io::Read;
 
-        let url = format!(
-            "https://github.com/{owner_repo}/archive/refs/tags/{version}.tar.gz"
-        );
+        let url = format!("https://github.com/{owner_repo}/archive/refs/tags/{version}.tar.gz");
 
-        eprintln!(
-            "\x1b[1m\x1b[92m  Downloading\x1b[0m {url}"
-        );
+        eprintln!("\x1b[1m\x1b[92m  Downloading\x1b[0m {url}");
 
         let agent = ureq::Agent::new_with_config(
             ureq::config::Config::builder()
@@ -428,15 +423,16 @@ impl Program {
             format!("Failed to create extraction directory '{}'", dest.display())
         })?;
 
-        for entry in archive.entries().with_context(|| {
-            format!("Failed to read entries from tarball '{url}'")
-        })? {
-            let mut entry = entry.with_context(|| {
-                format!("Corrupt tar entry in tarball '{url}'")
-            })?;
-            let entry_path = entry.path().with_context(|| {
-                format!("Tar entry has invalid path in '{url}'")
-            })?.into_owned();
+        for entry in archive
+            .entries()
+            .with_context(|| format!("Failed to read entries from tarball '{url}'"))?
+        {
+            let mut entry =
+                entry.with_context(|| format!("Corrupt tar entry in tarball '{url}'"))?;
+            let entry_path = entry
+                .path()
+                .with_context(|| format!("Tar entry has invalid path in '{url}'"))?
+                .into_owned();
 
             // Strip the leading dir component (e.g. "repo-1.0.0/").
             let stripped: PathBuf = entry_path.components().skip(1).collect();
@@ -445,13 +441,12 @@ impl Program {
             }
             let target = dest.join(stripped);
             if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent).with_context(|| {
-                    format!("Failed to create '{}'", parent.display())
-                })?;
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("Failed to create '{}'", parent.display()))?;
             }
-            entry.unpack(&target).with_context(|| {
-                format!("Failed to write '{}'", target.display())
-            })?;
+            entry
+                .unpack(&target)
+                .with_context(|| format!("Failed to write '{}'", target.display()))?;
         }
 
         Ok(())
@@ -514,11 +509,15 @@ impl Program {
         // string = { new_string | old_string }
         // new_string = @{ "\"" ~ ... ~ "\"" }
         // old_string = @{ "\'" ~ ... ~ "\'" }
-        let string_pair = pair.clone().into_inner()
+        let string_pair = pair
+            .clone()
+            .into_inner()
             .find(|p| p.as_rule() == Rule::string)
             .ok_or_else(|| anyhow::anyhow!("INCLUDE statement missing path string"))?;
 
-        let inner = string_pair.into_inner().next()
+        let inner = string_pair
+            .into_inner()
+            .next()
             .ok_or_else(|| anyhow::anyhow!("INCLUDE path string is empty"))?;
 
         let raw = inner.as_str();
@@ -544,9 +543,7 @@ mod include_resolution_tests {
     fn parse_and_resolve(source: &str, source_path: &Path) -> Result<Program> {
         let mut pairs = CosyParser::parse(Rule::program, source)
             .map_err(|e| anyhow::anyhow!("parse error: {e}"))?;
-        let pair = pairs
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("empty parse"))?;
+        let pair = pairs.next().ok_or_else(|| anyhow::anyhow!("empty parse"))?;
         Program::from_rule_with_includes(pair, Some(source_path), &mut IncludeTracker::default())?
             .ok_or_else(|| anyhow::anyhow!("from_rule_with_includes returned None"))
     }
@@ -565,7 +562,11 @@ mod include_resolution_tests {
     fn include_resolves_literal_file() {
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "helper.rosy", "BEGIN;\nEND;\n");
-        let main = write(tmp.path(), "main.rosy", "BEGIN;\nINCLUDE 'helper.rosy';\nEND;\n");
+        let main = write(
+            tmp.path(),
+            "main.rosy",
+            "BEGIN;\nINCLUDE 'helper.rosy';\nEND;\n",
+        );
         let src = fs::read_to_string(&main).unwrap();
         parse_and_resolve(&src, &main).expect("literal-file include should succeed");
     }
@@ -575,7 +576,11 @@ mod include_resolution_tests {
     fn include_resolves_directory_with_modrosy() {
         let tmp = TempDir::new().unwrap();
         write(tmp.path(), "libcosy/mod.rosy", "BEGIN;\nEND;\n");
-        let main = write(tmp.path(), "main.rosy", "BEGIN;\nINCLUDE 'libcosy';\nEND;\n");
+        let main = write(
+            tmp.path(),
+            "main.rosy",
+            "BEGIN;\nINCLUDE 'libcosy';\nEND;\n",
+        );
         let src = fs::read_to_string(&main).unwrap();
         parse_and_resolve(&src, &main).expect("directory include should resolve to mod.rosy");
     }
@@ -585,7 +590,11 @@ mod include_resolution_tests {
     fn include_directory_without_modrosy_errors() {
         let tmp = TempDir::new().unwrap();
         fs::create_dir_all(tmp.path().join("libcosy")).unwrap();
-        let main = write(tmp.path(), "main.rosy", "BEGIN;\nINCLUDE 'libcosy';\nEND;\n");
+        let main = write(
+            tmp.path(),
+            "main.rosy",
+            "BEGIN;\nINCLUDE 'libcosy';\nEND;\n",
+        );
         let src = fs::read_to_string(&main).unwrap();
         let err = parse_and_resolve(&src, &main).unwrap_err();
         let chain: Vec<String> = err.chain().map(|e| e.to_string()).collect();
@@ -603,7 +612,11 @@ mod include_resolution_tests {
         let main = write(tmp.path(), "main.rosy", "BEGIN;\nINCLUDE 'nope';\nEND;\n");
         let src = fs::read_to_string(&main).unwrap();
         let err = parse_and_resolve(&src, &main).unwrap_err();
-        let joined: String = err.chain().map(|e| e.to_string()).collect::<Vec<_>>().join(" :: ");
+        let joined: String = err
+            .chain()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join(" :: ");
         assert!(
             joined.contains("nope"),
             "error should mention the missing 'nope': {joined}"
@@ -625,7 +638,11 @@ mod include_resolution_tests {
             "libcosy/mod.rosy",
             "BEGIN;\nINCLUDE 'physics';\nEND;\n",
         );
-        let main = write(tmp.path(), "main.rosy", "BEGIN;\nINCLUDE 'libcosy';\nEND;\n");
+        let main = write(
+            tmp.path(),
+            "main.rosy",
+            "BEGIN;\nINCLUDE 'libcosy';\nEND;\n",
+        );
         let src = fs::read_to_string(&main).unwrap();
         parse_and_resolve(&src, &main)
             .expect("nested directory include should resolve transitively");
@@ -640,10 +657,22 @@ mod include_resolution_tests {
         let tmp = TempDir::new().unwrap();
         // header.rosy declares a single global; it must NOT be redeclared
         // when reached via two different INCLUDE chains.
-        write(tmp.path(), "header.rosy", "BEGIN;\nVARIABLE (RE) SHARED;\nEND;\n");
+        write(
+            tmp.path(),
+            "header.rosy",
+            "BEGIN;\nVARIABLE (RE) SHARED;\nEND;\n",
+        );
         // a.rosy and b.rosy both include header.rosy …
-        write(tmp.path(), "a.rosy", "BEGIN;\nINCLUDE 'header.rosy';\nEND;\n");
-        write(tmp.path(), "b.rosy", "BEGIN;\nINCLUDE 'header.rosy';\nEND;\n");
+        write(
+            tmp.path(),
+            "a.rosy",
+            "BEGIN;\nINCLUDE 'header.rosy';\nEND;\n",
+        );
+        write(
+            tmp.path(),
+            "b.rosy",
+            "BEGIN;\nINCLUDE 'header.rosy';\nEND;\n",
+        );
         // … and main.rosy includes both, so header.rosy would otherwise be
         // spliced twice → "VARIABLE 'SHARED' already defined".
         let main = write(
@@ -669,20 +698,16 @@ mod include_resolution_tests {
     #[test]
     fn include_circular_through_directories() {
         let tmp = TempDir::new().unwrap();
-        write(
-            tmp.path(),
-            "a/mod.rosy",
-            "BEGIN;\nINCLUDE '../b';\nEND;\n",
-        );
-        write(
-            tmp.path(),
-            "b/mod.rosy",
-            "BEGIN;\nINCLUDE '../a';\nEND;\n",
-        );
+        write(tmp.path(), "a/mod.rosy", "BEGIN;\nINCLUDE '../b';\nEND;\n");
+        write(tmp.path(), "b/mod.rosy", "BEGIN;\nINCLUDE '../a';\nEND;\n");
         let main = write(tmp.path(), "main.rosy", "BEGIN;\nINCLUDE 'a';\nEND;\n");
         let src = fs::read_to_string(&main).unwrap();
         let err = parse_and_resolve(&src, &main).unwrap_err();
-        let joined: String = err.chain().map(|e| e.to_string()).collect::<Vec<_>>().join(" :: ");
+        let joined: String = err
+            .chain()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join(" :: ");
         assert!(
             joined.contains("Circular INCLUDE"),
             "error chain should report circular INCLUDE: {joined}"

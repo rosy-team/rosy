@@ -1,4 +1,3 @@
-#![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
 //! # Rosy
 //!
 #![doc = concat!("**Version:** `v", env!("CARGO_PKG_VERSION"), "` — Built `", env!("BUILD_TIMESTAMP"), "` — [Changelog](https://github.com/rosy-team/rosy/releases)")]
@@ -9,6 +8,7 @@
 //!
 //! ## Language Reference
 //! The official Rosy language reference begins in the [`program`] module.
+//! Runtime types and DA live in the sibling `rosy_lib` crate.
 //!
 //! ## More Resources
 //! - **[Example programs](https://github.com/rosy-team/rosy/tree/master/examples)** on GitHub
@@ -21,7 +21,5 @@ pub mod lsp;
 pub mod manifest;
 pub mod program;
 pub mod resolve;
-#[allow(unused_imports, dead_code)]
-pub mod rosy_lib;
 pub mod syntax_config;
 pub mod transpile;

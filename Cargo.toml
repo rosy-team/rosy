@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "rosy",
+    "rosy-lib",
 ]
 exclude = [ ".rosy_output", ".rosy_test_cache" ]
 

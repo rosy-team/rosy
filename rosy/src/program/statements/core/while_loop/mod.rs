@@ -36,9 +36,9 @@ use crate::{
         statements::{SourceLocation, Statement},
     },
     resolve::{ScopeContext, TypeResolver},
-    rosy_lib::RosyType,
     transpile::*,
 };
+use rosy_lib::RosyType;
 
 #[derive(Debug)]
 pub struct WhileStatement {

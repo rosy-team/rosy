@@ -6,11 +6,11 @@
 //! rosy transpiler installation.
 //!
 //! The `rosy_lib` source files are embedded into the transpiler binary at
-//! compile time via `include_str!()` (see `build.rs`). At transpilation time,
-//! they are extracted and path-rewritten (`crate::rosy_lib::` → `crate::`).
+//! compile time via `include_str!()` (see `build.rs`) and extracted into
+//! generated projects as a self-contained vendored crate.
 
-use std::path::Path;
 use anyhow::{Context, Result};
+use std::path::Path;
 
 // Include the auto-generated embedded rosy_lib files
 include!(concat!(env!("OUT_DIR"), "/embedded_rosy_lib.rs"));
@@ -23,30 +23,14 @@ fn write_vendored_lib(output_dir: &Path) -> Result<()> {
     let lib_dir = output_dir.join("vendored/rosy_lib");
 
     for embedded_file in ROSY_LIB_FILES {
-        // Determine the target path - rename mod.rs to lib.rs, put everything else in src/
-        let target_path = if embedded_file.path == "mod.rs" {
-            lib_dir.join("src/lib.rs")
-        } else {
-            lib_dir.join("src").join(embedded_file.path)
-        };
+        let target_path = lib_dir.join("src").join(embedded_file.path);
 
-        // Create parent directories
         if let Some(parent) = target_path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
         }
 
-        // Transform the content: replace crate::rosy_lib:: with crate::
-        // since when vendored, this IS the rosy_lib crate
-        let mut transformed_content = embedded_file.content.replace("crate::rosy_lib::", "crate::");
-
-        // Add warning suppressions and feature gates to the lib.rs file
-        if embedded_file.path == "mod.rs" {
-            transformed_content = format!("#![cfg_attr(feature = \"nightly-simd\", feature(portable_simd))]\n#![allow(unused_imports)]\n#![allow(dead_code)]\n\n{}", transformed_content);
-        }
-
-        // Write the file content
-        std::fs::write(&target_path, transformed_content)
+        std::fs::write(&target_path, embedded_file.content)
             .with_context(|| format!("Failed to write file: {}", target_path.display()))?;
     }
 
@@ -82,13 +66,20 @@ libc = "0.2"
 /// Generates a Cargo.toml for the output project
 fn generate_cargo_toml(uses_mpi: bool, optimized: bool) -> String {
     let mut features = Vec::new();
-    if uses_mpi { features.push("\"mpi\""); }
-    if optimized { features.push("\"nightly-simd\""); }
+    if uses_mpi {
+        features.push("\"mpi\"");
+    }
+    if optimized {
+        features.push("\"nightly-simd\"");
+    }
 
     let mpi_dep = if features.is_empty() {
         "rosy_lib = { path = \"./vendored/rosy_lib\" }".to_string()
     } else {
-        format!("rosy_lib = {{ path = \"./vendored/rosy_lib\", features = [{}] }}", features.join(", "))
+        format!(
+            "rosy_lib = {{ path = \"./vendored/rosy_lib\", features = [{}] }}",
+            features.join(", ")
+        )
     };
 
     let profile_section = if optimized {
@@ -111,12 +102,14 @@ pub fn create_output_project(output_dir: &Path, uses_mpi: bool, optimized: bool)
         .context("Failed to create output directory structure")?;
 
     // Write vendored rosy_lib
-    write_vendored_lib(output_dir)
-        .context("Failed to write vendored rosy_lib")?;
+    write_vendored_lib(output_dir).context("Failed to write vendored rosy_lib")?;
 
     // Write Cargo.toml
-    std::fs::write(output_dir.join("Cargo.toml"), generate_cargo_toml(uses_mpi, optimized))
-        .context("Failed to write Cargo.toml template")?;
+    std::fs::write(
+        output_dir.join("Cargo.toml"),
+        generate_cargo_toml(uses_mpi, optimized),
+    )
+    .context("Failed to write Cargo.toml template")?;
 
     // Write main.rs template
     std::fs::write(output_dir.join("src/main.rs"), MAIN_RS_TEMPLATE)
@@ -174,8 +167,6 @@ pub fn inject_code(transpiled_code: &str, uses_mpi: bool) -> Result<String> {
 
     Ok(format!(
         "{}// <INJECT_START>\n{}\n\t// <INJECT_END>{}",
-        before_inject,
-        indented_code,
-        after_inject
+        before_inject, indented_code, after_inject
     ))
 }

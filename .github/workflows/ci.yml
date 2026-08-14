@@ -61,7 +61,7 @@ jobs:
         run: cargo check --workspace
 
       - name: Build docs
-        run: cargo doc --document-private-items --no-deps -p rosy
+        run: cargo doc --document-private-items --no-deps -p rosy -p rosy_lib
         env:
           RUSTDOCFLAGS: "-D rustdoc::invalid-html-tags"
 

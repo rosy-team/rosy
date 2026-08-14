@@ -31,7 +31,8 @@
 use anyhow::{Context, Error, Result, anyhow, ensure};
 use std::collections::BTreeSet;
 
-use crate::{ast::*, program::statements::*, resolve::*, rosy_lib::RosyType, transpile::*};
+use crate::{ast::*, program::statements::*, resolve::*, transpile::*};
+use rosy_lib::RosyType;
 
 /// AST node for a user-defined function declaration.
 #[derive(Debug)]

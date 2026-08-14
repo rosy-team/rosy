@@ -104,8 +104,7 @@ impl Transpile for DasgnStatement {
             add_context_to_all(e, "...while transpiling da_var in DASGN".to_string())
         })?;
 
-        let da_mut = da_output
-            .as_mut_ref();
+        let da_mut = da_output.as_mut_ref();
 
         let serialization = format!("rosy_lib::core::da_ops::rosy_dasgn({})?;", da_mut,);
 

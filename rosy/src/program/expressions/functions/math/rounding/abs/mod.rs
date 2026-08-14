@@ -38,12 +38,12 @@
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::rosy_lib::RosyType;
 use crate::transpile::{
-    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput,
-    Transpile, TranspileableExpr, ValueKind,
+    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
+    TranspileableExpr, ValueKind,
 };
 use anyhow::{Context as AnyhowContext, Error, Result};
+use rosy_lib::RosyType;
 use std::collections::HashSet;
 
 /// AST node for the `ABS(expr)` intrinsic function (absolute value).
@@ -95,7 +95,7 @@ impl Transpile for AbsExpr {
 }
 impl TranspileableExpr for AbsExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        use crate::rosy_lib::intrinsics::abs;
+        use rosy_lib::intrinsics::abs;
 
         let inner_type = self
             .expr

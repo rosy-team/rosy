@@ -14,12 +14,12 @@
 //!
 //! See each function's page for supported type combinations.
 
-pub mod sin;
-pub mod cos;
-pub mod asin;
 pub mod acos;
+pub mod asin;
 pub mod atan;
-pub mod sinh;
+pub mod cos;
 pub mod cosh;
-pub mod tanh;
+pub mod sin;
+pub mod sinh;
 pub mod tan;
+pub mod tanh;

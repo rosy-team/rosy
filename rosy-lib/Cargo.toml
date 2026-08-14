@@ -1,0 +1,24 @@
+[package]
+name = "rosy_lib"
+version = "0.1.0"
+edition = "2024"
+description = "Rosy runtime library — types, operators, DA/CD, and intrinsics"
+
+[features]
+mpi = ["dep:mpi", "dep:bincode"]
+nightly-simd = []
+
+[dependencies]
+anyhow.workspace = true
+mpi = { version = "0.8", optional = true }
+bincode = { version = "2.0", optional = true }
+serial_test.workspace = true
+num-complex.workspace = true
+rustc-hash.workspace = true
+rand.workspace = true
+libm = "0.2"
+memory-stats = "1"
+libc.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("mpi", "nightly-simd"))'] }
