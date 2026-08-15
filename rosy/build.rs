@@ -567,42 +567,25 @@ fn generate_editor_configs(out_dir: &str, keywords: &[String]) {
 
 // ─── Tree-sitter Grammar Generation ──────────────────────────────────────────
 
-/// Extract intrinsic function names from the `builtin_function` rule in the Pest grammar.
-/// These are the names that appear as `^"NAME" ~ "(" ~ expr ~ ")"` patterns.
+/// Extract intrinsic function names from the `intrinsic_name` rule in the Pest grammar.
 fn extract_intrinsic_functions(pest_source: &str) -> Vec<String> {
     let mut functions = Vec::new();
-
-    // Collect all rule names referenced in builtin_function
-    let mut builtin_rules: Vec<String> = Vec::new();
     for line in pest_source.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("builtin_function") {
-            if let Some(start) = trimmed.find('{') {
-                let body = &trimmed[start + 1..];
-                let body = body.trim_end_matches('}').trim();
-                for part in body.split('|') {
-                    let name = part.trim().trim_start_matches('_').trim();
-                    if !name.is_empty() {
-                        builtin_rules.push(name.to_string());
+        if trimmed.starts_with("intrinsic_name") {
+            for part in trimmed.split('|') {
+                if let Some(start) = part.find('"') {
+                    let rest = &part[start + 1..];
+                    if let Some(end) = rest.find('"') {
+                        let kw = rest[..end].to_uppercase();
+                        if !kw.is_empty() && kw.chars().all(|c| c.is_ascii_alphanumeric()) {
+                            functions.push(kw);
+                        }
                     }
                 }
             }
         }
     }
-
-    // For each builtin rule, extract the keyword from its definition
-    for line in pest_source.lines() {
-        let trimmed = line.trim();
-        if let Some((rule_name, rest)) = trimmed.split_once('=') {
-            let rule_name = rule_name.trim();
-            if builtin_rules.contains(&rule_name.to_string()) {
-                if let Some(kw) = extract_first_keyword(rest) {
-                    functions.push(kw.to_uppercase());
-                }
-            }
-        }
-    }
-
     functions.sort();
     functions.dedup();
     functions

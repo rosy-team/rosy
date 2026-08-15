@@ -106,3 +106,48 @@ pub fn build_type(pair: pest::iterators::Pair<Rule>) -> Result<(RosyType, Vec<Ex
 
     Ok((r#type, dimensions))
 }
+
+#[cfg(test)]
+mod intrinsic_name_sync {
+    fn pest_intrinsic_names() -> Vec<String> {
+        let pest = include_str!("../assets/rosy.pest");
+        let mut names = Vec::new();
+        for line in pest.lines() {
+            let trimmed = line.trim();
+            if !trimmed.starts_with("intrinsic_name") {
+                continue;
+            }
+            for part in trimmed.split('|') {
+                if let Some(start) = part.find('"') {
+                    let rest = &part[start + 1..];
+                    if let Some(end) = rest.find('"') {
+                        let kw = rest[..end].to_ascii_uppercase();
+                        if kw.chars().all(|c| c.is_ascii_alphanumeric()) {
+                            names.push(kw);
+                        }
+                    }
+                }
+            }
+        }
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    #[test]
+    fn pest_intrinsic_names_match_registry_plus_constructors() {
+        let mut expected: Vec<String> = rosy_lib::INTRINSICS
+            .iter()
+            .map(|i| i.name.to_string())
+            .collect();
+        expected.extend(["DA".into(), "CD".into()]);
+        expected.sort();
+        expected.dedup();
+
+        let pest = pest_intrinsic_names();
+        assert_eq!(
+            pest, expected,
+            "Update `intrinsic_name` in rosy.pest when changing rosy_lib::INTRINSICS"
+        );
+    }
+}

@@ -83,26 +83,52 @@ pub struct Expr {
     pub source_location: SourceLocation,
 }
 
-fn unary_intrinsic(
-    name: &'static str,
+fn dispatch_builtin_function(
     pair: pest::iterators::Pair<Rule>,
     loc: SourceLocation,
 ) -> Result<Expr> {
-    Ok(Expr {
-        inner: Box::new(IntrinsicCallExpr::from_unary_pair(name, pair)?),
-        source_location: loc,
-    })
-}
+    let mut inner = pair.into_inner();
+    let name_pair = inner
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("builtin_function missing name"))?;
+    let name = name_pair.as_str().trim().to_ascii_uppercase();
+    let mut args = Vec::new();
+    for arg_pair in inner {
+        let expr = Expr::from_rule(arg_pair)
+            .with_context(|| format!("Failed to parse argument of `{name}`"))?
+            .ok_or_else(|| anyhow::anyhow!("Expected argument expression for `{name}`"))?;
+        args.push(expr);
+    }
 
-fn binary_intrinsic(
-    name: &'static str,
-    pair: pest::iterators::Pair<Rule>,
-    loc: SourceLocation,
-) -> Result<Expr> {
-    Ok(Expr {
-        inner: Box::new(IntrinsicCallExpr::from_binary_pair(name, pair)?),
-        source_location: loc,
-    })
+    match name.as_str() {
+        "DA" => {
+            anyhow::ensure!(args.len() == 1, "`DA` expects 1 argument, got {}", args.len());
+            Ok(Expr {
+                inner: Box::new(DAExpr {
+                    index: Box::new(args.remove(0)),
+                }),
+                source_location: loc,
+            })
+        }
+        "CD" => {
+            anyhow::ensure!(args.len() == 1, "`CD` expects 1 argument, got {}", args.len());
+            Ok(Expr {
+                inner: Box::new(CDExpr {
+                    index: Box::new(args.remove(0)),
+                }),
+                source_location: loc,
+            })
+        }
+        _ => {
+            if rosy_lib::lookup_intrinsic(&name).is_none() {
+                bail!("Unknown intrinsic `{name}`");
+            }
+            Ok(Expr {
+                inner: Box::new(IntrinsicCallExpr { name, args }),
+                source_location: loc,
+            })
+        }
+    }
 }
 
 impl FromRule for Expr {
@@ -213,71 +239,7 @@ impl FromRule for Expr {
                             source_location: loc.clone(),
                         })
                     }
-                    Rule::cm => unary_intrinsic("CM", primary, loc.clone()),
-                    Rule::st => unary_intrinsic("ST", primary, loc.clone()),
-                    Rule::lo => unary_intrinsic("LO", primary, loc.clone()),
-                    Rule::da => {
-                        let da_expr = DAExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                da_expr.ok_or_else(|| anyhow::anyhow!("Expected DAExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::cd_intrinsic => {
-                        let cd_expr = CDExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                cd_expr.ok_or_else(|| anyhow::anyhow!("Expected CDExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::position => binary_intrinsic("POSITION", primary, loc.clone()),
-                    Rule::length => unary_intrinsic("LENGTH", primary, loc.clone()),
-                    Rule::sin => unary_intrinsic("SIN", primary, loc.clone()),
-                    Rule::cos_fn => unary_intrinsic("COS", primary, loc.clone()),
-                    Rule::tan_fn => unary_intrinsic("TAN", primary, loc.clone()),
-                    Rule::asin_fn => unary_intrinsic("ASIN", primary, loc.clone()),
-                    Rule::acos_fn => unary_intrinsic("ACOS", primary, loc.clone()),
-                    Rule::atan_fn => unary_intrinsic("ATAN", primary, loc.clone()),
-                    Rule::sinh_fn => unary_intrinsic("SINH", primary, loc.clone()),
-                    Rule::cosh_fn => unary_intrinsic("COSH", primary, loc.clone()),
-                    Rule::tanh_fn => unary_intrinsic("TANH", primary, loc.clone()),
-                    Rule::sqr => unary_intrinsic("SQR", primary, loc.clone()),
-                    Rule::sqrt_fn => unary_intrinsic("SQRT", primary, loc.clone()),
-                    Rule::exp_fn => unary_intrinsic("EXP", primary, loc.clone()),
-                    Rule::log_fn => unary_intrinsic("LOG", primary, loc.clone()),
-                    Rule::vmax => unary_intrinsic("VMAX", primary, loc.clone()),
-                    Rule::vmin => unary_intrinsic("VMIN", primary, loc.clone()),
-                    Rule::lst => unary_intrinsic("LST", primary, loc.clone()),
-                    Rule::lcm => unary_intrinsic("LCM", primary, loc.clone()),
-                    Rule::lcd => unary_intrinsic("LCD", primary, loc.clone()),
-                    Rule::lre => unary_intrinsic("LRE", primary, loc.clone()),
-                    Rule::llo => unary_intrinsic("LLO", primary, loc.clone()),
-                    Rule::lve => unary_intrinsic("LVE", primary, loc.clone()),
-                    Rule::lda => unary_intrinsic("LDA", primary, loc.clone()),
-                    Rule::abs_fn => unary_intrinsic("ABS", primary, loc.clone()),
-                    Rule::norm_fn => unary_intrinsic("NORM", primary, loc.clone()),
-                    Rule::cons_fn => unary_intrinsic("CONS", primary, loc.clone()),
-                    Rule::int_fn => unary_intrinsic("INT", primary, loc.clone()),
-                    Rule::nint_fn => unary_intrinsic("NINT", primary, loc.clone()),
-                    Rule::type_fn => unary_intrinsic("TYPE", primary, loc.clone()),
-                    Rule::trim_fn => unary_intrinsic("TRIM", primary, loc.clone()),
-                    Rule::ltrim_fn => unary_intrinsic("LTRIM", primary, loc.clone()),
-                    Rule::isrt_fn => unary_intrinsic("ISRT", primary, loc.clone()),
-                    Rule::isrt3_fn => unary_intrinsic("ISRT3", primary, loc.clone()),
-                    Rule::cmplx_fn => unary_intrinsic("CMPLX", primary, loc.clone()),
-                    Rule::conj_fn => unary_intrinsic("CONJ", primary, loc.clone()),
-                    Rule::real_fn => unary_intrinsic("REAL", primary, loc.clone()),
-                    Rule::imag_fn => unary_intrinsic("IMAG", primary, loc.clone()),
-                    Rule::re_fn => unary_intrinsic("RE", primary, loc.clone()),
-                    Rule::ve_fn => unary_intrinsic("VE", primary, loc.clone()),
-                    Rule::varmem => unary_intrinsic("VARMEM", primary, loc.clone()),
-                    Rule::varpoi => unary_intrinsic("VARPOI", primary, loc.clone()),
-                    Rule::erf_fn => unary_intrinsic("ERF", primary, loc.clone()),
-                    Rule::werf_fn => unary_intrinsic("WERF", primary, loc.clone()),
+                    Rule::builtin_function => dispatch_builtin_function(primary, loc.clone()),
                     Rule::expr => {
                         // handle parenthesized expressions by recursively parsing
                         Expr::from_rule(primary)
