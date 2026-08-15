@@ -57,7 +57,8 @@ impl FromRule for NotExpr {
 impl TranspileableExpr for NotExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
         let operand_type = self.operand.type_of(context)?;
-        rosy_lib::operators::not::get_return_type(&operand_type)
+        rosy_lib::UnaryOp::Not
+            .return_type(&operand_type)
             .ok_or_else(|| anyhow::anyhow!("Cannot apply NOT to type '{}'!", operand_type))
     }
     fn discover_expr_function_calls(
@@ -84,7 +85,7 @@ impl Transpile for NotExpr {
         context: &mut TranspilationInputContext,
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let operand_type = self.operand.type_of(context).map_err(|e| vec![e])?;
-        if rosy_lib::operators::not::get_return_type(&operand_type).is_none() {
+        if rosy_lib::UnaryOp::Not.return_type(&operand_type).is_none() {
             return Err(vec![anyhow!(
                 "Cannot apply NOT to type '{}'!",
                 operand_type

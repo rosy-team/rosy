@@ -60,7 +60,7 @@ impl FromRule for LogicalConvertExpr {
 impl TranspileableExpr for LogicalConvertExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
         let expr_type = self.expr.type_of(context)?;
-        rosy_lib::intrinsics::lo::get_return_type(&expr_type).ok_or(anyhow::anyhow!(
+        rosy_lib::unary_return_type("LO", &expr_type).ok_or(anyhow::anyhow!(
             "Cannot convert type '{expr_type}' to 'LO'!"
         ))
     }
@@ -89,7 +89,7 @@ impl Transpile for LogicalConvertExpr {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         // First, ensure the type is convertible to LO
         let expr_type = self.expr.type_of(context).map_err(|e| vec![e])?;
-        let _ = rosy_lib::intrinsics::lo::get_return_type(&expr_type).ok_or(vec![anyhow!(
+        let _ = rosy_lib::unary_return_type("LO", &expr_type).ok_or(vec![anyhow!(
             "Cannot convert type '{}' to 'LO'!",
             expr_type
         )])?;

@@ -72,9 +72,10 @@ impl TranspileableExpr for VeConvertExpr {
             .expr
             .type_of(context)
             .map_err(|e| e.context("...while determining type of expression for VE conversion"))?;
-        let result_type = rosy_lib::intrinsics::ve_convert::get_return_type(&expr_type).ok_or(
-            anyhow::anyhow!("Cannot convert type '{}' to 'VE'!", expr_type),
-        )?;
+        let result_type = rosy_lib::unary_return_type("VE", &expr_type).ok_or(anyhow::anyhow!(
+            "Cannot convert type '{}' to 'VE'!",
+            expr_type
+        ))?;
         Ok(result_type)
     }
     fn discover_expr_function_calls(

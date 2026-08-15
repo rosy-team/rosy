@@ -63,9 +63,10 @@ impl TranspileableExpr for ComplexConvertExpr {
         let expr_type = self.expr.type_of(context).map_err(|e| {
             e.context("...while determining type of expression for complex conversion")
         })?;
-        let result_type = rosy_lib::intrinsics::cm::get_return_type(&expr_type).ok_or(
-            anyhow::anyhow!("Cannot convert type '{}' to 'CM'!", expr_type),
-        )?;
+        let result_type = rosy_lib::unary_return_type("CM", &expr_type).ok_or(anyhow::anyhow!(
+            "Cannot convert type '{}' to 'CM'!",
+            expr_type
+        ))?;
         Ok(result_type)
     }
     fn discover_expr_function_calls(

@@ -65,7 +65,7 @@ impl FromRule for StringConvertExpr {
 impl TranspileableExpr for StringConvertExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
         let expr_type = self.expr.type_of(context)?;
-        rosy_lib::intrinsics::st::get_return_type(&expr_type).ok_or(anyhow::anyhow!(
+        rosy_lib::unary_return_type("ST", &expr_type).ok_or(anyhow::anyhow!(
             "Cannot convert type '{expr_type}' to 'ST'!"
         ))
     }
@@ -102,7 +102,7 @@ pub fn string_convert_transpile_helper(
 ) -> Result<TranspilationOutput, Vec<Error>> {
     // First, ensure the type is convertible to ST
     let expr_type = expr.type_of(context).map_err(|e| vec![e])?;
-    let _ = rosy_lib::intrinsics::st::get_return_type(&expr_type).ok_or(vec![anyhow!(
+    let _ = rosy_lib::unary_return_type("ST", &expr_type).ok_or(vec![anyhow!(
         "Cannot convert type '{}' to 'ST'!",
         expr_type
     )])?;

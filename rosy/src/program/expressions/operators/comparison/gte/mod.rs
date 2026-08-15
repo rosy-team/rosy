@@ -52,13 +52,15 @@ impl TranspileableExpr for GteExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
         let left_type = self.left.type_of(context)?;
         let right_type = self.right.type_of(context)?;
-        rosy_lib::operators::gte::get_return_type(&left_type, &right_type).ok_or_else(|| {
-            anyhow::anyhow!(
-                "Cannot compare types '{}' and '{}' with greater-than-or-equal!",
-                left_type,
-                right_type
-            )
-        })
+        rosy_lib::BinaryOp::Gte
+            .return_type(&left_type, &right_type)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Cannot compare types '{}' and '{}' with greater-than-or-equal!",
+                    left_type,
+                    right_type
+                )
+            })
     }
     fn discover_expr_function_calls(
         &self,
@@ -88,7 +90,10 @@ impl Transpile for GteExpr {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let left_type = self.left.type_of(context).map_err(|e| vec![e])?;
         let right_type = self.right.type_of(context).map_err(|e| vec![e])?;
-        if rosy_lib::operators::gte::get_return_type(&left_type, &right_type).is_none() {
+        if rosy_lib::BinaryOp::Gte
+            .return_type(&left_type, &right_type)
+            .is_none()
+        {
             return Err(vec![anyhow!(
                 "Cannot compare types '{}' and '{}' with greater-than-or-equal!",
                 left_type,

@@ -162,6 +162,20 @@ pub enum BinaryOpKind {
     Pow,
 }
 
+impl From<BinaryOpKind> for rosy_lib::BinaryOp {
+    fn from(op: BinaryOpKind) -> Self {
+        match op {
+            BinaryOpKind::Add => Self::Add,
+            BinaryOpKind::Sub => Self::Sub,
+            BinaryOpKind::Mult => Self::Mult,
+            BinaryOpKind::Div => Self::Div,
+            BinaryOpKind::Extract => Self::Extract,
+            BinaryOpKind::Derive => Self::Derive,
+            BinaryOpKind::Pow => Self::Pow,
+        }
+    }
+}
+
 // ─── Dependency Graph Node ──────────────────────────────────────────────────
 
 #[derive(Debug)]
@@ -750,34 +764,7 @@ impl TypeResolver {
             ExprRecipe::BinaryOp { op, left, right } => {
                 let left_type = self.evaluate_recipe(left)?;
                 let right_type = self.evaluate_recipe(right)?;
-                let result = match op {
-                    BinaryOpKind::Add => {
-                        rosy_lib::operators::add::get_return_type(&left_type, &right_type)
-                    }
-                    BinaryOpKind::Sub => {
-                        rosy_lib::operators::sub::get_return_type(&left_type, &right_type)
-                    }
-                    BinaryOpKind::Mult => {
-                        rosy_lib::operators::mult::get_return_type(&left_type, &right_type)
-                    }
-                    BinaryOpKind::Div => {
-                        rosy_lib::operators::div::get_return_type(&left_type, &right_type)
-                    }
-                    BinaryOpKind::Extract => {
-                        rosy_lib::operators::extract::get_return_type(&left_type, &right_type)
-                    }
-                    BinaryOpKind::Derive => {
-                        // Derive preserves the object type: DA%RE -> DA, CD%RE -> CD
-                        match left_type {
-                            t if t == RosyType::DA() => Some(RosyType::DA()),
-                            t if t == RosyType::CD() => Some(RosyType::CD()),
-                            _ => None,
-                        }
-                    }
-                    BinaryOpKind::Pow => {
-                        rosy_lib::operators::pow::get_return_type(&left_type, &right_type)
-                    }
-                };
+                let result = rosy_lib::BinaryOp::from(*op).return_type(&left_type, &right_type);
                 result.ok_or_else(|| {
                     anyhow!(
                         "No operator rule for {:?}({}, {})",
@@ -790,18 +777,19 @@ impl TypeResolver {
             ExprRecipe::Concat(left, right) => {
                 let left_type = self.evaluate_recipe(left)?;
                 let right_type = self.evaluate_recipe(right)?;
-                rosy_lib::operators::concat::get_return_type(&left_type, &right_type)
+                rosy_lib::BinaryOp::Concat
+                    .return_type(&left_type, &right_type)
                     .ok_or_else(|| anyhow!("No concat rule for {} & {}", left_type, right_type))
             }
             ExprRecipe::TypePreserving(inner) => self.evaluate_recipe(inner),
             ExprRecipe::RealFn(inner) => {
                 let input_type = self.evaluate_recipe(inner)?;
-                rosy_lib::intrinsics::real_fn::get_return_type(&input_type)
+                rosy_lib::unary_return_type("REAL", &input_type)
                     .ok_or_else(|| anyhow!("No REAL rule for {}", input_type))
             }
             ExprRecipe::ImagFn(inner) => {
                 let input_type = self.evaluate_recipe(inner)?;
-                rosy_lib::intrinsics::imag_fn::get_return_type(&input_type)
+                rosy_lib::unary_return_type("IMAG", &input_type)
                     .ok_or_else(|| anyhow!("No IMAG rule for {}", input_type))
             }
             ExprRecipe::Unknown(reason) => {

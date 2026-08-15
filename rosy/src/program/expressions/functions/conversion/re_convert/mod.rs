@@ -74,9 +74,10 @@ impl TranspileableExpr for ReConvertExpr {
             .expr
             .type_of(context)
             .map_err(|e| e.context("...while determining type of expression for RE conversion"))?;
-        let result_type = rosy_lib::intrinsics::re_convert::get_return_type(&expr_type).ok_or(
-            anyhow::anyhow!("Cannot convert type '{}' to 'RE'!", expr_type),
-        )?;
+        let result_type = rosy_lib::unary_return_type("RE", &expr_type).ok_or(anyhow::anyhow!(
+            "Cannot convert type '{}' to 'RE'!",
+            expr_type
+        ))?;
         Ok(result_type)
     }
     fn discover_expr_function_calls(

@@ -57,15 +57,13 @@ impl FromRule for PowExpr {
 }
 impl TranspileableExpr for PowExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        rosy_lib::operators::pow::get_return_type(
-            &self.left.type_of(context)?,
-            &self.right.type_of(context)?,
-        )
-        .ok_or(anyhow::anyhow!(
-            "Cannot raise type '{}' to the power of type '{}'!",
-            self.left.type_of(context)?,
-            self.right.type_of(context)?
-        ))
+        rosy_lib::BinaryOp::Pow
+            .return_type(&self.left.type_of(context)?, &self.right.type_of(context)?)
+            .ok_or(anyhow::anyhow!(
+                "Cannot raise type '{}' to the power of type '{}'!",
+                self.left.type_of(context)?,
+                self.right.type_of(context)?
+            ))
     }
     fn discover_expr_function_calls(
         &self,
@@ -102,7 +100,10 @@ impl Transpile for PowExpr {
         // First, ensure the types are compatible
         let left_type = self.left.type_of(context).map_err(|e| vec![e])?;
         let right_type = self.right.type_of(context).map_err(|e| vec![e])?;
-        if rosy_lib::operators::pow::get_return_type(&left_type, &right_type).is_none() {
+        if rosy_lib::BinaryOp::Pow
+            .return_type(&left_type, &right_type)
+            .is_none()
+        {
             return Err(vec![anyhow!(
                 "Cannot raise type '{}' to the power of type '{}'!",
                 left_type,
