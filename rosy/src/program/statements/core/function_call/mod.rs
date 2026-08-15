@@ -62,7 +62,7 @@ impl FromRule for FunctionCallStatement {
 
         let mut args = Vec::new();
         // Collect all remaining arguments (expressions)
-        while let Some(arg_pair) = inner.next() {
+        for arg_pair in inner {
             if arg_pair.as_rule() == Rule::semicolon {
                 break;
             }

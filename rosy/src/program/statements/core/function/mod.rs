@@ -125,7 +125,7 @@ impl FromRule for FunctionStatement {
                 inner: Box::new(VarDeclStatement {
                     data: VariableDeclarationData {
                         name: name.clone(),
-                        r#type: return_type.clone(),
+                        r#type: return_type,
                         dimension_exprs: Vec::new(),
                     },
                 }),
@@ -138,7 +138,7 @@ impl FromRule for FunctionStatement {
             }];
 
             // Process remaining elements (statements and end_function)
-            while let Some(element) = inner.next() {
+            for element in inner {
                 // Skip the end_function element
                 if element.as_rule() == Rule::end_function {
                     break;
@@ -232,8 +232,9 @@ impl TranspileableStatement for FunctionStatement {
         }
 
         // If the return type is NOT explicit, it depends on the inner return var
-        if self.return_type.is_none() {
-            if resolver.nodes.contains_key(&inner_ret_var_slot) {
+        if self.return_type.is_none()
+            && resolver.nodes.contains_key(&inner_ret_var_slot)
+        {
                 let node = resolver.nodes.get_mut(&ret_slot).unwrap();
                 node.rule = ResolutionRule::Mirror {
                     source: inner_ret_var_slot.clone(),
@@ -243,7 +244,6 @@ impl TranspileableStatement for FunctionStatement {
                     ),
                 };
                 node.depends_on.insert(inner_ret_var_slot);
-            }
         }
 
         TypeslotDeclarationResult::VarFuncOrProcedureDecl { result: Ok(()) }
@@ -264,10 +264,10 @@ impl TranspileableStatement for FunctionStatement {
         // Return type
         if self.return_type.is_none() {
             let slot = TypeSlot::FunctionReturn(current_scope.to_vec(), self.name.clone());
-            if let Some(node) = resolver.nodes.get(&slot) {
-                if let Some(t) = &node.resolved {
-                    self.return_type = Some(t.clone());
-                }
+            if let Some(node) = resolver.nodes.get(&slot)
+                && let Some(t) = &node.resolved
+            {
+                    self.return_type = Some(*t);
             }
         }
 
@@ -276,10 +276,10 @@ impl TranspileableStatement for FunctionStatement {
             if arg.r#type.is_none() {
                 let slot =
                     TypeSlot::Argument(current_scope.to_vec(), self.name.clone(), arg.name.clone());
-                if let Some(node) = resolver.nodes.get(&slot) {
-                    if let Some(t) = &node.resolved {
-                        arg.r#type = Some(t.clone());
-                    }
+                if let Some(node) = resolver.nodes.get(&slot)
+                    && let Some(t) = &node.resolved
+                {
+                        arg.r#type = Some(*t);
                 }
             }
         }
@@ -328,17 +328,17 @@ impl Transpile for FunctionStatement {
 
         // Insert the function signature, but check it doesn't already exist
         if context.functions.contains_key(&self.name)
-            || matches!(
-                context.functions.insert(
+            || context
+                .functions
+                .insert(
                     self.name.clone(),
                     TranspilationInputFunctionContext {
-                        return_type: resolved_return_type.clone(),
+                        return_type: resolved_return_type,
                         args: resolved_arg_data.clone(),
-                        requested_variables: BTreeSet::new()
-                    }
-                ),
-                Some(_)
-            )
+                        requested_variables: BTreeSet::new(),
+                    },
+                )
+                .is_some()
         {
             return Err(vec![anyhow!(
                 "Function '{}' is already defined in this scope!",
@@ -352,7 +352,7 @@ impl Transpile for FunctionStatement {
         let mut requested_variables = BTreeSet::new();
         let mut serialized_statements = Vec::new();
         let mut errors = Vec::new();
-        for (_, ScopedVariableData { scope, .. }) in inner_context.variables.iter_mut() {
+        for ScopedVariableData { scope, .. } in inner_context.variables.values_mut() {
             *scope = match *scope {
                 VariableScope::Local => VariableScope::Higher,
                 VariableScope::Arg => VariableScope::Higher,
@@ -370,13 +370,13 @@ impl Transpile for FunctionStatement {
                     data: arg_data.clone(),
                 },
             );
-            if let Some(prev) = previous {
-                if prev.scope != VariableScope::Higher {
+            if let Some(prev) = previous
+                && prev.scope != VariableScope::Higher
+            {
                     errors.push(anyhow!(
                         "Argument '{}' is already defined in this scope!",
                         arg_data.name
                     ));
-                }
             }
         }
 

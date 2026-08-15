@@ -6,7 +6,6 @@ use pest::Parser;
 use rosy::{ast, embedded, program::Program, resolve, syntax_config, transpile::*};
 use std::{fs, fs::write, path::PathBuf, process::Command, time::Instant};
 use tracing::info;
-use tracing_subscriber;
 
 // ANSI color helpers (stderr only)
 const BOLD: &str = "\x1b[1m";
@@ -383,29 +382,29 @@ fn run_single_test(
             fs::write(&rosy_output_path, &stdout).ok();
 
             // Run COSY if available
-            if let Some(cosy) = cosy_bin {
-                if fox_script.exists() {
-                    let child = Command::new(cosy)
-                        .stdin(std::process::Stdio::piped())
-                        .stdout(std::process::Stdio::piped())
-                        .stderr(std::process::Stdio::piped())
-                        .current_dir(construct_path)
-                        .spawn();
+            if let Some(cosy) = cosy_bin
+                && fox_script.exists()
+            {
+                let child = Command::new(cosy)
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .current_dir(construct_path)
+                    .spawn();
 
-                    if let Ok(mut child) = child {
-                        {
-                            use std::io::Write;
-                            if let Some(mut stdin) = child.stdin.take() {
-                                let _ = stdin.write_all(b"test\n");
-                            }
+                if let Ok(mut child) = child {
+                    {
+                        use std::io::Write;
+                        if let Some(mut stdin) = child.stdin.take() {
+                            let _ = stdin.write_all(b"test\n");
                         }
-                        if let Ok(cosy_result) = child.wait_with_output() {
-                            let cosy_stdout =
-                                String::from_utf8_lossy(&cosy_result.stdout).to_string();
-                            let cosy_output = extract_cosy_output(&cosy_stdout);
-                            if !cosy_output.trim().is_empty() {
-                                fs::write(&cosy_output_path, &cosy_output).ok();
-                            }
+                    }
+                    if let Ok(cosy_result) = child.wait_with_output() {
+                        let cosy_stdout =
+                            String::from_utf8_lossy(&cosy_result.stdout).to_string();
+                        let cosy_output = extract_cosy_output(&cosy_stdout);
+                        if !cosy_output.trim().is_empty() {
+                            fs::write(&cosy_output_path, &cosy_output).ok();
                         }
                     }
                 }
@@ -515,11 +514,11 @@ fn run_construct_tests(filter: Option<&str>, release: bool, parallel: usize) -> 
 
     // Spawn worker threads
     let mut handles = Vec::new();
-    for worker_id in 0..parallel {
+    for build_dir in build_dirs.iter().take(parallel) {
         let work_index = Arc::clone(&work_index);
         let all_tests = Arc::clone(&all_tests);
         let results = Arc::clone(&results);
-        let build_dir = build_dirs[worker_id].clone();
+        let build_dir = build_dir.clone();
         let workspace_root = workspace_root.clone();
         let cosy_bin = if has_cosy {
             Some(cosy_bin.clone())

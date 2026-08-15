@@ -142,7 +142,7 @@ impl TranspileableExpr for VariableIdentifier {
         ))?;
 
         let num_indices = self.num_index_dimensions();
-        let mut var_type = var_data.data.r#type.clone();
+        let mut var_type = var_data.data.r#type;
 
         // Apply indices in cascade: each index peels one declared dimension
         // first, then if any indices remain and the base type is VE with

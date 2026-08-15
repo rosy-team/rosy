@@ -70,7 +70,7 @@ impl FromRule for ProcedureStatement {
 
             let mut args = Vec::new();
             // Collect all remaining argument names and types
-            while let Some(arg_pair) = start_procedure_inner.next() {
+            for arg_pair in start_procedure_inner {
                 if arg_pair.as_rule() == Rule::semicolon {
                     break;
                 }
@@ -110,7 +110,7 @@ impl FromRule for ProcedureStatement {
             let mut statements = Vec::new();
 
             // Process remaining elements (statements and end_procedure)
-            while let Some(element) = inner.next() {
+            for element in inner {
                 // Skip the end_procedure element
                 if element.as_rule() == Rule::end_procedure {
                     break;
@@ -191,10 +191,10 @@ impl TranspileableStatement for ProcedureStatement {
             if arg.r#type.is_none() {
                 let slot =
                     TypeSlot::Argument(current_scope.to_vec(), self.name.clone(), arg.name.clone());
-                if let Some(node) = resolver.nodes.get(&slot) {
-                    if let Some(t) = &node.resolved {
-                        arg.r#type = Some(t.clone());
-                    }
+                if let Some(node) = resolver.nodes.get(&slot)
+                    && let Some(t) = &node.resolved
+                {
+                        arg.r#type = Some(*t);
                 }
             }
         }
@@ -237,16 +237,16 @@ impl Transpile for ProcedureStatement {
 
         // Insert the procedure signature, but check it doesn't already exist
         if context.functions.contains_key(&self.name)
-            || matches!(
-                context.procedures.insert(
+            || context
+                .procedures
+                .insert(
                     self.name.clone(),
                     TranspilationInputProcedureContext {
                         args: resolved_arg_data.clone(),
-                        requested_variables: BTreeSet::new()
-                    }
-                ),
-                Some(_)
-            )
+                        requested_variables: BTreeSet::new(),
+                    },
+                )
+                .is_some()
         {
             return Err(vec![anyhow!(
                 "Procedure '{}' is already defined in this scope!",
@@ -260,7 +260,7 @@ impl Transpile for ProcedureStatement {
         let mut requested_variables = BTreeSet::new();
         let mut serialized_statements = Vec::new();
         let mut errors = Vec::new();
-        for (_, ScopedVariableData { scope, .. }) in inner_context.variables.iter_mut() {
+        for ScopedVariableData { scope, .. } in inner_context.variables.values_mut() {
             *scope = match *scope {
                 VariableScope::Local => VariableScope::Higher,
                 VariableScope::Arg => VariableScope::Higher,
@@ -283,13 +283,13 @@ impl Transpile for ProcedureStatement {
                     data: arg_data.clone(),
                 },
             );
-            if let Some(prev) = previous {
-                if prev.scope != VariableScope::Higher {
+            if let Some(prev) = previous
+                && prev.scope != VariableScope::Higher
+            {
                     errors.push(anyhow!(
                         "Argument '{}' is already defined in this scope!",
                         arg_data.name
                     ));
-                }
             }
         }
 
@@ -313,16 +313,13 @@ impl Transpile for ProcedureStatement {
 
         // Update the procedure context with the requested variables,
         //  first removing those which are locally defined or args
-        requested_variables = requested_variables
-            .into_iter()
-            .filter(|var| {
-                if let Some(var_data) = inner_context.variables.get(var) {
-                    !matches!(var_data.scope, VariableScope::Local | VariableScope::Arg)
-                } else {
-                    true
-                }
-            })
-            .collect();
+        requested_variables.retain(|var| {
+            if let Some(var_data) = inner_context.variables.get(var) {
+                !matches!(var_data.scope, VariableScope::Local | VariableScope::Arg)
+            } else {
+                true
+            }
+        });
         if let Some(proc_context) = context.procedures.get_mut(&self.name) {
             proc_context.requested_variables = requested_variables.clone();
         } else {

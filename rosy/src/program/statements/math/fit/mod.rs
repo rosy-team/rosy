@@ -343,12 +343,7 @@ impl Transpile for FitStatement {
 
         // Build: let mut fit_vars = vec![var1, var2, ...];
         // FIT variables are always RE (Copy), so we can use them directly.
-        let vars_init = self
-            .fit_variables
-            .iter()
-            .map(|v| v.clone())
-            .collect::<Vec<_>>()
-            .join(", ");
+        let vars_init = self.fit_variables.to_vec().join(", ");
 
         // Build inside closure: assign from slice to variables
         let vars_assign = self
@@ -361,12 +356,7 @@ impl Transpile for FitStatement {
 
         // Build inside closure: collect objectives into vec
         // Objective variables are always RE (Copy), so we can use them directly.
-        let objs_collect = self
-            .objectives
-            .iter()
-            .map(|o| o.clone())
-            .collect::<Vec<_>>()
-            .join(", ");
+        let objs_collect = self.objectives.to_vec().join(", ");
 
         // Build after optimizer: assign back from optimized vec
         let vars_writeback = self

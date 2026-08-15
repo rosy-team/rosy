@@ -91,7 +91,7 @@ pub fn build_type(pair: pest::iterators::Pair<Rule>) -> Result<(RosyType, Vec<Ex
         .as_str()
         .to_string();
     let mut dimensions: Vec<Expr> = Vec::new();
-    while let Some(dim_pair) = inner_pair.next() {
+    for dim_pair in inner_pair {
         let expr = Expr::from_rule(dim_pair)
             .context("Failed to build dimension expression in variable declaration!")?
             .ok_or_else(|| anyhow::anyhow!("Expected expression in variable declaration"))?;

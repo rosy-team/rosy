@@ -75,7 +75,7 @@ impl FromRule for WhileStatement {
 
         let mut body = Vec::new();
         // Process remaining elements (statements and end)
-        while let Some(element) = inner.next() {
+        for element in inner {
             // Skip the end element
             if element.as_rule() == Rule::end_while {
                 break;

@@ -127,10 +127,10 @@ impl LanguageServer for RosyLanguageServer {
         let uri = params.text_document.uri;
         if let Some(text) = params.text {
             self.on_change(uri, text).await;
-        } else if let Ok(path) = uri.to_file_path() {
-            if let Ok(text) = std::fs::read_to_string(&path) {
-                self.on_change(uri, text).await;
-            }
+        } else if let Ok(path) = uri.to_file_path()
+            && let Ok(text) = std::fs::read_to_string(&path)
+        {
+            self.on_change(uri, text).await;
         }
     }
 

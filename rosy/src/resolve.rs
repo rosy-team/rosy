@@ -119,17 +119,11 @@ pub enum ExprRecipe {
     },
     /// A binary concat of two sub-recipes.
     Concat(Box<ExprRecipe>, Box<ExprRecipe>),
-    /// Any type-preserving intrinsic (sin, cos, tan, exp, log, sqrt, etc.) — output type equals input type.
-    TypePreserving(Box<ExprRecipe>),
     /// Named unary intrinsic — result comes from `rosy_lib::unary_return_type`.
     UnaryIntrinsic {
         name: String,
         inner: Box<ExprRecipe>,
     },
-    /// REAL intrinsic — result depends on input type (RE/CM->RE, DA->DA).
-    RealFn(Box<ExprRecipe>),
-    /// IMAG intrinsic — result depends on input type (RE/CM->RE, DA->DA).
-    ImagFn(Box<ExprRecipe>),
     /// Wraps a recipe and adds dimensions to the result type.
     /// Used when inferring a variable's type from an indexed assignment:
     /// e.g., `X[0, 1] := 2` means the RHS is RE, but X should be (RE 2D).
@@ -148,10 +142,7 @@ impl ExprRecipe {
             ExprRecipe::BinaryOp { left, right, .. } | ExprRecipe::Concat(left, right) => {
                 left.references_slot(target) || right.references_slot(target)
             }
-            ExprRecipe::TypePreserving(inner)
-            | ExprRecipe::UnaryIntrinsic { inner, .. }
-            | ExprRecipe::RealFn(inner)
-            | ExprRecipe::ImagFn(inner)
+            ExprRecipe::UnaryIntrinsic { inner, .. }
             | ExprRecipe::WithDimensions(inner, _) => inner.references_slot(target),
         }
     }
@@ -220,6 +211,12 @@ pub struct TypeResolver {
     pub nodes: HashMap<TypeSlot, GraphNode>,
 }
 
+impl Default for TypeResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TypeResolver {
     pub fn new() -> Self {
         TypeResolver {
@@ -263,9 +260,9 @@ impl TypeResolver {
                 slot.clone(),
                 GraphNode {
                     slot,
-                    rule: ResolutionRule::Explicit(t.clone()),
+                    rule: ResolutionRule::Explicit(*t),
                     depends_on: HashSet::new(),
-                    resolved: Some(t.clone()),
+                    resolved: Some(*t),
                     declared_at,
                     assigned_at: None,
                 },
@@ -358,7 +355,7 @@ impl TypeResolver {
         let param_slots: Option<Vec<(String, TypeSlot)>> = if is_function {
             ctx.functions.get(name).map(|(_, params)| params.clone())
         } else {
-            ctx.procedures.get(name).map(|params| params.clone())
+            ctx.procedures.get(name).cloned()
         };
 
         if let Some(params) = param_slots {
@@ -442,11 +439,11 @@ impl TypeResolver {
         let mut warned_slots: HashSet<TypeSlot> = HashSet::new();
         while let Some(slot) = queue.pop_front() {
             // Resolve this node if not already resolved
-            if self.nodes.get(&slot).map_or(true, |n| n.resolved.is_none()) {
+            if self.nodes.get(&slot).is_none_or(|n| n.resolved.is_none()) {
                 // Check if this is an unused variable (Unresolved rule, nothing depends on it)
                 let is_unused = {
                     let node = self.nodes.get(&slot);
-                    node.map_or(false, |n| {
+                    node.is_some_and(|n| {
                         matches!(n.rule, ResolutionRule::Unresolved)
                             && matches!(n.slot, TypeSlot::Variable(..) | TypeSlot::Argument(..))
                     })
@@ -459,7 +456,7 @@ impl TypeResolver {
                     // uncalled function's argument) still progresses through the queue.
                     let node = self.nodes.get_mut(&slot).unwrap();
                     let default_type = RosyType::RE();
-                    node.resolved = Some(default_type.clone());
+                    node.resolved = Some(default_type);
                     node.rule = ResolutionRule::InferredFrom {
                         recipe: ExprRecipe::Literal(default_type),
                         reason: "untyped variables default to RE".to_string(),
@@ -512,7 +509,7 @@ impl TypeResolver {
             .filter(|n| {
                 n.depends_on
                     .iter()
-                    .any(|d| self.nodes.get(d).map_or(false, |dn| dn.resolved.is_none()))
+                    .any(|d| self.nodes.get(d).is_some_and(|dn| dn.resolved.is_none()))
             })
             .map(|n| &n.slot)
             .collect();
@@ -522,7 +519,7 @@ impl TypeResolver {
             .filter(|n| {
                 !n.depends_on
                     .iter()
-                    .any(|d| self.nodes.get(d).map_or(false, |dn| dn.resolved.is_none()))
+                    .any(|d| self.nodes.get(d).is_some_and(|dn| dn.resolved.is_none()))
             })
             .map(|n| &n.slot)
             .collect();
@@ -560,7 +557,7 @@ impl TypeResolver {
                 let dep_names: Vec<String> = node
                     .depends_on
                     .iter()
-                    .filter(|d| self.nodes.get(*d).map_or(false, |n| n.resolved.is_none()))
+                    .filter(|d| self.nodes.get(*d).is_some_and(|n| n.resolved.is_none()))
                     .map(|d| format!("{}", d))
                     .collect();
                 msg.push_str(&format!("\n│    ✗ {} depends on:", slot,));
@@ -702,7 +699,7 @@ impl TypeResolver {
             ResolutionRule::Mirror { source, .. } => self
                 .nodes
                 .get(&source)
-                .and_then(|n| n.resolved.clone())
+                .and_then(|n| n.resolved)
                 .ok_or_else(|| {
                     anyhow!(
                         "Mirror source {} not resolved when resolving {}",
@@ -731,17 +728,17 @@ impl TypeResolver {
     /// Evaluate an ExprRecipe using already-resolved slot types.
     pub fn evaluate_recipe(&self, recipe: &ExprRecipe) -> Result<RosyType> {
         match recipe {
-            ExprRecipe::Literal(t) => Ok(t.clone()),
+            ExprRecipe::Literal(t) => Ok(*t),
             ExprRecipe::Variable(slot) => self
                 .nodes
                 .get(slot)
-                .and_then(|n| n.resolved.clone())
+                .and_then(|n| n.resolved)
                 .ok_or_else(|| anyhow!("Variable slot {} not resolved", slot)),
             ExprRecipe::IndexedVariable(slot, num_indices) => {
                 let base = self
                     .nodes
                     .get(slot)
-                    .and_then(|n| n.resolved.clone())
+                    .and_then(|n| n.resolved)
                     .ok_or_else(|| anyhow!("Variable slot {} not resolved", slot))?;
                 // Cascade: peel min(indices, dimensions), then if remaining
                 // index applies to a (VE) (dim=0 VE base), it extracts to RE.
@@ -787,22 +784,11 @@ impl TypeResolver {
                     .return_type(&left_type, &right_type)
                     .ok_or_else(|| anyhow!("No concat rule for {} & {}", left_type, right_type))
             }
-            ExprRecipe::TypePreserving(inner) => self.evaluate_recipe(inner),
             ExprRecipe::UnaryIntrinsic { name, inner } => {
                 let input_type = self.evaluate_recipe(inner)?;
                 rosy_lib::unary_return_type(name, &input_type).ok_or_else(|| {
                     anyhow!("No {name} rule for {}", input_type)
                 })
-            }
-            ExprRecipe::RealFn(inner) => {
-                let input_type = self.evaluate_recipe(inner)?;
-                rosy_lib::unary_return_type("REAL", &input_type)
-                    .ok_or_else(|| anyhow!("No REAL rule for {}", input_type))
-            }
-            ExprRecipe::ImagFn(inner) => {
-                let input_type = self.evaluate_recipe(inner)?;
-                rosy_lib::unary_return_type("IMAG", &input_type)
-                    .ok_or_else(|| anyhow!("No IMAG rule for {}", input_type))
             }
             ExprRecipe::Unknown(reason) => {
                 let detail = reason

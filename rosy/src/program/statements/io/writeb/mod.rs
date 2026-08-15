@@ -65,7 +65,7 @@ impl FromRule for WritebStatement {
 
         let exprs = {
             let mut exprs = Vec::new();
-            while let Some(expr_pair) = inner.next() {
+            for expr_pair in inner {
                 if expr_pair.as_rule() == Rule::semicolon {
                     break;
                 }

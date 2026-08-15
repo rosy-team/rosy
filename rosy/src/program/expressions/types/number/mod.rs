@@ -55,7 +55,7 @@ impl FromRule for f64 {
         // alongside `E/e`. Rust's `f64::from_str` only knows about the
         // latter, so normalize before parsing.
         let raw = pair.as_str();
-        let normalized = if raw.contains(|c: char| c == 'd' || c == 'D') {
+        let normalized = if raw.contains(['d', 'D']) {
             raw.replace('D', "E").replace('d', "e")
         } else {
             raw.to_string()

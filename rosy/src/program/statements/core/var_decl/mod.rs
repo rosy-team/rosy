@@ -217,8 +217,8 @@ impl FromRule for VarDeclStatement {
             // Nothing is allowed after the variable name — dimensions go
             // inside the type parentheses, and memory sizes don't exist.
             if !memory_sizes.is_empty() {
-                if r#type.is_some() {
-                    let type_name = r#type.as_ref().unwrap().base_type;
+                if let Some(ty) = &r#type {
+                    let type_name = ty.base_type;
                     anyhow::bail!(
                         "In Rosy syntax, array dimensions must be declared inside the type annotation.\n\
                          Found: VARIABLE ({type_name:?}) {name} <{n} trailing expr(s)> ;\n\
@@ -280,14 +280,14 @@ impl TranspileableStatement for VarDeclStatement {
     ) -> TypeHydrationResult {
         if self.data.r#type.is_none() {
             let slot = TypeSlot::Variable(current_scope.to_vec(), self.data.name.clone());
-            if let Some(node) = resolver.nodes.get(&slot) {
-                if let Some(t) = &node.resolved {
-                    let mut resolved = t.clone();
+            if let Some(node) = resolver.nodes.get(&slot)
+                && let Some(t) = &node.resolved
+            {
+                    let mut resolved = *t;
                     if !self.data.dimension_exprs.is_empty() {
                         resolved.dimensions = self.data.dimension_exprs.len();
                     }
                     self.data.r#type = Some(resolved);
-                }
             }
         }
         TypeHydrationResult::Hydrated { result: Ok(()) }
@@ -321,17 +321,17 @@ impl Transpile for VarDeclStatement {
                 scope: VariableScope::Local,
                 data: VariableData {
                     name: self.data.name.clone(),
-                    r#type: resolved_type.clone(),
+                    r#type: resolved_type,
                 },
             },
         );
-        if let Some(prev) = previous {
-            if prev.scope != VariableScope::Higher {
+        if let Some(prev) = previous
+            && prev.scope != VariableScope::Higher
+        {
                 return Err(vec![anyhow!(
                     "Variable '{}' is already defined in this scope!",
                     self.data.name
                 )]);
-            }
         }
 
         let data_output = self.data.transpile(context)?;
@@ -340,7 +340,7 @@ impl Transpile for VarDeclStatement {
 
         let serialization = format!(
             "let mut {}: {} = {};",
-            &self.data.name,
+            self.data.name,
             resolved_type.as_rust_type(),
             data_default_serialization
         );

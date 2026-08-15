@@ -3,14 +3,13 @@
 //! Generic AST node for a named intrinsic (`SIN(x)`, `POSITION(a, b)`, …).
 //! Type rules and emit names come from [`rosy_lib::lookup_intrinsic`].
 
-use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
 use crate::transpile::{
     ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
     TranspileableExpr, ValueKind,
 };
-use anyhow::{Context as AnyhowContext, Error, Result, bail};
+use anyhow::{Context, Error, Result, bail};
 use rosy_lib::RosyType;
 use std::collections::{BTreeSet, HashSet};
 
@@ -19,44 +18,6 @@ use std::collections::{BTreeSet, HashSet};
 pub struct IntrinsicCallExpr {
     pub name: String,
     pub args: Vec<Expr>,
-}
-
-impl IntrinsicCallExpr {
-    /// Parse a pest pair whose single inner child is the operand expression.
-    pub fn from_unary_pair(name: &str, pair: pest::iterators::Pair<Rule>) -> Result<Self> {
-        let mut inner = pair.into_inner();
-        let expr_pair = inner
-            .next()
-            .with_context(|| format!("Missing inner expression for `{name}`!"))?;
-        let expr = Expr::from_rule(expr_pair)
-            .with_context(|| format!("Failed to build expression for `{name}`"))?
-            .ok_or_else(|| anyhow::anyhow!("Expected expression for `{name}`"))?;
-        Ok(Self {
-            name: name.to_string(),
-            args: vec![expr],
-        })
-    }
-
-    /// Parse a pest pair with two inner expression children.
-    pub fn from_binary_pair(name: &str, pair: pest::iterators::Pair<Rule>) -> Result<Self> {
-        let mut inner = pair.into_inner();
-        let lhs_pair = inner
-            .next()
-            .with_context(|| format!("Missing first argument for `{name}`!"))?;
-        let rhs_pair = inner
-            .next()
-            .with_context(|| format!("Missing second argument for `{name}`!"))?;
-        let lhs = Expr::from_rule(lhs_pair)
-            .with_context(|| format!("Failed to build first argument for `{name}`"))?
-            .ok_or_else(|| anyhow::anyhow!("Expected first argument for `{name}`"))?;
-        let rhs = Expr::from_rule(rhs_pair)
-            .with_context(|| format!("Failed to build second argument for `{name}`"))?
-            .ok_or_else(|| anyhow::anyhow!("Expected second argument for `{name}`"))?;
-        Ok(Self {
-            name: name.to_string(),
-            args: vec![lhs, rhs],
-        })
-    }
 }
 
 impl Transpile for IntrinsicCallExpr {
