@@ -119,6 +119,8 @@ pub struct Intrinsic {
     pub name: &'static str,
     pub arity: usize,
     pub rust_call: &'static str,
+    /// If `Some`, RE arguments emit `x.sin()` instead of the trait call.
+    pub native_re: Option<&'static str>,
     pub typing: IntrinsicTyping,
 }
 
@@ -140,10 +142,14 @@ impl Intrinsic {
 
 macro_rules! unary {
     ($name:literal, $arity:literal, $call:literal, $ty:path) => {
+        unary!($name, $arity, $call, $ty, None)
+    };
+    ($name:literal, $arity:literal, $call:literal, $ty:path, $native:expr) => {
         Intrinsic {
             name: $name,
             arity: $arity,
             rust_call: $call,
+            native_re: $native,
             typing: IntrinsicTyping::Unary($ty),
         }
     };
@@ -155,6 +161,7 @@ macro_rules! binary {
             name: $name,
             arity: $arity,
             rust_call: $call,
+            native_re: None,
             typing: IntrinsicTyping::Binary($ty),
         }
     };
@@ -166,55 +173,64 @@ pub static INTRINSICS: &[Intrinsic] = &[
         "SIN",
         1,
         "RosySIN::rosy_sin",
-        intrinsics::sin::get_return_type
+        intrinsics::sin::get_return_type,
+        Some("sin")
     ),
     unary!(
         "COS",
         1,
         "RosyCOS::rosy_cos",
-        intrinsics::cos::get_return_type
+        intrinsics::cos::get_return_type,
+        Some("cos")
     ),
     unary!(
         "TAN",
         1,
         "RosyTAN::rosy_tan",
-        intrinsics::tan::get_return_type
+        intrinsics::tan::get_return_type,
+        Some("tan")
     ),
     unary!(
         "ASIN",
         1,
         "RosyASIN::rosy_asin",
-        intrinsics::asin::get_return_type
+        intrinsics::asin::get_return_type,
+        Some("asin")
     ),
     unary!(
         "ACOS",
         1,
         "RosyACOS::rosy_acos",
-        intrinsics::acos::get_return_type
+        intrinsics::acos::get_return_type,
+        Some("acos")
     ),
     unary!(
         "ATAN",
         1,
         "RosyATAN::rosy_atan",
-        intrinsics::atan::get_return_type
+        intrinsics::atan::get_return_type,
+        Some("atan")
     ),
     unary!(
         "SINH",
         1,
         "RosySINH::rosy_sinh",
-        intrinsics::sinh::get_return_type
+        intrinsics::sinh::get_return_type,
+        Some("sinh")
     ),
     unary!(
         "COSH",
         1,
         "RosyCOSH::rosy_cosh",
-        intrinsics::cosh::get_return_type
+        intrinsics::cosh::get_return_type,
+        Some("cosh")
     ),
     unary!(
         "TANH",
         1,
         "RosyTANH::rosy_tanh",
-        intrinsics::tanh::get_return_type
+        intrinsics::tanh::get_return_type,
+        Some("tanh")
     ),
     unary!(
         "SQR",

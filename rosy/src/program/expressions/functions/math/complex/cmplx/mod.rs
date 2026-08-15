@@ -88,14 +88,13 @@ impl Transpile for CmplxExpr {
 }
 impl TranspileableExpr for CmplxExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        use rosy_lib::intrinsics::cmplx;
-
+        
         let inner_type = self
             .expr
             .type_of(context)
             .context("Failed to determine type of inner expression in CMPLX")?;
 
-        cmplx::get_return_type(&inner_type)
+        rosy_lib::unary_return_type("CMPLX", &inner_type)
             .ok_or_else(|| anyhow::anyhow!("CMPLX not supported for type: {:?}", inner_type))
     }
     fn discover_expr_function_calls(

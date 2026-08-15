@@ -94,8 +94,7 @@ impl Transpile for LengthExpr {
 }
 impl TranspileableExpr for LengthExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        use rosy_lib::intrinsics::length;
-
+        
         // Get the type of the inner expression
         let inner_type = self
             .expr
@@ -103,7 +102,7 @@ impl TranspileableExpr for LengthExpr {
             .context("Failed to determine type of inner expression in LENGTH")?;
 
         // Use the LENGTH registry to get the return type
-        length::get_return_type(&inner_type)
+        rosy_lib::unary_return_type("LENGTH", &inner_type)
             .ok_or_else(|| anyhow::anyhow!("LENGTH not supported for type: {:?}", inner_type))
     }
     fn discover_expr_function_calls(

@@ -87,14 +87,13 @@ impl Transpile for Isrt3Expr {
 }
 impl TranspileableExpr for Isrt3Expr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        use rosy_lib::intrinsics::isrt3;
-
+        
         let inner_type = self
             .expr
             .type_of(context)
             .context("Failed to determine type of inner expression in ISRT3")?;
 
-        isrt3::get_return_type(&inner_type)
+        rosy_lib::unary_return_type("ISRT3", &inner_type)
             .ok_or_else(|| anyhow::anyhow!("ISRT3 not supported for type: {:?}", inner_type))
     }
     fn discover_expr_function_calls(

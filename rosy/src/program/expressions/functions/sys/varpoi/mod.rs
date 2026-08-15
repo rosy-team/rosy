@@ -95,8 +95,7 @@ impl Transpile for VarpoiExpr {
 }
 impl TranspileableExpr for VarpoiExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        use rosy_lib::intrinsics::varpoi;
-
+        
         // Get the type of the inner expression
         let inner_type = self
             .expr
@@ -104,7 +103,7 @@ impl TranspileableExpr for VarpoiExpr {
             .context("Failed to determine type of inner expression in VARPOI")?;
 
         // Use the VARPOI registry to get the return type
-        varpoi::get_return_type(&inner_type)
+        rosy_lib::unary_return_type("VARPOI", &inner_type)
             .ok_or_else(|| anyhow::anyhow!("VARPOI not supported for type: {:?}", inner_type))
     }
     fn discover_expr_function_calls(

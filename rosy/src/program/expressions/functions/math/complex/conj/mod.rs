@@ -87,14 +87,13 @@ impl Transpile for ConjExpr {
 }
 impl TranspileableExpr for ConjExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        use rosy_lib::intrinsics::conj;
-
+        
         let inner_type = self
             .expr
             .type_of(context)
             .context("Failed to determine type of inner expression in CONJ")?;
 
-        conj::get_return_type(&inner_type)
+        rosy_lib::unary_return_type("CONJ", &inner_type)
             .ok_or_else(|| anyhow::anyhow!("CONJ not supported for type: {:?}", inner_type))
     }
     fn discover_expr_function_calls(

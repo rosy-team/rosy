@@ -48,6 +48,7 @@ use crate::{
 use rosy_lib::RosyType;
 use std::collections::HashSet;
 
+use crate::program::expressions::core::intrinsic_call::IntrinsicCallExpr;
 use crate::program::expressions::core::var_expr::VarExpr;
 
 use crate::program::expressions::functions::conversion::complex_convert::ComplexConvertExpr;
@@ -79,15 +80,7 @@ use crate::program::expressions::functions::math::rounding::cons::ConsExpr;
 use crate::program::expressions::functions::math::rounding::int_fn::IntExpr;
 use crate::program::expressions::functions::math::rounding::nint::NintExpr;
 use crate::program::expressions::functions::math::rounding::norm::NormExpr;
-use crate::program::expressions::functions::math::trig::acos::AcosExpr;
-use crate::program::expressions::functions::math::trig::asin::AsinExpr;
-use crate::program::expressions::functions::math::trig::atan::AtanExpr;
-use crate::program::expressions::functions::math::trig::cos::CosExpr;
-use crate::program::expressions::functions::math::trig::cosh::CoshExpr;
-use crate::program::expressions::functions::math::trig::sin::SinExpr;
-use crate::program::expressions::functions::math::trig::sinh::SinhExpr;
-use crate::program::expressions::functions::math::trig::tan::TanExpr;
-use crate::program::expressions::functions::math::trig::tanh::TanhExpr;
+
 use crate::program::expressions::functions::math::vector::vmax::VmaxExpr;
 use crate::program::expressions::functions::math::vector::vmin::VminExpr;
 use crate::program::expressions::functions::sys::ltrim::LtrimExpr;
@@ -128,6 +121,17 @@ use crate::program::statements::SourceLocation;
 pub struct Expr {
     pub inner: Box<dyn TranspileableExpr>,
     pub source_location: SourceLocation,
+}
+
+fn unary_intrinsic(
+    name: &'static str,
+    pair: pest::iterators::Pair<Rule>,
+    loc: SourceLocation,
+) -> Result<Expr> {
+    Ok(Expr {
+        inner: Box::new(IntrinsicCallExpr::from_unary_pair(name, pair)?),
+        source_location: loc,
+    })
 }
 
 impl FromRule for Expr {
@@ -308,78 +312,15 @@ impl FromRule for Expr {
                             source_location: loc.clone(),
                         })
                     }
-                    Rule::sin => {
-                        let sin_expr = SinExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                sin_expr.ok_or_else(|| anyhow::anyhow!("Expected SinExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::cos_fn => {
-                        let cos_expr = CosExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                cos_expr.ok_or_else(|| anyhow::anyhow!("Expected CosExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::asin_fn => {
-                        let asin_expr = AsinExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                asin_expr.ok_or_else(|| anyhow::anyhow!("Expected AsinExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::acos_fn => {
-                        let acos_expr = AcosExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                acos_expr.ok_or_else(|| anyhow::anyhow!("Expected AcosExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::atan_fn => {
-                        let atan_expr = AtanExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                atan_expr.ok_or_else(|| anyhow::anyhow!("Expected AtanExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::sinh_fn => {
-                        let sinh_expr = SinhExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                sinh_expr.ok_or_else(|| anyhow::anyhow!("Expected SinhExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::cosh_fn => {
-                        let cosh_expr = CoshExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                cosh_expr.ok_or_else(|| anyhow::anyhow!("Expected CoshExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::tanh_fn => {
-                        let tanh_expr = TanhExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                tanh_expr.ok_or_else(|| anyhow::anyhow!("Expected TanhExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
+                    Rule::sin => unary_intrinsic("SIN", primary, loc.clone()),
+                    Rule::cos_fn => unary_intrinsic("COS", primary, loc.clone()),
+                    Rule::tan_fn => unary_intrinsic("TAN", primary, loc.clone()),
+                    Rule::asin_fn => unary_intrinsic("ASIN", primary, loc.clone()),
+                    Rule::acos_fn => unary_intrinsic("ACOS", primary, loc.clone()),
+                    Rule::atan_fn => unary_intrinsic("ATAN", primary, loc.clone()),
+                    Rule::sinh_fn => unary_intrinsic("SINH", primary, loc.clone()),
+                    Rule::cosh_fn => unary_intrinsic("COSH", primary, loc.clone()),
+                    Rule::tanh_fn => unary_intrinsic("TANH", primary, loc.clone()),
                     Rule::sqr => {
                         let sqr_expr = SqrExpr::from_rule(primary)?;
                         Ok(Expr {
@@ -416,15 +357,7 @@ impl FromRule for Expr {
                             source_location: loc.clone(),
                         })
                     }
-                    Rule::tan_fn => {
-                        let tan_expr = TanExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                tan_expr.ok_or_else(|| anyhow::anyhow!("Expected TanExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
+
                     Rule::vmax => {
                         let vmax_expr = VmaxExpr::from_rule(primary)?;
                         Ok(Expr {

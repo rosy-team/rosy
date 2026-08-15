@@ -90,14 +90,13 @@ impl Transpile for RealFnExpr {
 
 impl TranspileableExpr for RealFnExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        use rosy_lib::intrinsics::real_fn;
-
+        
         let inner_type = self
             .expr
             .type_of(context)
             .context("Failed to determine type of inner expression in REAL")?;
 
-        real_fn::get_return_type(&inner_type)
+        rosy_lib::unary_return_type("REAL", &inner_type)
             .ok_or_else(|| anyhow::anyhow!("REAL not supported for type: {:?}", inner_type))
     }
 

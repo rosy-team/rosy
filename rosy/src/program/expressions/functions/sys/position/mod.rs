@@ -86,8 +86,7 @@ impl Transpile for PositionExpr {
 }
 impl TranspileableExpr for PositionExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        use rosy_lib::intrinsics::position;
-
+        
         let haystack_type = self
             .haystack
             .type_of(context)
@@ -97,7 +96,7 @@ impl TranspileableExpr for PositionExpr {
             .type_of(context)
             .context("Failed to determine type of needle in POSITION")?;
 
-        position::get_return_type(&haystack_type, &needle_type).ok_or_else(|| {
+        rosy_lib::binary_return_type("POSITION", &haystack_type, &needle_type).ok_or_else(|| {
             anyhow::anyhow!(
                 "POSITION requires (ST, ST) arguments, got ({}, {})",
                 haystack_type,

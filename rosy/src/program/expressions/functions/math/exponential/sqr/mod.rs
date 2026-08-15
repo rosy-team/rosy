@@ -96,8 +96,7 @@ impl Transpile for SqrExpr {
 }
 impl TranspileableExpr for SqrExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        use rosy_lib::intrinsics::sqr;
-
+        
         // Get the type of the inner expression
         let inner_type = self
             .expr
@@ -105,7 +104,7 @@ impl TranspileableExpr for SqrExpr {
             .context("Failed to determine type of inner expression in SQR")?;
 
         // Use the SQR registry to get the return type
-        sqr::get_return_type(&inner_type)
+        rosy_lib::unary_return_type("SQR", &inner_type)
             .ok_or_else(|| anyhow::anyhow!("SQR not supported for type: {:?}", inner_type))
     }
     fn discover_expr_function_calls(

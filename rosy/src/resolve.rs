@@ -121,6 +121,11 @@ pub enum ExprRecipe {
     Concat(Box<ExprRecipe>, Box<ExprRecipe>),
     /// Any type-preserving intrinsic (sin, cos, tan, exp, log, sqrt, etc.) — output type equals input type.
     TypePreserving(Box<ExprRecipe>),
+    /// Named unary intrinsic — result comes from `rosy_lib::unary_return_type`.
+    UnaryIntrinsic {
+        name: String,
+        inner: Box<ExprRecipe>,
+    },
     /// REAL intrinsic — result depends on input type (RE/CM->RE, DA->DA).
     RealFn(Box<ExprRecipe>),
     /// IMAG intrinsic — result depends on input type (RE/CM->RE, DA->DA).
@@ -144,6 +149,7 @@ impl ExprRecipe {
                 left.references_slot(target) || right.references_slot(target)
             }
             ExprRecipe::TypePreserving(inner)
+            | ExprRecipe::UnaryIntrinsic { inner, .. }
             | ExprRecipe::RealFn(inner)
             | ExprRecipe::ImagFn(inner)
             | ExprRecipe::WithDimensions(inner, _) => inner.references_slot(target),
@@ -782,6 +788,12 @@ impl TypeResolver {
                     .ok_or_else(|| anyhow!("No concat rule for {} & {}", left_type, right_type))
             }
             ExprRecipe::TypePreserving(inner) => self.evaluate_recipe(inner),
+            ExprRecipe::UnaryIntrinsic { name, inner } => {
+                let input_type = self.evaluate_recipe(inner)?;
+                rosy_lib::unary_return_type(name, &input_type).ok_or_else(|| {
+                    anyhow!("No {name} rule for {}", input_type)
+                })
+            }
             ExprRecipe::RealFn(inner) => {
                 let input_type = self.evaluate_recipe(inner)?;
                 rosy_lib::unary_return_type("REAL", &input_type)

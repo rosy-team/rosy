@@ -95,8 +95,7 @@ impl Transpile for VarmemExpr {
 }
 impl TranspileableExpr for VarmemExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
-        use rosy_lib::intrinsics::varmem;
-
+        
         // Get the type of the inner expression
         let inner_type = self
             .expr
@@ -104,7 +103,7 @@ impl TranspileableExpr for VarmemExpr {
             .context("Failed to determine type of inner expression in VARMEM")?;
 
         // Use the VARMEM registry to get the return type
-        varmem::get_return_type(&inner_type)
+        rosy_lib::unary_return_type("VARMEM", &inner_type)
             .ok_or_else(|| anyhow::anyhow!("VARMEM not supported for type: {:?}", inner_type))
     }
     fn discover_expr_function_calls(
