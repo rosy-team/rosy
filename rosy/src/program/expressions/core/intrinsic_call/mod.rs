@@ -36,6 +36,27 @@ impl IntrinsicCallExpr {
             args: vec![expr],
         })
     }
+
+    /// Parse a pest pair with two inner expression children.
+    pub fn from_binary_pair(name: &str, pair: pest::iterators::Pair<Rule>) -> Result<Self> {
+        let mut inner = pair.into_inner();
+        let lhs_pair = inner
+            .next()
+            .with_context(|| format!("Missing first argument for `{name}`!"))?;
+        let rhs_pair = inner
+            .next()
+            .with_context(|| format!("Missing second argument for `{name}`!"))?;
+        let lhs = Expr::from_rule(lhs_pair)
+            .with_context(|| format!("Failed to build first argument for `{name}`"))?
+            .ok_or_else(|| anyhow::anyhow!("Expected first argument for `{name}`"))?;
+        let rhs = Expr::from_rule(rhs_pair)
+            .with_context(|| format!("Failed to build second argument for `{name}`"))?
+            .ok_or_else(|| anyhow::anyhow!("Expected second argument for `{name}`"))?;
+        Ok(Self {
+            name: name.to_string(),
+            args: vec![lhs, rhs],
+        })
+    }
 }
 
 impl Transpile for IntrinsicCallExpr {
@@ -67,14 +88,15 @@ impl Transpile for IntrinsicCallExpr {
             arg_outs.push(out);
         }
 
+        let q = if spec.fallible { "?" } else { "" };
         let serialization = match (spec.arity, spec.native_re, arg_types.first()) {
             (1, Some(native), Some(ty)) if *ty == RosyType::RE() => {
-                format!("{}.{}()", arg_outs[0].as_value(), native)
+                format!("{}{}", arg_outs[0].as_value(), native)
             }
-            (1, _, _) => format!("{}({})?", spec.rust_call, arg_outs[0].as_ref()),
+            (1, _, _) => format!("{}({}){q}", spec.rust_call, arg_outs[0].as_ref()),
             _ => {
                 let refs: Vec<String> = arg_outs.iter().map(|o| o.as_ref()).collect();
-                format!("{}({})?", spec.rust_call, refs.join(", "))
+                format!("{}({}){q}", spec.rust_call, refs.join(", "))
             }
         };
 
@@ -142,18 +164,20 @@ impl TranspileableExpr for IntrinsicCallExpr {
         ctx: &ScopeContext,
         deps: &mut HashSet<TypeSlot>,
     ) -> ExprRecipe {
-        if self.args.len() == 1 {
-            let inner = resolver.build_expr_recipe(&self.args[0], ctx, deps);
-            ExprRecipe::UnaryIntrinsic {
-                name: self.name.clone(),
-                inner: Box::new(inner),
+        match self.args.len() {
+            1 => {
+                let inner = resolver.build_expr_recipe(&self.args[0], ctx, deps);
+                ExprRecipe::UnaryIntrinsic {
+                    name: self.name.clone(),
+                    inner: Box::new(inner),
+                }
             }
-        } else {
-            ExprRecipe::Unknown(Some(format!(
+            2 if self.name == "POSITION" => ExprRecipe::Literal(RosyType::RE()),
+            _ => ExprRecipe::Unknown(Some(format!(
                 "cannot infer type of {} with {} args",
                 self.name,
                 self.args.len()
-            )))
+            ))),
         }
     }
 }

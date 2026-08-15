@@ -51,42 +51,7 @@ use std::collections::HashSet;
 use crate::program::expressions::core::intrinsic_call::IntrinsicCallExpr;
 use crate::program::expressions::core::var_expr::VarExpr;
 
-use crate::program::expressions::functions::conversion::complex_convert::ComplexConvertExpr;
-use crate::program::expressions::functions::conversion::logical_convert::LogicalConvertExpr;
-use crate::program::expressions::functions::conversion::re_convert::ReConvertExpr;
-use crate::program::expressions::functions::conversion::string_convert::StringConvertExpr;
-use crate::program::expressions::functions::conversion::ve_convert::VeConvertExpr;
-use crate::program::expressions::functions::math::complex::cmplx::CmplxExpr;
-use crate::program::expressions::functions::math::complex::conj::ConjExpr;
-use crate::program::expressions::functions::math::complex::imag_fn::ImagFnExpr;
-use crate::program::expressions::functions::math::complex::real_fn::RealFnExpr;
-use crate::program::expressions::functions::math::exponential::exp::ExpExpr;
-use crate::program::expressions::functions::math::exponential::log::LogExpr;
 use crate::program::expressions::functions::math::exponential::pow::PowExpr;
-use crate::program::expressions::functions::math::exponential::sqr::SqrExpr;
-use crate::program::expressions::functions::math::exponential::sqrt::SqrtExpr;
-use crate::program::expressions::functions::math::memory::lcd::LcdExpr;
-use crate::program::expressions::functions::math::memory::lcm::LcmExpr;
-use crate::program::expressions::functions::math::memory::lda::LdaExpr;
-use crate::program::expressions::functions::math::memory::llo::LloExpr;
-use crate::program::expressions::functions::math::memory::lre::LreExpr;
-use crate::program::expressions::functions::math::memory::lst::LstExpr;
-use crate::program::expressions::functions::math::memory::lve::LveExpr;
-use crate::program::expressions::functions::math::query::isrt::IsrtExpr;
-use crate::program::expressions::functions::math::query::isrt3::Isrt3Expr;
-use crate::program::expressions::functions::math::query::type_fn::TypeFnExpr;
-use crate::program::expressions::functions::math::rounding::abs::AbsExpr;
-use crate::program::expressions::functions::math::rounding::cons::ConsExpr;
-use crate::program::expressions::functions::math::rounding::int_fn::IntExpr;
-use crate::program::expressions::functions::math::rounding::nint::NintExpr;
-use crate::program::expressions::functions::math::rounding::norm::NormExpr;
-
-use crate::program::expressions::functions::math::vector::vmax::VmaxExpr;
-use crate::program::expressions::functions::math::vector::vmin::VminExpr;
-use crate::program::expressions::functions::sys::ltrim::LtrimExpr;
-use crate::program::expressions::functions::sys::trim::TrimExpr;
-use crate::program::expressions::functions::sys::varmem::VarmemExpr;
-use crate::program::expressions::functions::sys::varpoi::VarpoiExpr;
 
 use crate::program::expressions::operators::arithmetic::add::AddExpr;
 use crate::program::expressions::operators::arithmetic::div::DivExpr;
@@ -105,11 +70,6 @@ use crate::program::expressions::operators::logical::and_op::AndExpr;
 use crate::program::expressions::operators::logical::or_op::OrExpr;
 use crate::program::expressions::operators::unary::neg::NegExpr;
 use crate::program::expressions::operators::unary::not::NotExpr;
-
-use crate::program::expressions::functions::math::special::erf::ErfExpr;
-use crate::program::expressions::functions::math::special::werf::WerfExpr;
-use crate::program::expressions::functions::sys::length::LengthExpr;
-use crate::program::expressions::functions::sys::position::PositionExpr;
 
 use crate::program::expressions::types::cd::CDExpr;
 use crate::program::expressions::types::da::DAExpr;
@@ -130,6 +90,17 @@ fn unary_intrinsic(
 ) -> Result<Expr> {
     Ok(Expr {
         inner: Box::new(IntrinsicCallExpr::from_unary_pair(name, pair)?),
+        source_location: loc,
+    })
+}
+
+fn binary_intrinsic(
+    name: &'static str,
+    pair: pest::iterators::Pair<Rule>,
+    loc: SourceLocation,
+) -> Result<Expr> {
+    Ok(Expr {
+        inner: Box::new(IntrinsicCallExpr::from_binary_pair(name, pair)?),
         source_location: loc,
     })
 }
@@ -242,38 +213,9 @@ impl FromRule for Expr {
                             source_location: loc.clone(),
                         })
                     }
-                    Rule::cm => {
-                        let cm_expr = ComplexConvertExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                cm_expr.ok_or_else(|| {
-                                    anyhow::anyhow!("Expected ComplexConvertExpr")
-                                })?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::st => {
-                        let st_expr = StringConvertExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                st_expr
-                                    .ok_or_else(|| anyhow::anyhow!("Expected StringConvertExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::lo => {
-                        let lo_expr = LogicalConvertExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                lo_expr.ok_or_else(|| {
-                                    anyhow::anyhow!("Expected LogicalConvertExpr")
-                                })?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
+                    Rule::cm => unary_intrinsic("CM", primary, loc.clone()),
+                    Rule::st => unary_intrinsic("ST", primary, loc.clone()),
+                    Rule::lo => unary_intrinsic("LO", primary, loc.clone()),
                     Rule::da => {
                         let da_expr = DAExpr::from_rule(primary)?;
                         Ok(Expr {
@@ -292,26 +234,8 @@ impl FromRule for Expr {
                             source_location: loc.clone(),
                         })
                     }
-                    Rule::position => {
-                        let position_expr = PositionExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                position_expr
-                                    .ok_or_else(|| anyhow::anyhow!("Expected PositionExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::length => {
-                        let length_expr = LengthExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                length_expr
-                                    .ok_or_else(|| anyhow::anyhow!("Expected LengthExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
+                    Rule::position => binary_intrinsic("POSITION", primary, loc.clone()),
+                    Rule::length => unary_intrinsic("LENGTH", primary, loc.clone()),
                     Rule::sin => unary_intrinsic("SIN", primary, loc.clone()),
                     Rule::cos_fn => unary_intrinsic("COS", primary, loc.clone()),
                     Rule::tan_fn => unary_intrinsic("TAN", primary, loc.clone()),
@@ -321,311 +245,39 @@ impl FromRule for Expr {
                     Rule::sinh_fn => unary_intrinsic("SINH", primary, loc.clone()),
                     Rule::cosh_fn => unary_intrinsic("COSH", primary, loc.clone()),
                     Rule::tanh_fn => unary_intrinsic("TANH", primary, loc.clone()),
-                    Rule::sqr => {
-                        let sqr_expr = SqrExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                sqr_expr.ok_or_else(|| anyhow::anyhow!("Expected SqrExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::sqrt_fn => {
-                        let sqrt_expr = SqrtExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                sqrt_expr.ok_or_else(|| anyhow::anyhow!("Expected SqrtExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::exp_fn => {
-                        let exp_expr = ExpExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                exp_expr.ok_or_else(|| anyhow::anyhow!("Expected ExpExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::log_fn => {
-                        let log_expr = LogExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                log_expr.ok_or_else(|| anyhow::anyhow!("Expected LogExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-
-                    Rule::vmax => {
-                        let vmax_expr = VmaxExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                vmax_expr.ok_or_else(|| anyhow::anyhow!("Expected VmaxExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::lst => {
-                        let lst_expr = LstExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                lst_expr.ok_or_else(|| anyhow::anyhow!("Expected LstExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::lcm => {
-                        let lcm_expr = LcmExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                lcm_expr.ok_or_else(|| anyhow::anyhow!("Expected LcmExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::lcd => {
-                        let lcd_expr = LcdExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                lcd_expr.ok_or_else(|| anyhow::anyhow!("Expected LcdExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::lre => {
-                        let lre_expr = LreExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                lre_expr.ok_or_else(|| anyhow::anyhow!("Expected LreExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::llo => {
-                        let llo_expr = LloExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                llo_expr.ok_or_else(|| anyhow::anyhow!("Expected LloExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::lve => {
-                        let lve_expr = LveExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                lve_expr.ok_or_else(|| anyhow::anyhow!("Expected LveExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::lda => {
-                        let lda_expr = LdaExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                lda_expr.ok_or_else(|| anyhow::anyhow!("Expected LdaExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::vmin => {
-                        let vmin_expr = VminExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                vmin_expr.ok_or_else(|| anyhow::anyhow!("Expected VminExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::abs_fn => {
-                        let abs_expr = AbsExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                abs_expr.ok_or_else(|| anyhow::anyhow!("Expected AbsExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::norm_fn => {
-                        let norm_expr = NormExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                norm_expr.ok_or_else(|| anyhow::anyhow!("Expected NormExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::cons_fn => {
-                        let cons_expr = ConsExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                cons_expr.ok_or_else(|| anyhow::anyhow!("Expected ConsExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::int_fn => {
-                        let int_expr = IntExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                int_expr.ok_or_else(|| anyhow::anyhow!("Expected IntExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::nint_fn => {
-                        let nint_expr = NintExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                nint_expr.ok_or_else(|| anyhow::anyhow!("Expected NintExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::type_fn => {
-                        let type_fn_expr = TypeFnExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                type_fn_expr
-                                    .ok_or_else(|| anyhow::anyhow!("Expected TypeFnExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::trim_fn => {
-                        let trim_expr = TrimExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                trim_expr.ok_or_else(|| anyhow::anyhow!("Expected TrimExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::ltrim_fn => {
-                        let ltrim_expr = LtrimExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                ltrim_expr.ok_or_else(|| anyhow::anyhow!("Expected LtrimExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::isrt_fn => {
-                        let isrt_expr = IsrtExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                isrt_expr.ok_or_else(|| anyhow::anyhow!("Expected IsrtExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::isrt3_fn => {
-                        let isrt3_expr = Isrt3Expr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                isrt3_expr.ok_or_else(|| anyhow::anyhow!("Expected Isrt3Expr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::cmplx_fn => {
-                        let cmplx_expr = CmplxExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                cmplx_expr.ok_or_else(|| anyhow::anyhow!("Expected CmplxExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::conj_fn => {
-                        let conj_expr = ConjExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                conj_expr.ok_or_else(|| anyhow::anyhow!("Expected ConjExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::real_fn => {
-                        let real_fn_expr = RealFnExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                real_fn_expr
-                                    .ok_or_else(|| anyhow::anyhow!("Expected RealFnExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::imag_fn => {
-                        let imag_fn_expr = ImagFnExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                imag_fn_expr
-                                    .ok_or_else(|| anyhow::anyhow!("Expected ImagFnExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::re_fn => {
-                        let re_convert_expr = ReConvertExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                re_convert_expr
-                                    .ok_or_else(|| anyhow::anyhow!("Expected ReConvertExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::ve_fn => {
-                        let ve_convert_expr = VeConvertExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                ve_convert_expr
-                                    .ok_or_else(|| anyhow::anyhow!("Expected VeConvertExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::varmem => {
-                        let varmem_expr = VarmemExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                varmem_expr
-                                    .ok_or_else(|| anyhow::anyhow!("Expected VarmemExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::varpoi => {
-                        let varpoi_expr = VarpoiExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                varpoi_expr
-                                    .ok_or_else(|| anyhow::anyhow!("Expected VarpoiExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::erf_fn => {
-                        let erf_expr = ErfExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                erf_expr.ok_or_else(|| anyhow::anyhow!("Expected ErfExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
-                    Rule::werf_fn => {
-                        let werf_expr = WerfExpr::from_rule(primary)?;
-                        Ok(Expr {
-                            inner: Box::new(
-                                werf_expr.ok_or_else(|| anyhow::anyhow!("Expected WerfExpr"))?,
-                            ),
-                            source_location: loc.clone(),
-                        })
-                    }
+                    Rule::sqr => unary_intrinsic("SQR", primary, loc.clone()),
+                    Rule::sqrt_fn => unary_intrinsic("SQRT", primary, loc.clone()),
+                    Rule::exp_fn => unary_intrinsic("EXP", primary, loc.clone()),
+                    Rule::log_fn => unary_intrinsic("LOG", primary, loc.clone()),
+                    Rule::vmax => unary_intrinsic("VMAX", primary, loc.clone()),
+                    Rule::vmin => unary_intrinsic("VMIN", primary, loc.clone()),
+                    Rule::lst => unary_intrinsic("LST", primary, loc.clone()),
+                    Rule::lcm => unary_intrinsic("LCM", primary, loc.clone()),
+                    Rule::lcd => unary_intrinsic("LCD", primary, loc.clone()),
+                    Rule::lre => unary_intrinsic("LRE", primary, loc.clone()),
+                    Rule::llo => unary_intrinsic("LLO", primary, loc.clone()),
+                    Rule::lve => unary_intrinsic("LVE", primary, loc.clone()),
+                    Rule::lda => unary_intrinsic("LDA", primary, loc.clone()),
+                    Rule::abs_fn => unary_intrinsic("ABS", primary, loc.clone()),
+                    Rule::norm_fn => unary_intrinsic("NORM", primary, loc.clone()),
+                    Rule::cons_fn => unary_intrinsic("CONS", primary, loc.clone()),
+                    Rule::int_fn => unary_intrinsic("INT", primary, loc.clone()),
+                    Rule::nint_fn => unary_intrinsic("NINT", primary, loc.clone()),
+                    Rule::type_fn => unary_intrinsic("TYPE", primary, loc.clone()),
+                    Rule::trim_fn => unary_intrinsic("TRIM", primary, loc.clone()),
+                    Rule::ltrim_fn => unary_intrinsic("LTRIM", primary, loc.clone()),
+                    Rule::isrt_fn => unary_intrinsic("ISRT", primary, loc.clone()),
+                    Rule::isrt3_fn => unary_intrinsic("ISRT3", primary, loc.clone()),
+                    Rule::cmplx_fn => unary_intrinsic("CMPLX", primary, loc.clone()),
+                    Rule::conj_fn => unary_intrinsic("CONJ", primary, loc.clone()),
+                    Rule::real_fn => unary_intrinsic("REAL", primary, loc.clone()),
+                    Rule::imag_fn => unary_intrinsic("IMAG", primary, loc.clone()),
+                    Rule::re_fn => unary_intrinsic("RE", primary, loc.clone()),
+                    Rule::ve_fn => unary_intrinsic("VE", primary, loc.clone()),
+                    Rule::varmem => unary_intrinsic("VARMEM", primary, loc.clone()),
+                    Rule::varpoi => unary_intrinsic("VARPOI", primary, loc.clone()),
+                    Rule::erf_fn => unary_intrinsic("ERF", primary, loc.clone()),
+                    Rule::werf_fn => unary_intrinsic("WERF", primary, loc.clone()),
                     Rule::expr => {
                         // handle parenthesized expressions by recursively parsing
                         Expr::from_rule(primary)

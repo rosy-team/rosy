@@ -119,8 +119,10 @@ pub struct Intrinsic {
     pub name: &'static str,
     pub arity: usize,
     pub rust_call: &'static str,
-    /// If `Some`, RE arguments emit `x.sin()` instead of the trait call.
+    /// If `Some`, RE arguments emit `x` plus this suffix (e.g. `.sin()`, `.powi(2)`).
     pub native_re: Option<&'static str>,
+    /// Whether the trait call returns `Result` (emit `?`).
+    pub fallible: bool,
     pub typing: IntrinsicTyping,
 }
 
@@ -142,14 +144,18 @@ impl Intrinsic {
 
 macro_rules! unary {
     ($name:literal, $arity:literal, $call:literal, $ty:path) => {
-        unary!($name, $arity, $call, $ty, None)
+        unary!($name, $arity, $call, $ty, None, true)
     };
     ($name:literal, $arity:literal, $call:literal, $ty:path, $native:expr) => {
+        unary!($name, $arity, $call, $ty, $native, true)
+    };
+    ($name:literal, $arity:literal, $call:literal, $ty:path, $native:expr, $fallible:expr) => {
         Intrinsic {
             name: $name,
             arity: $arity,
             rust_call: $call,
             native_re: $native,
+            fallible: $fallible,
             typing: IntrinsicTyping::Unary($ty),
         }
     };
@@ -157,11 +163,15 @@ macro_rules! unary {
 
 macro_rules! binary {
     ($name:literal, $arity:literal, $call:literal, $ty:path) => {
+        binary!($name, $arity, $call, $ty, true)
+    };
+    ($name:literal, $arity:literal, $call:literal, $ty:path, $fallible:expr) => {
         Intrinsic {
             name: $name,
             arity: $arity,
             rust_call: $call,
             native_re: None,
+            fallible: $fallible,
             typing: IntrinsicTyping::Binary($ty),
         }
     };
@@ -174,93 +184,98 @@ pub static INTRINSICS: &[Intrinsic] = &[
         1,
         "RosySIN::rosy_sin",
         intrinsics::sin::get_return_type,
-        Some("sin")
+        Some(".sin()")
     ),
     unary!(
         "COS",
         1,
         "RosyCOS::rosy_cos",
         intrinsics::cos::get_return_type,
-        Some("cos")
+        Some(".cos()")
     ),
     unary!(
         "TAN",
         1,
         "RosyTAN::rosy_tan",
         intrinsics::tan::get_return_type,
-        Some("tan")
+        Some(".tan()")
     ),
     unary!(
         "ASIN",
         1,
         "RosyASIN::rosy_asin",
         intrinsics::asin::get_return_type,
-        Some("asin")
+        Some(".asin()")
     ),
     unary!(
         "ACOS",
         1,
         "RosyACOS::rosy_acos",
         intrinsics::acos::get_return_type,
-        Some("acos")
+        Some(".acos()")
     ),
     unary!(
         "ATAN",
         1,
         "RosyATAN::rosy_atan",
         intrinsics::atan::get_return_type,
-        Some("atan")
+        Some(".atan()")
     ),
     unary!(
         "SINH",
         1,
         "RosySINH::rosy_sinh",
         intrinsics::sinh::get_return_type,
-        Some("sinh")
+        Some(".sinh()")
     ),
     unary!(
         "COSH",
         1,
         "RosyCOSH::rosy_cosh",
         intrinsics::cosh::get_return_type,
-        Some("cosh")
+        Some(".cosh()")
     ),
     unary!(
         "TANH",
         1,
         "RosyTANH::rosy_tanh",
         intrinsics::tanh::get_return_type,
-        Some("tanh")
+        Some(".tanh()")
     ),
     unary!(
         "SQR",
         1,
         "RosySQR::rosy_sqr",
-        intrinsics::sqr::get_return_type
+        intrinsics::sqr::get_return_type,
+        Some(".powi(2)")
     ),
     unary!(
         "SQRT",
         1,
         "RosySQRT::rosy_sqrt",
-        intrinsics::sqrt::get_return_type
+        intrinsics::sqrt::get_return_type,
+        Some(".sqrt()")
     ),
     unary!(
         "EXP",
         1,
         "RosyEXP::rosy_exp",
-        intrinsics::exp::get_return_type
+        intrinsics::exp::get_return_type,
+        Some(".exp()")
     ),
     unary!(
         "LOG",
         1,
         "RosyLOG::rosy_log",
-        intrinsics::log::get_return_type
+        intrinsics::log::get_return_type,
+        Some(".ln()")
     ),
     unary!(
         "ABS",
         1,
         "RosyABS::rosy_abs",
-        intrinsics::abs::get_return_type
+        intrinsics::abs::get_return_type,
+        Some(".abs()")
     ),
     unary!(
         "NORM",
@@ -278,13 +293,15 @@ pub static INTRINSICS: &[Intrinsic] = &[
         "INT",
         1,
         "RosyINT::rosy_int",
-        intrinsics::int_fn::get_return_type
+        intrinsics::int_fn::get_return_type,
+        Some(".trunc()")
     ),
     unary!(
         "NINT",
         1,
         "RosyNINT::rosy_nint",
-        intrinsics::nint::get_return_type
+        intrinsics::nint::get_return_type,
+        Some(".round()")
     ),
     unary!(
         "TYPE",
@@ -317,37 +334,57 @@ pub static INTRINSICS: &[Intrinsic] = &[
         intrinsics::isrt3::get_return_type
     ),
     unary!("CM", 1, "RosyCM::rosy_cm", intrinsics::cm::get_return_type),
-    unary!("ST", 1, "RosyST::rosy_st", intrinsics::st::get_return_type),
-    unary!("LO", 1, "RosyLO::rosy_lo", intrinsics::lo::get_return_type),
+    unary!(
+        "ST",
+        1,
+        "RosyST::rosy_to_string",
+        intrinsics::st::get_return_type,
+        None,
+        false
+    ),
+    unary!(
+        "LO",
+        1,
+        "RosyLO::rosy_to_logical",
+        intrinsics::lo::get_return_type,
+        None,
+        false
+    ),
     unary!(
         "RE",
         1,
-        "RosyRE::rosy_re",
+        "RosyREConvert::rosy_re_convert",
         intrinsics::re_convert::get_return_type
     ),
     unary!(
         "VE",
         1,
-        "RosyVE::rosy_ve",
+        "RosyVEConvert::rosy_ve_convert",
         intrinsics::ve_convert::get_return_type
     ),
     unary!(
         "LENGTH",
         1,
         "RosyLENGTH::rosy_length",
-        intrinsics::length::get_return_type
+        intrinsics::length::get_return_type,
+        None,
+        false
     ),
     unary!(
         "VARMEM",
         1,
         "RosyVARMEM::rosy_varmem",
-        intrinsics::varmem::get_return_type
+        intrinsics::varmem::get_return_type,
+        None,
+        false
     ),
     unary!(
         "VARPOI",
         1,
         "RosyVARPOI::rosy_varpoi",
-        intrinsics::varpoi::get_return_type
+        intrinsics::varpoi::get_return_type,
+        None,
+        false
     ),
     unary!(
         "ERF",
@@ -401,7 +438,64 @@ pub static INTRINSICS: &[Intrinsic] = &[
         "POSITION",
         2,
         "RosyPOSITION::rosy_position",
-        intrinsics::position::get_return_type
+        intrinsics::position::get_return_type,
+        false
+    ),
+    unary!(
+        "LST",
+        1,
+        "RosyLST::rosy_lst",
+        intrinsics::mem_size::always_re,
+        None,
+        false
+    ),
+    unary!(
+        "LCM",
+        1,
+        "RosyLCM::rosy_lcm",
+        intrinsics::mem_size::always_re,
+        None,
+        false
+    ),
+    unary!(
+        "LCD",
+        1,
+        "RosyLCD::rosy_lcd",
+        intrinsics::mem_size::always_re,
+        None,
+        false
+    ),
+    unary!(
+        "LRE",
+        1,
+        "RosyLRE::rosy_lre",
+        intrinsics::mem_size::always_re,
+        None,
+        false
+    ),
+    unary!(
+        "LLO",
+        1,
+        "RosyLLO::rosy_llo",
+        intrinsics::mem_size::always_re,
+        None,
+        false
+    ),
+    unary!(
+        "LVE",
+        1,
+        "RosyLVE::rosy_lve",
+        intrinsics::mem_size::always_re,
+        None,
+        false
+    ),
+    unary!(
+        "LDA",
+        1,
+        "RosyLDA::rosy_lda",
+        intrinsics::mem_size::always_re,
+        None,
+        false
     ),
 ];
 
