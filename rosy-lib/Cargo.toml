@@ -9,18 +9,18 @@ mpi = ["dep:mpi", "dep:bincode"]
 nightly-simd = []
 
 [dependencies]
-anyhow.workspace = true
+anyhow = "1.0"
 mpi = { version = "0.8", optional = true }
 bincode = { version = "2.0", optional = true }
-num-complex.workspace = true
-rustc-hash.workspace = true
-rand.workspace = true
+num-complex = "0.4"
+rustc-hash = "2"
+rand = "0.9"
 libm = "0.2"
 memory-stats = "1"
-libc.workspace = true
+libc = "0.2"
 
 [dev-dependencies]
-serial_test.workspace = true
+serial_test = "3.2"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("mpi", "nightly-simd"))'] }

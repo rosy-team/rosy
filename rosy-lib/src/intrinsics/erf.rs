@@ -16,7 +16,7 @@ pub trait RosyERF {
     fn rosy_erf(&self) -> anyhow::Result<Self::Output>;
 }
 
-/// ERF for real numbers using libm::erf
+/// ERF for real numbers
 impl RosyERF for RE {
     type Output = RE;
     fn rosy_erf(&self) -> anyhow::Result<Self::Output> {

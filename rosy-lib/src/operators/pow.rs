@@ -11,29 +11,18 @@
 //! - VE ^ RE -> VE (component-wise)
 
 use anyhow::Result;
-use crate::RosyType;
+use crate::{RosyType, RosyBaseType};
 use crate::{RE, VE, DA, CD};
-use std::sync::OnceLock;
-use std::collections::HashMap;
-use crate::operators::{TypeRule, build_type_registry};
 use crate::core::polval::{da_powi, cd_powi};
 
-/// Type compatibility registry for power/exponentiation operator.
-///
-/// This is the single source of truth for what type combinations are allowed.
-pub const POW_REGISTRY: &[TypeRule] = &[
-    TypeRule::new("RE", "RE", "RE"),
-    TypeRule::new("VE", "RE", "VE"),
-    TypeRule::new("DA", "RE", "DA"),
-    TypeRule::new("CD", "RE", "CD"),
-];
-
-static POW_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
-
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    POW_MAP.get_or_init(|| build_type_registry(POW_REGISTRY))
-        .get(&(*lhs, *rhs))
-        .copied()
+    match crate::operators::dim0(lhs, rhs)? {
+        (RosyBaseType::RE, RosyBaseType::RE) => Some(RosyType::RE()),
+        (RosyBaseType::VE, RosyBaseType::RE) => Some(RosyType::VE()),
+        (RosyBaseType::DA, RosyBaseType::RE) => Some(RosyType::DA()),
+        (RosyBaseType::CD, RosyBaseType::RE) => Some(RosyType::CD()),
+        _ => None,
+    }
 }
 
 pub trait RosyPow<Rhs = Self> {

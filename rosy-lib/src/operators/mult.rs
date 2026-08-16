@@ -1,62 +1,11 @@
 //! Multiplication operator for Rosy types.
-//!
-//! This module provides the `RosyMult` trait and implementations for all
-//! supported type combinations. The compatibility rules are defined in the
-//! `MULT_REGISTRY` constant below.
-//!
-//! # Type Compatibility
-//! 
-//! See `assets/operators/mult/mult_table.md` for the full compatibility table.
-//!
-//! # Examples
-//! 
-//! See `assets/operators/mult/mult.rosy` for Rosy examples and 
-//! `assets/operators/mult/mult.fox` for equivalent COSY INFINITY code.
 
 use anyhow::Result;
 use crate::RosyType;
 use crate::{RE, CM, VE, DA, CD, LO};
-use std::sync::OnceLock;
-use std::collections::HashMap;
-use crate::operators::{TypeRule, build_type_registry};
-
-/// Type compatibility registry for multiplication operator.
-/// 
-/// This is the single source of truth for what type combinations are allowed.
-/// The build script (`build.rs`) parses this to generate:
-/// - Documentation table (`mult_table.md`)
-/// - Rosy test script (`mult.rosy`)
-/// - COSY test script (`mult.fox`)
-/// - Integration tests
-pub const MULT_REGISTRY: &[TypeRule] = &[
-    TypeRule::new("RE", "RE", "RE"),
-    TypeRule::new("RE", "CM", "CM"),
-    TypeRule::new("RE", "VE", "VE"),
-    TypeRule::new("RE", "DA", "DA"),
-    TypeRule::new("RE", "CD", "CD"),
-    TypeRule::new("LO", "LO", "LO"),
-    TypeRule::new("CM", "RE", "CM"),
-    TypeRule::new("CM", "CM", "CM"),
-    TypeRule::new("CM", "DA", "CD"),
-    TypeRule::new("CM", "CD", "CD"),
-    TypeRule::new("VE", "RE", "VE"),
-    TypeRule::new("VE", "VE", "VE"),
-    TypeRule::new("DA", "RE", "DA"),
-    TypeRule::new("DA", "CM", "CD"),
-    TypeRule::new("DA", "DA", "DA"),
-    TypeRule::new("DA", "CD", "CD"),
-    TypeRule::new("CD", "RE", "CD"),
-    TypeRule::new("CD", "CM", "CD"),
-    TypeRule::new("CD", "DA", "CD"),
-    TypeRule::new("CD", "CD", "CD"),
-];
-
-static MULT_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    MULT_MAP.get_or_init(|| build_type_registry(MULT_REGISTRY))
-        .get(&(*lhs, *rhs))
-        .copied()
+    crate::operators::arith_return(lhs, rhs, true)
 }
 
 pub trait RosyMult<Rhs = Self> {

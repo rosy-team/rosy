@@ -3,24 +3,9 @@
 use super::core::intrinsic_call::IntrinsicCallExpr;
 use super::core::var_expr::VarExpr;
 use super::core::variable_identifier::VariableIdentifier;
-use super::operators::arithmetic::add::AddExpr;
-use super::operators::arithmetic::div::DivExpr;
-use super::operators::arithmetic::mult::MultExpr;
-use super::operators::arithmetic::sub::SubExpr;
-use super::operators::collection::concat::ConcatExpr;
-use super::operators::collection::derive::DeriveExpr;
-use super::operators::collection::extract::ExtractExpr;
-use super::operators::comparison::eq::EqExpr;
-use super::operators::comparison::gt::GtExpr;
-use super::operators::comparison::gte::GteExpr;
-use super::operators::comparison::lt::LtExpr;
-use super::operators::comparison::lte::LteExpr;
-use super::operators::comparison::neq::NeqExpr;
-use super::operators::logical::and_op::AndExpr;
-use super::operators::logical::or_op::OrExpr;
+use super::operators::binary::BinaryExpr;
 use super::operators::unary::neg::NegExpr;
 use super::operators::unary::not::NotExpr;
-use super::pow::PowExpr;
 use super::types::cd::CDExpr;
 use super::types::da::DAExpr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
@@ -101,22 +86,7 @@ macro_rules! expr_kind {
 }
 
 expr_kind! {
-    Add(AddExpr),
-    Sub(SubExpr),
-    Mult(MultExpr),
-    Div(DivExpr),
-    Pow(PowExpr),
-    Concat(ConcatExpr),
-    Extract(ExtractExpr),
-    Derive(DeriveExpr),
-    Eq(EqExpr),
-    Neq(NeqExpr),
-    Lt(LtExpr),
-    Gt(GtExpr),
-    Lte(LteExpr),
-    Gte(GteExpr),
-    And(AndExpr),
-    Or(OrExpr),
+    Binary(BinaryExpr),
     Neg(NegExpr),
     Not(NotExpr),
     Intrinsic(IntrinsicCallExpr),

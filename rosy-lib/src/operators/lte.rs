@@ -9,22 +9,9 @@
 use anyhow::Result;
 use crate::RosyType;
 use crate::{RE, ST, LO};
-use std::sync::OnceLock;
-use std::collections::HashMap;
-use crate::operators::{TypeRule, build_type_registry};
-
-/// Type compatibility registry for less-than-or-equal operator.
-pub const LTE_REGISTRY: &[TypeRule] = &[
-    TypeRule::new("RE", "RE", "LO"),
-    TypeRule::new("ST", "ST", "LO"),
-];
-
-static LTE_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    LTE_MAP.get_or_init(|| build_type_registry(LTE_REGISTRY))
-        .get(&(*lhs, *rhs))
-        .copied()
+    crate::operators::lt::get_return_type(lhs, rhs)
 }
 
 pub trait RosyLte<Rhs = Self> {

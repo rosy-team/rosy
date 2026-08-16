@@ -3,7 +3,6 @@
 pub(crate) mod compile;
 pub(crate) mod setup;
 pub(crate) mod test;
-pub(crate) mod update_check;
 
 pub(crate) const BOLD: &str = "\x1b[1m";
 pub(crate) const DIM: &str = "\x1b[2m";

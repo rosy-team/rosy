@@ -49,30 +49,11 @@ fn write_vendored_lib(output_dir: &Path) -> Result<()> {
             .with_context(|| format!("Failed to write file: {}", target_path.display()))?;
     }
 
-    // Write Cargo.toml for rosy_lib with MPI and SIMD as optional features
-    let lib_cargo_toml = r#"[package]
-name = "rosy_lib"
-version = "0.1.0"
-edition = "2024"
-
-[features]
-mpi = ["dep:mpi", "dep:bincode"]
-nightly-simd = []
-
-[dependencies]
-anyhow = "1.0"
-mpi = { version = "0.8", optional = true }
-bincode = { version = "2.0", optional = true }
-num-complex = "0.4"
-rustc-hash = "2"
-rand = "0.9"
-libm = "0.2"
-memory-stats = "1"
-libc = "0.2"
-"#;
-
-    write_if_changed(lib_dir.join("Cargo.toml"), lib_cargo_toml)
-        .context("Failed to write vendored rosy_lib Cargo.toml")?;
+    write_if_changed(
+        lib_dir.join("Cargo.toml"),
+        include_str!("../../../rosy-lib/Cargo.toml"),
+    )
+    .context("Failed to write vendored rosy_lib Cargo.toml")?;
 
     Ok(())
 }

@@ -7,13 +7,9 @@
 //!
 //! | I want to... | Go to |
 //! |--------------|-------|
-//! | Use `+`, `-`, `*`, `/` | **[`operators::arithmetic`]** |
-//! | Compare with `=`, `<`, `>`, etc. | **[`operators::comparison`]** |
-//! | Use `&` (concat), `\|` (extract), `%` (derive) | **[`operators::collection`]** |
-//! | Use `AND`, `OR` | **[`operators::logical`]** |
+//! | Use `+`, `-`, `*`, `/`, `&`, `\|`, `^`, `AND`, `OR`, … | **[`operators::binary`]** |
 //! | Use `NOT` or unary `-` | **[`operators::unary`]** |
 //! | Call `SIN`, `ST`, … (named intrinsics) | [`core::intrinsic_call`] — types in `rosy_lib::registry` |
-//! | Raise to a power (`^`) | **[`pow`]** |
 //! | Write a literal number, string, or boolean | **[`types`]** |
 //! | Construct `DA(n)` or `CD(n)` | **[`types::da`]**, **[`types::cd`]** |
 //!
@@ -31,7 +27,6 @@
 pub mod core;
 pub mod kind;
 pub mod operators;
-pub mod pow;
 pub mod string_convert;
 pub mod types;
 
@@ -49,25 +44,10 @@ use std::collections::HashSet;
 use crate::program::expressions::core::intrinsic_call::IntrinsicCallExpr;
 use crate::program::expressions::core::var_expr::VarExpr;
 
-use crate::program::expressions::pow::PowExpr;
-
-use crate::program::expressions::operators::arithmetic::add::AddExpr;
-use crate::program::expressions::operators::arithmetic::div::DivExpr;
-use crate::program::expressions::operators::arithmetic::mult::MultExpr;
-use crate::program::expressions::operators::arithmetic::sub::SubExpr;
-use crate::program::expressions::operators::collection::concat::ConcatExpr;
-use crate::program::expressions::operators::collection::derive::DeriveExpr;
-use crate::program::expressions::operators::collection::extract::ExtractExpr;
-use crate::program::expressions::operators::comparison::eq::EqExpr;
-use crate::program::expressions::operators::comparison::gt::GtExpr;
-use crate::program::expressions::operators::comparison::gte::GteExpr;
-use crate::program::expressions::operators::comparison::lt::LtExpr;
-use crate::program::expressions::operators::comparison::lte::LteExpr;
-use crate::program::expressions::operators::comparison::neq::NeqExpr;
-use crate::program::expressions::operators::logical::and_op::AndExpr;
-use crate::program::expressions::operators::logical::or_op::OrExpr;
+use crate::program::expressions::operators::binary::BinaryExpr;
 use crate::program::expressions::operators::unary::neg::NegExpr;
 use crate::program::expressions::operators::unary::not::NotExpr;
+use rosy_lib::BinaryOp;
 
 use crate::program::expressions::types::cd::CDExpr;
 use crate::program::expressions::types::da::DAExpr;
@@ -263,234 +243,31 @@ impl FromRule for Expr {
             })
             .map_infix(|left, op, right| {
                 let op_loc = SourceLocation::from_pair(&op);
-                match op.as_rule() {
-                    Rule::add => {
-                        let left = left
-                            .context("...while transpiling left-hand side of `add` expression")?;
-                        let right = right
-                            .context("...while transpiling right-hand side of `add` expression")?;
-                        Ok(Expr {
-                            inner: AddExpr {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::sub => {
-                        let left = left
-                            .context("...while transpiling left-hand side of `sub` expression")?;
-                        let right = right
-                            .context("...while transpiling right-hand side of `sub` expression")?;
-                        Ok(Expr {
-                            inner: SubExpr {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::mult => {
-                        let left = left
-                            .context("...while transpiling left-hand side of `mult` expression")?;
-                        let right = right
-                            .context("...while transpiling right-hand side of `mult` expression")?;
-                        Ok(Expr {
-                            inner: MultExpr {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::div => {
-                        let left = left
-                            .context("...while transpiling left-hand side of `div` expression")?;
-                        let right = right
-                            .context("...while transpiling right-hand side of `div` expression")?;
-                        Ok(Expr {
-                            inner: DivExpr {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::pow => {
-                        let left = left.context("...while transpiling base of `pow` expression")?;
-                        let right =
-                            right.context("...while transpiling exponent of `pow` expression")?;
-                        Ok(Expr {
-                            inner: PowExpr {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::concat => {
-                        let left = left.context(
-                            "...while transpiling left-hand side of `concat` expression",
-                        )?;
-                        let right = right.context(
-                            "...while transpiling right-hand side of `concat` expression",
-                        )?;
-                        Ok(Expr {
-                            inner: ConcatExpr {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::extract => {
-                        let left =
-                            left.context("...while transpiling object of `extract` expression")?;
-                        let right =
-                            right.context("...while transpiling index of `extract` expression")?;
-                        Ok(Expr {
-                            inner: ExtractExpr {
-                                object: Box::new(left),
-                                index: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::derive => {
-                        let left =
-                            left.context("...while transpiling object of `derive` (%) expression")?;
-                        let right = right
-                            .context("...while transpiling index of `derive` (%) expression")?;
-                        Ok(Expr {
-                            inner: DeriveExpr {
-                                object: Box::new(left),
-                                index: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::eq => {
-                        let left =
-                            left.context("...while transpiling left-hand side of `eq` expression")?;
-                        let right = right
-                            .context("...while transpiling right-hand side of `eq` expression")?;
-                        Ok(Expr {
-                            inner: EqExpr {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::neq => {
-                        let left = left
-                            .context("...while transpiling left-hand side of `neq` expression")?;
-                        let right = right
-                            .context("...while transpiling right-hand side of `neq` expression")?;
-                        Ok(Expr {
-                            inner: NeqExpr {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::lt => {
-                        let left =
-                            left.context("...while transpiling left-hand side of `lt` expression")?;
-                        let right = right
-                            .context("...while transpiling right-hand side of `lt` expression")?;
-                        Ok(Expr {
-                            inner: LtExpr {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::gt => {
-                        let left =
-                            left.context("...while transpiling left-hand side of `gt` expression")?;
-                        let right = right
-                            .context("...while transpiling right-hand side of `gt` expression")?;
-                        Ok(Expr {
-                            inner: GtExpr {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::lte => {
-                        let left = left
-                            .context("...while transpiling left-hand side of `lte` expression")?;
-                        let right = right
-                            .context("...while transpiling right-hand side of `lte` expression")?;
-                        Ok(Expr {
-                            inner: LteExpr {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::gte => {
-                        let left = left
-                            .context("...while transpiling left-hand side of `gte` expression")?;
-                        let right = right
-                            .context("...while transpiling right-hand side of `gte` expression")?;
-                        Ok(Expr {
-                            inner: GteExpr {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::and_op => {
-                        let left = left
-                            .context("...while transpiling left-hand side of `AND` expression")?;
-                        let right = right
-                            .context("...while transpiling right-hand side of `AND` expression")?;
-                        Ok(Expr {
-                            inner: AndExpr {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    Rule::or_op => {
-                        let left =
-                            left.context("...while transpiling left-hand side of `OR` expression")?;
-                        let right = right
-                            .context("...while transpiling right-hand side of `OR` expression")?;
-                        Ok(Expr {
-                            inner: OrExpr {
-                                left: Box::new(left),
-                                right: Box::new(right),
-                            }
-                            .into(),
-                            source_location: op_loc.clone(),
-                        })
-                    }
-                    _ => bail!("Unexpected infix operator: {:?}", op.as_rule()),
-                }
+                let bin = match op.as_rule() {
+                    Rule::add => BinaryOp::Add,
+                    Rule::sub => BinaryOp::Sub,
+                    Rule::mult => BinaryOp::Mult,
+                    Rule::div => BinaryOp::Div,
+                    Rule::pow => BinaryOp::Pow,
+                    Rule::concat => BinaryOp::Concat,
+                    Rule::extract => BinaryOp::Extract,
+                    Rule::derive => BinaryOp::Derive,
+                    Rule::eq => BinaryOp::Eq,
+                    Rule::neq => BinaryOp::Neq,
+                    Rule::lt => BinaryOp::Lt,
+                    Rule::gt => BinaryOp::Gt,
+                    Rule::lte => BinaryOp::Lte,
+                    Rule::gte => BinaryOp::Gte,
+                    Rule::and_op => BinaryOp::And,
+                    Rule::or_op => BinaryOp::Or,
+                    other => bail!("Unexpected infix operator: {:?}", other),
+                };
+                let left = left.context("...while parsing left-hand side of infix expression")?;
+                let right = right.context("...while parsing right-hand side of infix expression")?;
+                Ok(Expr {
+                    inner: BinaryExpr::new(bin, left, right).into(),
+                    source_location: op_loc,
+                })
             })
             .parse(pairs_iter.into_iter());
 

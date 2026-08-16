@@ -5,24 +5,16 @@
 //! `LT_REGISTRY` constant below.
 
 use anyhow::Result;
-use crate::RosyType;
+use crate::{RosyType, RosyBaseType};
 use crate::{RE, ST, LO};
-use std::sync::OnceLock;
-use std::collections::HashMap;
-use crate::operators::{TypeRule, build_type_registry};
-
-/// Type compatibility registry for less-than operator.
-pub const LT_REGISTRY: &[TypeRule] = &[
-    TypeRule::new("RE", "RE", "LO"),
-    TypeRule::new("ST", "ST", "LO"),
-];
-
-static LT_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    LT_MAP.get_or_init(|| build_type_registry(LT_REGISTRY))
-        .get(&(*lhs, *rhs))
-        .copied()
+    match crate::operators::dim0(lhs, rhs)? {
+        (RosyBaseType::RE, RosyBaseType::RE) | (RosyBaseType::ST, RosyBaseType::ST) => {
+            Some(RosyType::LO())
+        }
+        _ => None,
+    }
 }
 
 pub trait RosyLt<Rhs = Self> {

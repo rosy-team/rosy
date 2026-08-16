@@ -99,19 +99,18 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
-    let update_handle = cli::update_check::spawn_update_check();
-
     let cli = Cli::parse();
 
     if matches!(&cli.command, Commands::Lsp { .. }) {
-        update_handle.finish();
-        let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create tokio runtime");
         rt.block_on(rosy::lsp::run());
         return Ok(());
     }
 
     if let Commands::Setup { editor } = &cli.command {
-        update_handle.finish();
         return cli::setup::install_editor_extension(editor);
     }
 
@@ -121,7 +120,6 @@ fn main() -> Result<()> {
         bless,
     } = &cli.command
     {
-        update_handle.finish();
         return cli::test::run_construct_tests(filter.as_deref(), *release, *bless);
     }
 
@@ -172,8 +170,6 @@ fn main() -> Result<()> {
 
     syntax_config::set_cosy_syntax(cosy_syntax);
     let binary_path = cli::compile::rosy(&source, output_dir, release, optimized)?;
-
-    update_handle.finish();
 
     match cli.command {
         Commands::Run { .. } => {

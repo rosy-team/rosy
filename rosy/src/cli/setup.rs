@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use clap::Subcommand;
 use std::{fs, fs::write, path::PathBuf};
 
@@ -12,16 +12,14 @@ pub(crate) enum EditorTarget {
     Zed,
 }
 
-// VS Code extension files embedded at compile time
-// VS Code extension files — package.json, extension.js, and tmLanguage are
-// static (embedded from editors/vscode/). The language config is generated
-// from the grammar at build time so folding/indent keywords stay in sync.
+// VS Code: package.json + thin client. language config is generated from
+// the grammar at build time. vscode-languageclient is installed via npm.
 const VSCODE_PACKAGE_JSON: &str = include_str!("../../assets/editors/vscode/package.json");
 const VSCODE_LANG_CONFIG: &str = include_str!(concat!(
     env!("OUT_DIR"),
     "/vscode_language_configuration.json"
 ));
-const VSCODE_EXTENSION_JS: &str = include_str!("../../assets/editors/vscode/extension.js");
+const VSCODE_EXTENSION_JS: &str = include_str!("../../assets/editors/vscode/src/extension.js");
 const VSCODE_TM_GRAMMAR: &str =
     include_str!("../../assets/editors/vscode/syntaxes/rosy.tmLanguage.json");
 
@@ -102,47 +100,16 @@ fn install_vscode_extension() -> Result<()> {
     write(ext_dir.join("extension.js"), VSCODE_EXTENSION_JS)?;
     write(syntaxes_dir.join("rosy.tmLanguage.json"), VSCODE_TM_GRAMMAR)?;
 
-    // Register the extension in VS Code's extensions.json registry
-    let registry_path = extensions_dir.join("extensions.json");
-    let mut registry: Vec<serde_json::Value> = if registry_path.exists() {
-        let contents =
-            fs::read_to_string(&registry_path).context("Failed to read extensions.json")?;
-        serde_json::from_str(&contents).unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-
-    // Remove any existing rosy entries
-    registry.retain(|entry| {
-        entry
-            .get("identifier")
-            .and_then(|id| id.get("id"))
-            .and_then(|id| id.as_str())
-            != Some("rosy-team.rosy-language-support")
-    });
-
-    let relative_location = format!("rosy-team.rosy-language-support-{ext_version}");
-    registry.push(serde_json::json!({
-        "identifier": { "id": "rosy-team.rosy-language-support" },
-        "version": ext_version,
-        "location": {
-            "$mid": 1,
-            "path": ext_dir.to_string_lossy(),
-            "scheme": "file"
-        },
-        "relativeLocation": relative_location,
-        "metadata": {
-            "installedTimestamp": std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64,
-            "source": "rosy-setup"
-        }
-    }));
-
-    let registry_json =
-        serde_json::to_string_pretty(&registry).context("Failed to serialize extensions.json")?;
-    write(&registry_path, registry_json)?;
+    let npm_status = std::process::Command::new("npm")
+        .args(["install", "--omit=dev"])
+        .current_dir(&ext_dir)
+        .status()
+        .context("Failed to run npm. Install Node.js so vscode-languageclient can be fetched.")?;
+    ensure!(
+        npm_status.success(),
+        "npm install failed in {}",
+        ext_dir.display()
+    );
 
     let done_verb = if action == "Updating" {
         "Updated"
