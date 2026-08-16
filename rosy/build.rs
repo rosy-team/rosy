@@ -76,8 +76,13 @@ fn main() {
 
     // ─── LSP: Generate keyword list and hover docs from grammar + modules ──
     let pest_path = Path::new("assets/rosy.pest");
+    let registry_path = Path::new("../rosy-lib/src/registry.rs");
     let program_dir = Path::new("src/program");
     println!("cargo:rerun-if-changed={}", pest_path.display());
+    println!("cargo:rerun-if-changed={}", registry_path.display());
+
+    let intrinsics = intrinsic_names_from_registry(registry_path);
+    sync_pest_intrinsic_name(pest_path, &intrinsics);
 
     let pest_source = fs::read_to_string(pest_path).expect("Failed to read rosy.pest");
     let keywords = extract_keywords(&pest_source);
@@ -88,7 +93,6 @@ fn main() {
     generate_editor_configs(&out_dir, &keywords);
 
     // ─── Tree-sitter: Generate grammar.js and highlights.scm from Pest ────
-    let intrinsics = extract_intrinsic_functions(&pest_source);
     let types = vec!["RE", "ST", "LO", "CM", "VE", "DA", "CD"];
     generate_tree_sitter_grammar(&out_dir, &keywords, &intrinsics, &types);
     generate_tree_sitter_highlights(&out_dir, &keywords, &intrinsics, &types);
@@ -553,28 +557,76 @@ fn generate_editor_configs(out_dir: &str, keywords: &[String]) {
 
 // ─── Tree-sitter Grammar Generation ──────────────────────────────────────────
 
-/// Extract intrinsic function names from the `intrinsic_name` rule in the Pest grammar.
-fn extract_intrinsic_functions(pest_source: &str) -> Vec<String> {
-    let mut functions = Vec::new();
-    for line in pest_source.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("intrinsic_name") {
-            for part in trimmed.split('|') {
-                if let Some(start) = part.find('"') {
-                    let rest = &part[start + 1..];
-                    if let Some(end) = rest.find('"') {
-                        let kw = rest[..end].to_uppercase();
-                        if !kw.is_empty() && kw.chars().all(|c| c.is_ascii_alphanumeric()) {
-                            functions.push(kw);
-                        }
-                    }
-                }
+/// Names from `unary!("SIN", …)` / `binary!("POSITION", …)` in `registry.rs`, plus DA/CD.
+fn intrinsic_names_from_registry(registry_path: &Path) -> Vec<String> {
+    let src = fs::read_to_string(registry_path).expect("read registry.rs");
+    let mut names = Vec::new();
+    let mut rest = src.as_str();
+    loop {
+        let u = rest.find("unary!(");
+        let b = rest.find("binary!(");
+        let start = match (u, b) {
+            (Some(u), Some(b)) => u.min(b),
+            (Some(u), None) => u,
+            (None, Some(b)) => b,
+            (None, None) => break,
+        };
+        rest = &rest[start..];
+        rest = match rest.find('(') {
+            Some(i) => &rest[i + 1..],
+            None => break,
+        };
+        rest = rest.trim_start();
+        if !rest.starts_with('"') {
+            continue;
+        }
+        rest = &rest[1..];
+        if let Some(end) = rest.find('"') {
+            let name = rest[..end].to_ascii_uppercase();
+            if name.chars().all(|c| c.is_ascii_alphanumeric()) {
+                names.push(name);
             }
+            rest = &rest[end + 1..];
         }
     }
-    functions.sort();
-    functions.dedup();
-    functions
+    names.extend(["DA".into(), "CD".into()]);
+    names.sort();
+    names.dedup();
+    names
+}
+
+fn sync_pest_intrinsic_name(pest_path: &Path, names: &[String]) {
+    let mut ordered = names.to_vec();
+    ordered.sort_by(|a, b| b.len().cmp(&a.len()).then(a.cmp(b)));
+    let alts = ordered
+        .iter()
+        .map(|n| format!("^\"{n}\""))
+        .collect::<Vec<_>>()
+        .join(" | ");
+    let new_line = format!(
+        "  intrinsic_name = @{{ ({alts}) ~ !(ASCII_ALPHANUMERIC | \"_\") }}"
+    );
+
+    let src = fs::read_to_string(pest_path).expect("read rosy.pest");
+    let mut replaced = false;
+    let mut out = String::new();
+    for line in src.lines() {
+        if line.trim_start().starts_with("intrinsic_name") {
+            if line == new_line {
+                return;
+            }
+            out.push_str(&new_line);
+            replaced = true;
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    assert!(replaced, "rosy.pest missing intrinsic_name rule");
+    if !src.ends_with('\n') {
+        out.pop();
+    }
+    fs::write(pest_path, out).expect("write rosy.pest");
 }
 
 /// Generate a Tree-sitter grammar.js that tokenizes ROSY source code.

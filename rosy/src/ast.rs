@@ -147,7 +147,7 @@ mod intrinsic_name_sync {
         let pest = pest_intrinsic_names();
         assert_eq!(
             pest, expected,
-            "Update `intrinsic_name` in rosy.pest when changing rosy_lib::INTRINSICS"
+            "build.rs should rewrite `intrinsic_name` from rosy_lib::INTRINSICS"
         );
     }
 }

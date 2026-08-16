@@ -203,7 +203,7 @@ endif = { ^"ENDIF" ~ semicolon }
 
 /// [ INTRINSIC FUNCTIONS ]
   /// Named call: `SIN(x)`, `POSITION(a, b)`, `DA(n)`, …
-  /// Names live in `intrinsic_name` (must stay in sync with `rosy_lib::INTRINSICS` plus DA/CD).
+  /// `intrinsic_name` is rewritten by rosy/build.rs from `rosy_lib::INTRINSICS` plus DA/CD.
   /// Longer prefixes first so ISRT3/WERF win over ISRT/ERF.
   builtin_function = { intrinsic_name ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
   intrinsic_name = @{ (^"POSITION" | ^"LENGTH" | ^"VARMEM" | ^"VARPOI" | ^"CMPLX" | ^"ISRT3" | ^"LTRIM" | ^"ACOS" | ^"ASIN" | ^"ATAN" | ^"CONJ" | ^"CONS" | ^"COSH" | ^"IMAG" | ^"ISRT" | ^"NINT" | ^"NORM" | ^"REAL" | ^"SINH" | ^"SQRT" | ^"TANH" | ^"TRIM" | ^"TYPE" | ^"VMAX" | ^"VMIN" | ^"WERF" | ^"ABS" | ^"COS" | ^"ERF" | ^"EXP" | ^"INT" | ^"LCD" | ^"LCM" | ^"LDA" | ^"LLO" | ^"LOG" | ^"LRE" | ^"LST" | ^"LVE" | ^"SIN" | ^"SQR" | ^"TAN" | ^"CD" | ^"CM" | ^"DA" | ^"LO" | ^"RE" | ^"ST" | ^"VE") ~ !(ASCII_ALPHANUMERIC | "_") }
