@@ -20,10 +20,7 @@ use std::collections::{BTreeSet, HashSet};
 
 use crate::{
     ast::{FromRule, Rule},
-    transpile::{
-        ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
-        TranspileableExpr, ValueKind,
-    },
+    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind},
 };
 use rosy_lib::RosyType;
 
@@ -45,13 +42,6 @@ impl FromRule for bool {
 impl TranspileableExpr for bool {
     fn type_of(&self, _context: &TranspilationInputContext) -> Result<RosyType> {
         Ok(RosyType::LO())
-    }
-    fn discover_expr_function_calls(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &ScopeContext,
-    ) -> ExprFunctionCallResult {
-        ExprFunctionCallResult::NoFunctionCalls
     }
     fn build_expr_recipe(
         &self,

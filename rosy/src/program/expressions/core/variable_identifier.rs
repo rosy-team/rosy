@@ -164,13 +164,6 @@ impl TranspileableExpr for VariableIdentifier {
 
         Ok(var_type)
     }
-    fn discover_expr_function_calls(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &ScopeContext,
-    ) -> ExprFunctionCallResult {
-        ExprFunctionCallResult::NoFunctionCalls
-    }
     fn build_expr_recipe(
         &self,
         _resolver: &TypeResolver,

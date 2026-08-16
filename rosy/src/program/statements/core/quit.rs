@@ -23,7 +23,7 @@ use anyhow::{Context, Error, Result, ensure};
 use std::collections::BTreeSet;
 
 use crate::{
-    ast::*, program::expressions::Expr, program::statements::SourceLocation, resolve::*,
+    ast::*, program::expressions::Expr,
     transpile::*,
 };
 
@@ -49,31 +49,6 @@ impl FromRule for QuitStatement {
             .ok_or_else(|| anyhow::anyhow!("Expected code expression in QUIT"))?;
 
         Ok(Some(QuitStatement { code_expr }))
-    }
-}
-impl TranspileableStatement for QuitStatement {
-    fn register_typeslot_declaration(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
-    }
-    fn wire_inference_edges(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
-        InferenceEdgeResult::NoEdges
-    }
-    fn hydrate_resolved_types(
-        &mut self,
-        _resolver: &TypeResolver,
-        _current_scope: &[String],
-    ) -> TypeHydrationResult {
-        TypeHydrationResult::NothingToHydrate
     }
 }
 impl Transpile for QuitStatement {
@@ -110,3 +85,5 @@ impl Transpile for QuitStatement {
         })
     }
 }
+
+impl TranspileableStatement for QuitStatement {}

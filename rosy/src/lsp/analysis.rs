@@ -8,8 +8,7 @@ use crate::{
     errors::RosyError,
     program::Program,
     resolve::{GraphNode, TypeResolver, TypeSlot},
-    transpile::{TranspilationInputContext, Transpile},
-};
+    transpile::{TranspilationInputContext, Transpile}};
 use pest::Parser;
 use tower_lsp::lsp_types::*;
 
@@ -22,8 +21,7 @@ pub struct AnalysisResult {
     /// Value is the human-readable type string (e.g. "RE", "VE", "DA").
     pub variable_types: Vec<InlayHintData>,
     /// Semantic tokens for syntax highlighting via the LSP.
-    pub semantic_tokens: Vec<SemanticTokenData>,
-}
+    pub semantic_tokens: Vec<SemanticTokenData>}
 
 /// Data for a single semantic token.
 #[derive(Debug)]
@@ -31,8 +29,7 @@ pub struct SemanticTokenData {
     pub line: u32,
     pub start_col: u32,
     pub length: u32,
-    pub token_type: SemanticTokenType,
-}
+    pub token_type: SemanticTokenType}
 
 /// The token types we report to the editor.
 /// The index in LEGEND_TOKEN_TYPES must match what we register in capabilities.
@@ -44,8 +41,7 @@ pub enum SemanticTokenType {
     Variable,
     Number,
     String,
-    Comment,
-}
+    Comment}
 
 impl SemanticTokenType {
     pub fn index(self) -> u32 {
@@ -56,8 +52,7 @@ impl SemanticTokenType {
             SemanticTokenType::Variable => 3,
             SemanticTokenType::Number => 4,
             SemanticTokenType::String => 5,
-            SemanticTokenType::Comment => 6,
-        }
+            SemanticTokenType::Comment => 6}
     }
 }
 
@@ -81,8 +76,7 @@ pub struct InlayHintData {
     pub label: String,
     /// Where the type was inferred from (assignment RHS, function call, etc.)
     /// If present, the inlay hint label part becomes clickable, navigating here.
-    pub inferred_from: Option<InferredFromLocation>,
-}
+    pub inferred_from: Option<InferredFromLocation>}
 
 /// Where a type was inferred from — used for clickable inlay hint labels.
 #[derive(Debug)]
@@ -91,8 +85,7 @@ pub struct InferredFromLocation {
     pub line: u32,
     pub col: u32,
     /// Human-readable description of how the type was determined.
-    pub reason: String,
-}
+    pub reason: String}
 
 /// Extract an LSP Position from an anyhow error by downcasting to RosyError.
 ///
@@ -316,22 +309,18 @@ fn extract_inlay_hint(node: &GraphNode, hints: &mut Vec<InlayHintData>) {
         crate::resolve::ResolutionRule::Unresolved => (
             Some("could not be inferred".to_string()),
             node.declared_at.as_ref(),
-        ),
-    };
+        )};
 
     let inferred_from = match (reason, loc) {
         (Some(reason), Some(loc)) => Some(InferredFromLocation {
             line: loc.line.saturating_sub(1) as u32,
             col: loc.col.saturating_sub(1) as u32,
-            reason: format!("{} (line {}, col {})", reason, loc.line, loc.col),
-        }),
+            reason: format!("{} (line {}, col {})", reason, loc.line, loc.col)}),
         (Some(reason), None) => Some(InferredFromLocation {
             line: declared_at.line.saturating_sub(1) as u32,
             col: declared_at.col.saturating_sub(1) as u32,
-            reason,
-        }),
-        _ => None,
-    };
+            reason}),
+        _ => None};
 
     hints.push(InlayHintData {
         // SourceLocation uses 1-based line/col, LSP uses 0-based
@@ -340,8 +329,7 @@ fn extract_inlay_hint(node: &GraphNode, hints: &mut Vec<InlayHintData>) {
             hint_col.saturating_sub(1) as u32,
         ),
         label: format!("{resolved_type}"),
-        inferred_from,
-    });
+        inferred_from});
 }
 
 // ─── Semantic Tokenization ──────────────────────────────────────────────────
@@ -386,8 +374,7 @@ fn tokenize_source(source: &str) -> Vec<SemanticTokenData> {
                     line: line_num,
                     start_col: start as u32,
                     length: (i - start) as u32,
-                    token_type: SemanticTokenType::Comment,
-                });
+                    token_type: SemanticTokenType::Comment});
                 continue;
             }
 
@@ -412,8 +399,7 @@ fn tokenize_source(source: &str) -> Vec<SemanticTokenData> {
                     line: line_num,
                     start_col: start as u32,
                     length: (i - start) as u32,
-                    token_type: SemanticTokenType::String,
-                });
+                    token_type: SemanticTokenType::String});
                 continue;
             }
 
@@ -446,8 +432,7 @@ fn tokenize_source(source: &str) -> Vec<SemanticTokenData> {
                     line: line_num,
                     start_col: start as u32,
                     length: (i - start) as u32,
-                    token_type: SemanticTokenType::Number,
-                });
+                    token_type: SemanticTokenType::Number});
                 continue;
             }
 
@@ -486,8 +471,7 @@ fn tokenize_source(source: &str) -> Vec<SemanticTokenData> {
                     line: line_num,
                     start_col: start as u32,
                     length: (i - start) as u32,
-                    token_type,
-                });
+                    token_type});
                 continue;
             }
 
@@ -503,8 +487,7 @@ fn tokenize_source(source: &str) -> Vec<SemanticTokenData> {
 fn pest_error_to_diagnostic(error: &pest::error::Error<Rule>) -> Diagnostic {
     let (line, col): (usize, usize) = match error.line_col {
         pest::error::LineColLocation::Pos((line, col)) => (line, col),
-        pest::error::LineColLocation::Span((line, col), _) => (line, col),
-    };
+        pest::error::LineColLocation::Span((line, col), _) => (line, col)};
 
     Diagnostic {
         range: Range::new(
@@ -562,8 +545,7 @@ pub fn rosy_keywords() -> Vec<CompletionItem> {
                 },
                 documentation: Some(Documentation::MarkupContent(MarkupContent {
                     kind: MarkupKind::Markdown,
-                    value: format!("{detail}\n\n[Documentation]({base_url}/)"),
-                })),
+                    value: format!("{detail}\n\n[Documentation]({base_url}/)")})),
                 ..Default::default()
             }
         })

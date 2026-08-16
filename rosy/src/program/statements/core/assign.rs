@@ -86,34 +86,32 @@ impl TranspileableStatement for AssignStatement {
         _resolver: &mut TypeResolver,
         _ctx: &mut ScopeContext,
         _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
+    ) -> Option<Result<()>> {
+        None
     }
     fn wire_inference_edges(
         &self,
         resolver: &mut TypeResolver,
         ctx: &mut ScopeContext,
         source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
+    ) -> Option<Result<()>> {
         // Clear assignments (`:= .`) don't affect type resolution
         let value = match &self.value {
             Some(v) => v,
-            None => return InferenceEdgeResult::HasEdges { result: Ok(()) },
+            None => return Some(Ok(())),
         };
 
         // Discover function call sites within the RHS expression
         if let Err(e) = resolver.discover_expr_function_calls(value, ctx) {
-            return InferenceEdgeResult::HasEdges {
-                result: Err(e.context(
+            return Some(Err(e.context(
                     "...while discovering function call dependencies in assignment statement",
-                )),
-            };
+                )),);
         }
 
         let var_name = &self.identifier.name;
         let var_slot = match ctx.variables.get(var_name) {
             Some(s) => s.clone(),
-            None => return InferenceEdgeResult::HasEdges { result: Ok(()) }, // unknown variable, skip
+            None => return Some(Ok(())), // unknown variable, skip
         };
 
         // Build a recipe for the RHS expression and collect its dependencies
@@ -221,14 +219,12 @@ impl TranspileableStatement for AssignStatement {
                             new_type.base_type,
                             ve_hint,
                         );
-                        return InferenceEdgeResult::HasEdges {
-                            result: Err(RosyError::at(source_location.clone(), msg).into()),
-                        };
+                        return Some(Err(RosyError::at(source_location.clone(), msg).into()),);
                 }
-                return InferenceEdgeResult::HasEdges { result: Ok(()) }; // already has explicit type, no inference needed
+                return Some(Ok(())); // already has explicit type, no inference needed
             }
         } else {
-            return InferenceEdgeResult::HasEdges { result: Ok(()) };
+            return Some(Ok(()));
         }
 
         // Check for conflicting re-assignment: if a previous assignment
@@ -402,9 +398,7 @@ impl TranspileableStatement for AssignStatement {
                             new_type.base_type,
                             ve_hint,
                         );
-                        return InferenceEdgeResult::HasEdges {
-                            result: Err(RosyError::at(source_location.clone(), msg).into()),
-                        };
+                        return Some(Err(RosyError::at(source_location.clone(), msg).into()),);
                 }
             }
 
@@ -414,7 +408,7 @@ impl TranspileableStatement for AssignStatement {
             // cycles when a variable is re-assigned from a value that
             // transitively depends on itself (e.g. X1 := f(X3) after
             // X3 := g(X1)).
-            return InferenceEdgeResult::HasEdges { result: Ok(()) };
+            return Some(Ok(()));
         }
 
         if let Some(node) = resolver.nodes.get_mut(&var_slot) {
@@ -437,14 +431,14 @@ impl TranspileableStatement for AssignStatement {
             node.assigned_at = Some(source_location);
         }
 
-        InferenceEdgeResult::HasEdges { result: Ok(()) }
+        Some(Ok(()))
     }
     fn hydrate_resolved_types(
         &mut self,
         _resolver: &TypeResolver,
         _current_scope: &[String],
-    ) -> TypeHydrationResult {
-        TypeHydrationResult::NothingToHydrate
+    ) -> Option<Result<()>> {
+        None
     }
 }
 impl Transpile for AssignStatement {

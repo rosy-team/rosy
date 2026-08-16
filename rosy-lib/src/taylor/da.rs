@@ -15,7 +15,7 @@ use num_complex::Complex64;
 use rustc_hash::FxHashMap;
 
 use super::{Monomial, MAX_VARS};
-use super::config::{get_runtime, get_config, MULT_INVALID, TaylorRuntime};
+use super::config::{get_runtime, MULT_INVALID, TaylorRuntime};
 
 // ============================================================================
 // Coefficient trait + pool

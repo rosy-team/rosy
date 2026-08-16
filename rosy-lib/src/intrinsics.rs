@@ -86,20 +86,3 @@ pub use erf::RosyERF;
 pub use werf::RosyWERF;
 pub use position::RosyPOSITION;
 
-/// Represents a parsed intrinsic type rule from the source code.
-#[derive(Debug, Clone)]
-pub struct IntrinsicTypeRule {
-    pub input: &'static str,
-    pub result: &'static str,
-    pub test_val: &'static str,
-}
-impl IntrinsicTypeRule {
-    /// Create a new intrinsic type rule.
-    pub const fn new(
-        input: &'static str,
-        result: &'static str,
-        test_val: &'static str
-    ) -> Self {
-        Self { input, result, test_val }
-    }
-}

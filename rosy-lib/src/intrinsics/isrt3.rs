@@ -1,39 +1,14 @@
-use std::collections::HashMap;
-
-use crate::{IntrinsicTypeRule, RosyType};
+use crate::RosyType;
 use crate::{RE, VE, DA};
-
-/// Type registry for ISRT3 intrinsic function (x^(-3/2)).
-///
-/// According to COSY INFINITY manual, ISRT3 supports:
-/// - RE -> RE
-/// - VE -> VE (elementwise)
-/// - DA -> DA (Taylor composition)
-///
-/// Note: DA test value uses `4.0 + DA(1)` (constant part = 4, linear = x1)
-/// because ISRT3 requires a positive constant part for the binomial expansion.
-pub const ISRT3_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("RE", "RE", "4.0"),
-    IntrinsicTypeRule::new("VE", "VE", "4.0&9.0&16.0"),
-    IntrinsicTypeRule::new("DA", "DA", "4.0 + DA(1)"),
-];
 
 /// Get the return type of ISRT3 for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec![
-            (RosyType::RE(), RosyType::RE()),
-            (RosyType::VE(), RosyType::VE()),
-            (RosyType::DA(), RosyType::DA()),
-        ];
-        for (input_type, result_type) in all {
-            m.insert(input_type, result_type);
-        }
-        m
-    };
-
-    registry.get(input).copied()
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::RE()),
+        t if *t == RosyType::VE() => Some(RosyType::VE()),
+        t if *t == RosyType::DA() => Some(RosyType::DA()),
+        _ => None,
+    }
 }
 
 /// Trait for computing x^(-3/2) of Rosy data types.
@@ -72,7 +47,7 @@ impl RosyISRT3 for DA {
 /// f^alpha = f0^alpha * (1 + u)^alpha  where u = (f - f0) / f0
 /// (1 + u)^alpha = sum_{n=0}^{N} C(alpha, n) * u^n
 fn da_isrt3(da: &DA) -> anyhow::Result<DA> {
-    use crate::taylor::DACoefficient;
+    
 
     let rt = crate::taylor::get_runtime()?;
     let nocut = rt.config.max_order as usize;

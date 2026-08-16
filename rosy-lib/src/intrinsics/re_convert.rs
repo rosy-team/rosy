@@ -1,42 +1,16 @@
-use std::collections::HashMap;
-
-use crate::{IntrinsicTypeRule, RosyType};
+use crate::RosyType;
 use crate::{RE, CM, VE, ST, DA};
-
-/// Type registry for RE() conversion function.
-///
-/// According to COSY INFINITY manual, RE() supports:
-/// - RE -> RE (identity)
-/// - ST -> RE (parse string as f64)
-/// - CM -> RE (extracts real part)
-/// - VE -> RE (average)
-/// - DA -> RE (constant part)
-pub const RE_CONVERT_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("RE", "RE", "1.5"),
-    IntrinsicTypeRule::new("ST", "RE", "\"3.14\""),
-    IntrinsicTypeRule::new("CM", "RE", "CM(1.5&2.5)"),
-    IntrinsicTypeRule::new("VE", "RE", "1.5&2.5&3.5"),
-    IntrinsicTypeRule::new("DA", "RE", "DA(1)"),
-];
 
 /// Get the return type of RE() for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec![
-            (RosyType::RE(), RosyType::RE()),
-            (RosyType::ST(), RosyType::RE()),
-            (RosyType::CM(), RosyType::RE()),
-            (RosyType::VE(), RosyType::RE()),
-            (RosyType::DA(), RosyType::RE()),
-        ];
-        for (input_type, result_type) in all {
-            m.insert(input_type, result_type);
-        }
-        m
-    };
-
-    registry.get(input).copied()
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::RE()),
+        t if *t == RosyType::ST() => Some(RosyType::RE()),
+        t if *t == RosyType::CM() => Some(RosyType::RE()),
+        t if *t == RosyType::VE() => Some(RosyType::RE()),
+        t if *t == RosyType::DA() => Some(RosyType::RE()),
+        _ => None,
+    }
 }
 
 /// Trait for converting Rosy data types to real (RE).

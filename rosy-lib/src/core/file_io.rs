@@ -9,7 +9,6 @@ use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::sync::Mutex;
 use anyhow::{Result, Context, bail};
 
-use crate::core::display::RosyDisplay;
 
 /// Global file handle registry, mapping unit numbers to open file handles.
 static FILE_REGISTRY: Mutex<Option<HashMap<u64, FileHandle>>> = Mutex::new(None);
@@ -18,8 +17,8 @@ static FILE_REGISTRY: Mutex<Option<HashMap<u64, FileHandle>>> = Mutex::new(None)
 struct FileHandle {
     reader: Option<BufReader<File>>,
     writer: Option<BufWriter<File>>,
-    path: String,
-    is_binary: bool,
+    _path: String,
+    _is_binary: bool,
 }
 
 fn ensure_registry() {
@@ -80,8 +79,8 @@ fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> R
             registry.insert(unit_num, FileHandle {
                 reader: Some(BufReader::new(read_handle)),
                 writer: Some(BufWriter::new(file)),
-                path: filename.to_string(),
-                is_binary,
+                _path: filename.to_string(),
+                _is_binary: is_binary,
             });
         }
         "replace" => {
@@ -96,8 +95,8 @@ fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> R
             registry.insert(unit_num, FileHandle {
                 reader: None,
                 writer: Some(BufWriter::new(file)),
-                path: filename.to_string(),
-                is_binary,
+                _path: filename.to_string(),
+                _is_binary: is_binary,
             });
         }
         "old" => {
@@ -108,8 +107,8 @@ fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> R
             registry.insert(unit_num, FileHandle {
                 reader: Some(BufReader::new(file)),
                 writer: None,
-                path: filename.to_string(),
-                is_binary,
+                _path: filename.to_string(),
+                _is_binary: is_binary,
             });
         }
         "new" => {
@@ -122,8 +121,8 @@ fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> R
             registry.insert(unit_num, FileHandle {
                 reader: None,
                 writer: Some(BufWriter::new(file)),
-                path: filename.to_string(),
-                is_binary,
+                _path: filename.to_string(),
+                _is_binary: is_binary,
             });
         }
         _ => bail!("Unknown file status '{}' for OPENF/OPENFB. Expected 'unknown', 'old', 'new', or 'replace'.", status),

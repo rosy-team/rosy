@@ -29,52 +29,40 @@ use anyhow::{Error, Result};
 use rosy_lib::RosyType;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-pub enum TypeslotDeclarationResult {
-    VarFuncOrProcedureDecl { result: Result<()> },
-    NotAVarFuncOrProcedureDecl,
-}
-
-pub enum InferenceEdgeResult {
-    HasEdges { result: Result<()> },
-    NoEdges,
-}
-
-pub enum TypeHydrationResult {
-    Hydrated { result: Result<()> },
-    NothingToHydrate,
-}
-
-pub enum ExprFunctionCallResult {
-    HasFunctionCalls { result: Result<()> },
-    NoFunctionCalls,
-}
-
-pub trait TranspileableStatement: Transpile + Send + Sync {
+pub trait TranspileableStatement: Transpile {
     fn register_typeslot_declaration(
         &self,
         _resolver: &mut TypeResolver,
         _ctx: &mut ScopeContext,
         _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult;
+    ) -> Option<Result<()>> {
+        None
+    }
     fn wire_inference_edges(
         &self,
         _resolver: &mut TypeResolver,
         _ctx: &mut ScopeContext,
         _source_location: SourceLocation,
-    ) -> InferenceEdgeResult;
+    ) -> Option<Result<()>> {
+        None
+    }
     fn hydrate_resolved_types(
         &mut self,
         _resolver: &TypeResolver,
         _current_scope: &[String],
-    ) -> TypeHydrationResult;
+    ) -> Option<Result<()>> {
+        None
+    }
 }
-pub trait TranspileableExpr: Transpile + Send + Sync {
+pub trait TranspileableExpr: Transpile {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType>;
     fn discover_expr_function_calls(
         &self,
-        resolver: &mut TypeResolver,
-        ctx: &ScopeContext,
-    ) -> ExprFunctionCallResult;
+        _resolver: &mut TypeResolver,
+        _ctx: &ScopeContext,
+    ) -> Option<Result<()>> {
+        None
+    }
     fn build_expr_recipe(
         &self,
         resolver: &TypeResolver,

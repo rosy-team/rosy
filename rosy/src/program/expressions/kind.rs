@@ -24,10 +24,7 @@ use super::pow::PowExpr;
 use super::types::cd::CDExpr;
 use super::types::da::DAExpr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::transpile::{
-    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
-    TranspileableExpr,
-};
+use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr};
 use anyhow::{Error, Result};
 use rosy_lib::RosyType;
 use std::collections::HashSet;
@@ -68,7 +65,7 @@ macro_rules! expr_kind {
                 &self,
                 resolver: &mut TypeResolver,
                 ctx: &ScopeContext,
-            ) -> ExprFunctionCallResult {
+            ) -> Option<Result<()>> {
                 match self {
                     $(Self::$var(v) => v.discover_expr_function_calls(resolver, ctx),)+
                 }

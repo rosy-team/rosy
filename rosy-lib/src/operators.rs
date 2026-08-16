@@ -38,41 +38,14 @@ use crate::{RosyType, RosyBaseType};
 /// Defines a type compatibility rule for an operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypeRule {
-    /// Left-hand side type
     pub lhs: &'static str,
-    /// Right-hand side type
     pub rhs: &'static str,
-    /// Result type
     pub result: &'static str,
-    /// Test values for lhs and rhs
-    pub lhs_test_val: &'static str,
-    pub rhs_test_val: &'static str,
-    /// Optional comment for documentation
-    pub comment: &'static str,
 }
 
 impl TypeRule {
-    /// Create a new type rule without a comment.
-    pub const fn new(
-        lhs: &'static str,
-        rhs: &'static str,
-        result: &'static str,
-        lhs_test_val: &'static str,
-        rhs_test_val: &'static str
-    ) -> Self {
-        Self { lhs, rhs, result, lhs_test_val, rhs_test_val, comment: "" }
-    }
-    
-    /// Create a new type rule with a comment.
-    pub const fn with_comment(
-        lhs: &'static str,
-        rhs: &'static str,
-        result: &'static str,
-        lhs_test_val: &'static str,
-        rhs_test_val: &'static str,
-        comment: &'static str
-    ) -> Self {
-        Self { lhs, rhs, result, lhs_test_val, rhs_test_val, comment }
+    pub const fn new(lhs: &'static str, rhs: &'static str, result: &'static str) -> Self {
+        Self { lhs, rhs, result }
     }
 }
 

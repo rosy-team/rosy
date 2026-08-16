@@ -13,8 +13,8 @@ use crate::operators::{TypeRule, build_type_registry};
 
 /// Type compatibility registry for less-than operator.
 pub const LT_REGISTRY: &[TypeRule] = &[
-    TypeRule::with_comment("RE", "RE", "LO", "1.0", "2.0", "Numeric less-than"),
-    TypeRule::with_comment("ST", "ST", "LO", "'apple'", "'banana'", "Lexicographic ordering"),
+    TypeRule::new("RE", "RE", "LO"),
+    TypeRule::new("ST", "ST", "LO"),
 ];
 
 static LT_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();

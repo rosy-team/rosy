@@ -29,25 +29,25 @@ use crate::operators::{TypeRule, build_type_registry};
 /// - COSY test script (`div.fox`)
 /// - Integration tests
 pub const DIV_REGISTRY: &[TypeRule] = &[
-    TypeRule::new("RE", "RE", "RE", "6", "2"),
-    TypeRule::new("RE", "CM", "CM", "8", "CM(2&3)"),
-    TypeRule::with_comment("RE", "VE", "VE", "10", "2&3", "Divide Real componentwise"),
-    TypeRule::new("RE", "DA", "DA", "12", "3+DA(1)"),
-    TypeRule::new("RE", "CD", "CD", "14", "2+DA(1)+CM(2&3)*DA(2)"),
-    TypeRule::new("CM", "RE", "CM", "CM(4&5)", "3"),
-    TypeRule::new("CM", "CM", "CM", "CM(6&7)", "CM(8&9)"),
-    TypeRule::new("CM", "DA", "CD", "CM(2&3)", "2+DA(1)"),
-    TypeRule::new("CM", "CD", "CD", "CM(2&3)", "3+DA(1)+CM(4&5)*DA(2)"),
-    TypeRule::with_comment("VE", "RE", "VE", "4&5", "4", "Divide by Real componentwise"),
-    TypeRule::with_comment("VE", "VE", "VE", "6&8", "7&9", "Divide componentwise"),
-    TypeRule::new("DA", "RE", "DA", "DA(1)", "5"),
-    TypeRule::new("DA", "CM", "CD", "DA(1)", "CM(2&3)"),
-    TypeRule::new("DA", "DA", "DA", "2+DA(2)", "1+DA(3)"),
-    TypeRule::new("DA", "CD", "CD", "DA(1)", "2+DA(2)+CM(2&3)*DA(3)"),
-    TypeRule::new("CD", "RE", "CD", "DA(1)+CM(2&3)*DA(2)", "6"),
-    TypeRule::new("CD", "CM", "CD", "DA(1)+CM(2&3)*DA(2)", "CM(4&5)"),
-    TypeRule::new("CD", "DA", "CD", "DA(1)+CM(2&3)*DA(2)", "3+DA(3)"),
-    TypeRule::new("CD", "CD", "CD", "1+DA(1)+CM(2&3)*DA(2)", "2+DA(3)+CM(6&7)*DA(4)"),
+    TypeRule::new("RE", "RE", "RE"),
+    TypeRule::new("RE", "CM", "CM"),
+    TypeRule::new("RE", "VE", "VE"),
+    TypeRule::new("RE", "DA", "DA"),
+    TypeRule::new("RE", "CD", "CD"),
+    TypeRule::new("CM", "RE", "CM"),
+    TypeRule::new("CM", "CM", "CM"),
+    TypeRule::new("CM", "DA", "CD"),
+    TypeRule::new("CM", "CD", "CD"),
+    TypeRule::new("VE", "RE", "VE"),
+    TypeRule::new("VE", "VE", "VE"),
+    TypeRule::new("DA", "RE", "DA"),
+    TypeRule::new("DA", "CM", "CD"),
+    TypeRule::new("DA", "DA", "DA"),
+    TypeRule::new("DA", "CD", "CD"),
+    TypeRule::new("CD", "RE", "CD"),
+    TypeRule::new("CD", "CM", "CD"),
+    TypeRule::new("CD", "DA", "CD"),
+    TypeRule::new("CD", "CD", "CD"),
 ];
 
 static DIV_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
@@ -219,7 +219,7 @@ impl RosyDiv<&RE> for &CD {
 impl RosyDiv<&CM> for &CD {
     type Output = CD;
     fn rosy_div(self, other: &CM) -> Result<Self::Output> {
-        use num_complex::Complex64;
+        
         self / *other
     }
 }

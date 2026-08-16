@@ -1,35 +1,14 @@
-use std::collections::HashMap;
-
-use crate::{IntrinsicTypeRule, RosyType};
+use crate::RosyType;
 use crate::{RE, CM, CD};
-
-/// Type registry for CONJ intrinsic function (complex conjugate).
-///
-/// According to COSY INFINITY manual, CONJ supports:
-/// - RE -> RE (identity, real numbers are their own conjugate)
-/// - CM -> CM (complex conjugate)
-pub const CONJ_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("RE", "RE", "1.5"),
-    IntrinsicTypeRule::new("CM", "CM", "CM(1.5&2.5)"),
-    IntrinsicTypeRule::new("CD", "CD", "CD(1)"),
-];
 
 /// Get the return type of CONJ for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec![
-            (RosyType::RE(), RosyType::RE()),
-            (RosyType::CM(), RosyType::CM()),
-            (RosyType::CD(), RosyType::CD()),
-        ];
-        for (input_type, result_type) in all {
-            m.insert(input_type, result_type);
-        }
-        m
-    };
-
-    registry.get(input).copied()
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::RE()),
+        t if *t == RosyType::CM() => Some(RosyType::CM()),
+        t if *t == RosyType::CD() => Some(RosyType::CD()),
+        _ => None,
+    }
 }
 
 /// Trait for computing complex conjugate of Rosy data types.
@@ -58,7 +37,7 @@ impl RosyCONJ for CM {
 impl RosyCONJ for CD {
     type Output = CD;
     fn rosy_conj(&self) -> anyhow::Result<Self::Output> {
-        use crate::taylor::{DACoefficient, Monomial};
+        use crate::taylor::DACoefficient;
         use num_complex::Complex64;
         let mut result = CD::from_coeff(Complex64::zero());
         for (monomial, coeff) in self.coeffs_iter() {

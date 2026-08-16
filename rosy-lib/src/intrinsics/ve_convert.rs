@@ -1,36 +1,14 @@
-use std::collections::HashMap;
-
-use crate::{IntrinsicTypeRule, RosyType};
+use crate::RosyType;
 use crate::{CM, RE, VE};
-
-/// Type registry for VE() conversion function.
-///
-/// VE() supports:
-/// - RE -> VE (single-element vector)
-/// - CM -> VE (two-vector of real, imaginary parts)
-/// - VE -> VE (identity)
-pub const VE_CONVERT_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("RE", "VE", "1.5"),
-    IntrinsicTypeRule::new("CM", "VE", "CM(1.5&2.5)"),
-    IntrinsicTypeRule::new("VE", "VE", "1.5&2.5&3.5"),
-];
 
 /// Get the return type of VE() for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec![
-            (RosyType::RE(), RosyType::VE()),
-            (RosyType::CM(), RosyType::VE()),
-            (RosyType::VE(), RosyType::VE()),
-        ];
-        for (input_type, result_type) in all {
-            m.insert(input_type, result_type);
-        }
-        m
-    };
-
-    registry.get(input).copied()
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::VE()),
+        t if *t == RosyType::CM() => Some(RosyType::VE()),
+        t if *t == RosyType::VE() => Some(RosyType::VE()),
+        _ => None,
+    }
 }
 
 /// Trait for converting Rosy data types to vectors (VE).

@@ -28,15 +28,13 @@ use std::path::Path;
 
 #[derive(Debug, Deserialize)]
 pub struct RosyToml {
-    pub package: PackageManifest,
-}
+    pub package: PackageManifest}
 
 #[derive(Debug, Deserialize)]
 pub struct PackageManifest {
     pub name: String,
     pub version: String,
-    pub rosy_version: String,
-}
+    pub rosy_version: String}
 
 impl RosyToml {
     /// Parse a `Rosy.toml` from disk at `<package_dir>/Rosy.toml`.

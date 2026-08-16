@@ -17,8 +17,7 @@ use anyhow::{Context, Error, Result, ensure};
 use std::collections::BTreeSet;
 
 use crate::{
-    ast::*, program::expressions::core::variable_identifier::VariableIdentifier,
-    program::statements::SourceLocation, resolve::*, transpile::*,
+    ast::*, program::expressions::core::variable_identifier::VariableIdentifier, transpile::*,
 };
 
 #[derive(Debug)]
@@ -47,31 +46,6 @@ impl FromRule for ImunitStatement {
     }
 }
 
-impl TranspileableStatement for ImunitStatement {
-    fn register_typeslot_declaration(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
-    }
-    fn wire_inference_edges(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
-        InferenceEdgeResult::NoEdges
-    }
-    fn hydrate_resolved_types(
-        &mut self,
-        _resolver: &TypeResolver,
-        _current_scope: &[String],
-    ) -> TypeHydrationResult {
-        TypeHydrationResult::NothingToHydrate
-    }
-}
 
 impl Transpile for ImunitStatement {
     fn transpile(
@@ -117,3 +91,5 @@ impl Transpile for ImunitStatement {
         })
     }
 }
+
+impl TranspileableStatement for ImunitStatement {}

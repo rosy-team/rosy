@@ -21,11 +21,8 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::core::variable_identifier::VariableIdentifier,
-    program::statements::SourceLocation,
-    resolve::{ExprRecipe, ResolutionRule, ScopeContext, TypeResolver},
     transpile::*,
 };
-use rosy_lib::RosyType;
 
 #[derive(Debug)]
 pub struct ReranStatement {
@@ -51,45 +48,6 @@ impl FromRule for ReranStatement {
     }
 }
 
-impl TranspileableStatement for ReranStatement {
-    fn register_typeslot_declaration(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
-    }
-    fn wire_inference_edges(
-        &self,
-        resolver: &mut TypeResolver,
-        ctx: &mut ScopeContext,
-        source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
-        // RERAN always assigns an RE (f64) value to the target variable
-        let slot = match ctx.variables.get(&self.output_var.name) {
-            Some(s) => s,
-            None => return InferenceEdgeResult::NoEdges,
-        };
-        if let Some(node) = resolver.nodes.get_mut(slot)
-            && node.resolved.is_none()
-        {
-                node.rule = ResolutionRule::InferredFrom {
-                    recipe: ExprRecipe::Literal(RosyType::RE()),
-                    reason: format!("inferred from RERAN at {}", source_location),
-                };
-                node.assigned_at = Some(source_location);
-        }
-        InferenceEdgeResult::HasEdges { result: Ok(()) }
-    }
-    fn hydrate_resolved_types(
-        &mut self,
-        _resolver: &TypeResolver,
-        _current_scope: &[String],
-    ) -> TypeHydrationResult {
-        TypeHydrationResult::NothingToHydrate
-    }
-}
 
 impl Transpile for ReranStatement {
     fn transpile(
@@ -127,7 +85,7 @@ impl Transpile for ReranStatement {
 
         // Generate random f64 in [-1, 1] using thread_rng
         let serialization = format!(
-            "{deref}{dest} = rosy_lib::core::reran::rosy_reran();",
+            "{deref}{dest} = rosy_lib::core::rng::rosy_reran();",
             deref = dereference,
             dest = output_id_output.serialization,
         );
@@ -139,3 +97,5 @@ impl Transpile for ReranStatement {
         })
     }
 }
+
+impl TranspileableStatement for ReranStatement {}

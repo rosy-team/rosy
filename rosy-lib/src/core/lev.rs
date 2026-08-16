@@ -11,7 +11,7 @@
 //! columns i and i+1 of V contain the real and imaginary parts of
 //! the corresponding eigenvector (COSY convention).
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 /// Compute eigenvalues and eigenvectors of the n×n leading submatrix of `matrix`.
 ///

@@ -1,33 +1,13 @@
-use std::collections::HashMap;
-
 use crate::{DA, RE};
-use crate::{IntrinsicTypeRule, RosyType};
-
-/// Type registry for ERF intrinsic function.
-///
-/// According to COSY INFINITY manual, ERF supports:
-/// - RE -> RE (real error function)
-/// - DA -> DA (Taylor composition via derivative recurrence)
-pub const ERF_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("RE", "RE", "1.5"),
-    IntrinsicTypeRule::new("DA", "DA", "DA(1)"),
-];
+use crate::RosyType;
 
 /// Get the return type of ERF for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec![
-            (RosyType::RE(), RosyType::RE()),
-            (RosyType::DA(), RosyType::DA()),
-        ];
-        for (input_type, result_type) in all {
-            m.insert(input_type, result_type);
-        }
-        m
-    };
-
-    registry.get(input).copied()
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::RE()),
+        t if *t == RosyType::DA() => Some(RosyType::DA()),
+        _ => None,
+    }
 }
 
 /// Trait for computing the real error function of Rosy data types.

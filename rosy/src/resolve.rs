@@ -16,10 +16,7 @@ use crate::errors::RosyError;
 use crate::program::Program;
 use crate::program::expressions::*;
 use crate::program::statements::*;
-use crate::transpile::{
-    ExprFunctionCallResult, InferenceEdgeResult, TranspileableExpr, TranspileableStatement,
-    TypeHydrationResult, TypeslotDeclarationResult,
-};
+use crate::transpile::{TranspileableExpr, TranspileableStatement};
 use anyhow::{Result, anyhow};
 use rosy_lib::RosyType;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -285,14 +282,9 @@ impl TypeResolver {
         stmt: &Statement,
         ctx: &mut ScopeContext,
     ) -> Result<()> {
-        let TypeslotDeclarationResult::VarFuncOrProcedureDecl { result } = stmt
-            .inner
+        stmt.inner
             .register_typeslot_declaration(self, ctx, stmt.source_location.clone())
-        else {
-            return Ok(()); // not a declaration, skip
-        };
-
-        result
+            .unwrap_or(Ok(()))
     }
 
     /// Walk statements looking for assignments and call sites to establish dependencies.
@@ -301,23 +293,17 @@ impl TypeResolver {
         stmt: &Statement,
         ctx: &mut ScopeContext,
     ) -> Result<()> {
-        let InferenceEdgeResult::HasEdges { result } =
-            stmt.inner
-                .wire_inference_edges(self, ctx, stmt.source_location.clone())
-        else {
-            return Ok(());
-        };
-
-        result
+        stmt.inner
+            .wire_inference_edges(self, ctx, stmt.source_location.clone())
+            .unwrap_or(Ok(()))
     }
 
     /// Recursively walk an expression tree looking for function calls.
     /// For each one found, wire up call-site argument dependencies.
     pub fn discover_expr_function_calls(&mut self, expr: &Expr, ctx: &ScopeContext) -> Result<()> {
-        match expr.inner.discover_expr_function_calls(self, ctx) {
-            ExprFunctionCallResult::HasFunctionCalls { result } => result,
-            ExprFunctionCallResult::NoFunctionCalls => Ok(()),
-        }
+        expr.inner
+            .discover_expr_function_calls(self, ctx)
+            .unwrap_or(Ok(()))
     }
 
     /// For a call site like `F(X, Y)`, if `F` has untyped parameters, add
@@ -776,12 +762,9 @@ impl TypeResolver {
         current_scope: &[String],
     ) -> Result<()> {
         for stmt in statements.iter_mut() {
-            let TypeHydrationResult::Hydrated { result } =
-                stmt.inner.hydrate_resolved_types(self, current_scope)
-            else {
-                continue;
-            };
-            result?;
+            if let Some(result) = stmt.inner.hydrate_resolved_types(self, current_scope) {
+                result?;
+            }
         }
 
         Ok(())

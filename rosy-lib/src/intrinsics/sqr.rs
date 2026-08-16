@@ -1,42 +1,16 @@
-use std::collections::HashMap;
-
-use crate::{IntrinsicTypeRule, RosyType};
+use crate::RosyType;
 use crate::{RE, CM, VE, DA, CD};
-
-/// Type registry for SQR intrinsic function.
-/// 
-/// SQR computes the square (x²). Supports:
-/// - RE -> RE
-/// - CM -> CM
-/// - VE -> VE (elementwise)
-/// - DA -> DA
-/// - CD -> CD
-pub const SQR_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("RE", "RE", "1.5"),
-    IntrinsicTypeRule::new("CM", "CM", "CM(1.5&2.5)"),
-    IntrinsicTypeRule::new("VE", "VE", "1.5&2.5&3.5"),
-    IntrinsicTypeRule::new("DA", "DA", "DA(1)"),
-    IntrinsicTypeRule::new("CD", "CD", "CD(1)"),
-];
 
 /// Get the return type of SQR for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec![
-            (RosyType::RE(), RosyType::RE()),
-            (RosyType::CM(), RosyType::CM()),
-            (RosyType::VE(), RosyType::VE()),
-            (RosyType::DA(), RosyType::DA()),
-            (RosyType::CD(), RosyType::CD()),
-        ];
-        for (input_type, result_type) in all {
-            m.insert(input_type, result_type);
-        }
-        m
-    };
-
-    registry.get(input).copied()
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::RE()),
+        t if *t == RosyType::CM() => Some(RosyType::CM()),
+        t if *t == RosyType::VE() => Some(RosyType::VE()),
+        t if *t == RosyType::DA() => Some(RosyType::DA()),
+        t if *t == RosyType::CD() => Some(RosyType::CD()),
+        _ => None,
+    }
 }
 
 /// Trait for computing the square of Rosy data types.

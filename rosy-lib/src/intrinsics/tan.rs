@@ -1,38 +1,14 @@
-use std::collections::HashMap;
-
-use crate::{IntrinsicTypeRule, RosyType};
-use crate::{RE, VE, DA, CD};
-
-/// Type registry for TAN intrinsic function.
-/// 
-/// According to COSY INFINITY manual, TAN supports:
-/// - RE -> RE
-/// - VE -> VE (elementwise)
-/// - DA -> DA (Taylor composition)
-/// 
-/// Note: CM is NOT supported for TAN in COSY.
-pub const TAN_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("RE", "RE", "1.5"),
-    IntrinsicTypeRule::new("VE", "VE", "1.5&2.5&3.5"),
-    IntrinsicTypeRule::new("DA", "DA", "DA(1)"),
-];
+use crate::RosyType;
+use crate::{RE, VE, DA};
 
 /// Get the return type of TAN for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec![
-            (RosyType::RE(), RosyType::RE()),
-            (RosyType::VE(), RosyType::VE()),
-            (RosyType::DA(), RosyType::DA()),
-        ];
-        for (input_type, result_type) in all {
-            m.insert(input_type, result_type);
-        }
-        m
-    };
-
-    registry.get(input).copied()
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::RE()),
+        t if *t == RosyType::VE() => Some(RosyType::VE()),
+        t if *t == RosyType::DA() => Some(RosyType::DA()),
+        _ => None,
+    }
 }
 
 /// Trait for computing the tangent of Rosy data types.

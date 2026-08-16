@@ -29,26 +29,26 @@ use crate::operators::{TypeRule, build_type_registry};
 /// - COSY test script (`mult.fox`)
 /// - Integration tests
 pub const MULT_REGISTRY: &[TypeRule] = &[
-    TypeRule::new("RE", "RE", "RE", "1", "1"),
-    TypeRule::new("RE", "CM", "CM", "2", "CM(0&1)"),
-    TypeRule::with_comment("RE", "VE", "VE", "1", "1&2", "Multiply Real componentwise"),
-    TypeRule::new("RE", "DA", "DA", "3", "DA(1)"),
-    TypeRule::new("RE", "CD", "CD", "4", "DA(1)+CM(0&1)*DA(2)"),
-    TypeRule::with_comment("LO", "LO", "LO", "LO(1)", "LO(0)", "Logical AND"),
-    TypeRule::new("CM", "RE", "CM", "CM(0&1)", "5"),
-    TypeRule::new("CM", "CM", "CM", "CM(2&3)", "CM(4&5)"),
-    TypeRule::new("CM", "DA", "CD", "CM(0&1)", "DA(1)"),
-    TypeRule::new("CM", "CD", "CD", "CM(0&1)", "DA(1)+CM(2&3)*DA(2)"),
-    TypeRule::with_comment("VE", "RE", "VE", "1&2", "6", "Multiply Real componentwise"),
-    TypeRule::with_comment("VE", "VE", "VE", "1&2", "3&4", "Multiply componentwise"),
-    TypeRule::new("DA", "RE", "DA", "DA(1)", "7"),
-    TypeRule::new("DA", "CM", "CD", "DA(1)", "CM(0&1)"),
-    TypeRule::new("DA", "DA", "DA", "DA(2)", "DA(3)"),
-    TypeRule::new("DA", "CD", "CD", "DA(1)", "DA(1)+CM(0&1)*DA(2)"),
-    TypeRule::new("CD", "RE", "CD", "DA(1)+CM(0&1)*DA(2)", "8"),
-    TypeRule::new("CD", "CM", "CD", "DA(1)+CM(0&1)*DA(2)", "CM(2&3)"),
-    TypeRule::new("CD", "DA", "CD", "DA(1)+CM(0&1)*DA(2)", "DA(3)"),
-    TypeRule::new("CD", "CD", "CD", "DA(1)+CM(0&1)*DA(2)", "DA(3)+CM(4&5)*DA(6)"),
+    TypeRule::new("RE", "RE", "RE"),
+    TypeRule::new("RE", "CM", "CM"),
+    TypeRule::new("RE", "VE", "VE"),
+    TypeRule::new("RE", "DA", "DA"),
+    TypeRule::new("RE", "CD", "CD"),
+    TypeRule::new("LO", "LO", "LO"),
+    TypeRule::new("CM", "RE", "CM"),
+    TypeRule::new("CM", "CM", "CM"),
+    TypeRule::new("CM", "DA", "CD"),
+    TypeRule::new("CM", "CD", "CD"),
+    TypeRule::new("VE", "RE", "VE"),
+    TypeRule::new("VE", "VE", "VE"),
+    TypeRule::new("DA", "RE", "DA"),
+    TypeRule::new("DA", "CM", "CD"),
+    TypeRule::new("DA", "DA", "DA"),
+    TypeRule::new("DA", "CD", "CD"),
+    TypeRule::new("CD", "RE", "CD"),
+    TypeRule::new("CD", "CM", "CD"),
+    TypeRule::new("CD", "DA", "CD"),
+    TypeRule::new("CD", "CD", "CD"),
 ];
 
 static MULT_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
@@ -226,7 +226,7 @@ impl RosyMult<&RE> for &CD {
 impl RosyMult<&CM> for &CD {
     type Output = CD;
     fn rosy_mult(self, other: &CM) -> Result<Self::Output> {
-        use num_complex::Complex64;
+        
         self * *other
     }
 }

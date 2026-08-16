@@ -22,10 +22,10 @@ use crate::core::polval::{da_powi, cd_powi};
 ///
 /// This is the single source of truth for what type combinations are allowed.
 pub const POW_REGISTRY: &[TypeRule] = &[
-    TypeRule::new("RE", "RE", "RE", "2", "3"),
-    TypeRule::with_comment("VE", "RE", "VE", "1&2&3", "2", "Raise to Real power componentwise"),
-    TypeRule::new("DA", "RE", "DA", "DA(1)", "2"),
-    TypeRule::new("CD", "RE", "CD", "CD(1)", "2"),
+    TypeRule::new("RE", "RE", "RE"),
+    TypeRule::new("VE", "RE", "VE"),
+    TypeRule::new("DA", "RE", "DA"),
+    TypeRule::new("CD", "RE", "CD"),
 ];
 
 static POW_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();

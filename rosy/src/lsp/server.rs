@@ -17,26 +17,19 @@ struct DocumentState {
     /// The latest source text.
     text: String,
     /// The latest analysis result.
-    analysis: analysis::AnalysisResult,
-}
+    analysis: analysis::AnalysisResult}
 
 pub struct RosyLanguageServer {
     client: Client,
-    documents: Mutex<HashMap<Url, DocumentState>>,
-}
+    documents: Mutex<HashMap<Url, DocumentState>>}
 
 impl RosyLanguageServer {
     pub fn new(client: Client) -> Self {
-        // Ensure Rosy syntax mode is set (not COSY mode) for LSP usage
-        // Ignore the error if it's already been set
-        let _ = std::panic::catch_unwind(|| {
-            crate::syntax_config::set_cosy_syntax(false);
-        });
+        crate::syntax_config::set_cosy_syntax(false);
 
         RosyLanguageServer {
             client,
-            documents: Mutex::new(HashMap::new()),
-        }
+            documents: Mutex::new(HashMap::new())}
     }
 
     /// Run analysis on a document and publish diagnostics.
@@ -50,8 +43,7 @@ impl RosyLanguageServer {
             uri.clone(),
             DocumentState {
                 text,
-                analysis: result,
-            },
+                analysis: result},
         );
 
         self.client
@@ -84,8 +76,7 @@ impl LanguageServer for RosyLanguageServer {
                         SemanticTokensOptions {
                             legend: SemanticTokensLegend {
                                 token_types: analysis::LEGEND_TOKEN_TYPES.to_vec(),
-                                token_modifiers: vec![],
-                            },
+                                token_modifiers: vec![]},
                             full: Some(SemanticTokensFullOptions::Bool(true)),
                             range: None,
                             ..Default::default()
@@ -194,10 +185,8 @@ impl LanguageServer for RosyLanguageServer {
         Ok(hover_text.map(|text| Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: text,
-            }),
-            range: None,
-        }))
+                value: text}),
+            range: None}))
     }
 
     // ─── Inlay Hints ───────────────────────────────────────────────────
@@ -221,8 +210,7 @@ impl LanguageServer for RosyLanguageServer {
                 // Double-click inserts the type annotation at the hint position
                 let edit = TextEdit {
                     range: Range::new(h.position, h.position),
-                    new_text: format!(" {}", h.label),
-                };
+                    new_text: format!(" {}", h.label)};
 
                 InlayHint {
                     position: h.position,
@@ -232,13 +220,11 @@ impl LanguageServer for RosyLanguageServer {
                     tooltip: h.inferred_from.as_ref().map(|loc| {
                         InlayHintTooltip::MarkupContent(MarkupContent {
                             kind: MarkupKind::Markdown,
-                            value: format!("**{}** — {}", h.label, loc.reason),
-                        })
+                            value: format!("**{}** — {}", h.label, loc.reason)})
                     }),
                     padding_left: Some(true),
                     padding_right: Some(false),
-                    data: None,
-                }
+                    data: None}
             })
             .collect();
 
@@ -275,8 +261,7 @@ impl LanguageServer for RosyLanguageServer {
                 delta_start,
                 length: token.length,
                 token_type: token.token_type.index(),
-                token_modifiers_bitset: 0,
-            });
+                token_modifiers_bitset: 0});
 
             prev_line = token.line;
             prev_start = token.start_col;
@@ -284,8 +269,7 @@ impl LanguageServer for RosyLanguageServer {
 
         Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
             result_id: None,
-            data: lsp_tokens,
-        })))
+            data: lsp_tokens})))
     }
 }
 

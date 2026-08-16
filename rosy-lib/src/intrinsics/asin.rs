@@ -1,38 +1,14 @@
-use std::collections::HashMap;
-
-use crate::{IntrinsicTypeRule, RosyType};
+use crate::RosyType;
 use crate::{RE, VE, DA};
-
-/// Type registry for ASIN intrinsic function.
-///
-/// According to COSY INFINITY manual, ASIN supports:
-/// - RE -> RE
-/// - VE -> VE (elementwise)
-/// - DA -> DA (Taylor composition)
-///
-/// Note: CM is NOT supported for ASIN in COSY.
-pub const ASIN_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("RE", "RE", "0.5"),
-    IntrinsicTypeRule::new("VE", "VE", "0.1&0.2&0.3"),
-    IntrinsicTypeRule::new("DA", "DA", "DA(1)"),
-];
 
 /// Get the return type of ASIN for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec![
-            (RosyType::RE(), RosyType::RE()),
-            (RosyType::VE(), RosyType::VE()),
-            (RosyType::DA(), RosyType::DA()),
-        ];
-        for (input_type, result_type) in all {
-            m.insert(input_type, result_type);
-        }
-        m
-    };
-
-    registry.get(input).copied()
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::RE()),
+        t if *t == RosyType::VE() => Some(RosyType::VE()),
+        t if *t == RosyType::DA() => Some(RosyType::DA()),
+        _ => None,
+    }
 }
 
 /// Trait for computing arcsine of Rosy data types.
@@ -70,8 +46,6 @@ impl RosyASIN for DA {
 
 /// Compute arcsine of a DA object using Taylor series composition.
 fn da_asin(da: &DA) -> anyhow::Result<DA> {
-    use crate::taylor::DACoefficient;
-
     let rt = crate::taylor::get_runtime()?;
     let nocut = rt.config.max_order as usize;
 

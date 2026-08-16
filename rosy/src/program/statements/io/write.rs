@@ -21,17 +21,12 @@ use std::collections::BTreeSet;
 
 use crate::{
     ast::*,
-    program::{
-        expressions::{
+    program::expressions::{
             Expr, string_convert::string_convert_transpile_helper,
         },
-        statements::SourceLocation,
-    },
+    program::statements::SourceLocation,
     resolve::{ScopeContext, TypeResolver},
-    transpile::{
-        InferenceEdgeResult, TranspilationInputContext, TranspilationOutput, Transpile,
-        TranspileableStatement, TypeHydrationResult, TypeslotDeclarationResult, add_context_to_all,
-    },
+    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
 };
 
 /// AST node for the `WRITE unit expr+;` statement.
@@ -74,50 +69,6 @@ impl FromRule for WriteStatement {
         };
 
         Ok(Some(WriteStatement { unit, exprs }))
-    }
-}
-impl TranspileableStatement for WriteStatement {
-    fn register_typeslot_declaration(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
-    }
-
-    fn wire_inference_edges(
-        &self,
-        resolver: &mut TypeResolver,
-        ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
-        // Discover function call sites within unit and all write expressions
-        if let Err(e) = resolver.discover_expr_function_calls(&self.unit, ctx) {
-            return InferenceEdgeResult::HasEdges {
-                result: Err(e.context(
-                    "...while discovering function call dependencies in WRITE unit expression",
-                )),
-            };
-        }
-        for expr in &self.exprs {
-            if let Err(e) = resolver.discover_expr_function_calls(expr, ctx) {
-                return InferenceEdgeResult::HasEdges {
-                    result: Err(e.context(
-                        "...while discovering function call dependencies in WRITE statement",
-                    )),
-                };
-            }
-        }
-
-        InferenceEdgeResult::HasEdges { result: Ok(()) }
-    }
-    fn hydrate_resolved_types(
-        &mut self,
-        _resolver: &TypeResolver,
-        _current_scope: &[String],
-    ) -> TypeHydrationResult {
-        TypeHydrationResult::NothingToHydrate
     }
 }
 impl Transpile for WriteStatement {
@@ -180,5 +131,28 @@ impl Transpile for WriteStatement {
             requested_variables,
             ..Default::default()
         })
+    }
+}
+
+impl TranspileableStatement for WriteStatement {
+    fn wire_inference_edges(
+        &self,
+        resolver: &mut TypeResolver,
+        ctx: &mut ScopeContext,
+        _source_location: SourceLocation,
+    ) -> Option<Result<()>> {
+        if let Err(e) = resolver.discover_expr_function_calls(&self.unit, ctx) {
+            return Some(Err(e.context(
+                "...while discovering function call dependencies in WRITE unit expression",
+            )));
+        }
+        for expr in &self.exprs {
+            if let Err(e) = resolver.discover_expr_function_calls(expr, ctx) {
+                return Some(Err(e.context(
+                    "...while discovering function call dependencies in WRITE statement",
+                )));
+            }
+        }
+        Some(Ok(()))
     }
 }

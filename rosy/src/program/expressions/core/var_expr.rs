@@ -33,10 +33,8 @@
 use super::variable_identifier::VariableIdentifier;
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
-use crate::transpile::{ExprFunctionCallResult, TranspileableExpr};
-use crate::transpile::{
-    TranspilationInputContext, TranspilationOutput, Transpile, ValueKind, VariableScope,
-};
+use crate::transpile::TranspileableExpr;
+use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, ValueKind, VariableScope};
 use anyhow::{Context, Error, Result, anyhow};
 use rosy_lib::RosyType;
 use std::collections::BTreeSet;
@@ -227,7 +225,7 @@ impl TranspileableExpr for VarExpr {
         &self,
         resolver: &mut TypeResolver,
         ctx: &ScopeContext,
-    ) -> ExprFunctionCallResult {
+    ) -> Option<Result<()>> {
         let ident = &self.identifier;
         let num_groups = ident.paren_groups.len();
         let is_var = ctx.variables.contains_key(&ident.name);
@@ -265,33 +263,31 @@ impl TranspileableExpr for VarExpr {
             // Recursively discover function calls in each argument expression
             for arg in &ident.paren_groups[0] {
                 if let Err(e) = resolver.discover_expr_function_calls(arg, ctx) {
-                    return ExprFunctionCallResult::HasFunctionCalls { result: Err(e) };
+                    return Some(Err(e));
                 }
             }
             // Wire up call-site argument type dependencies
-            ExprFunctionCallResult::HasFunctionCalls {
-                result: resolver.discover_call_site_deps(
+            Some(resolver.discover_call_site_deps(
                     &ident.name,
                     &ident.paren_groups[0],
                     true,
                     ctx,
-                ),
-            }
+                ),)
         } else {
             // Variable access — recurse into any index expressions
             for group in &ident.paren_groups {
                 for expr in group {
                     if let Err(e) = resolver.discover_expr_function_calls(expr, ctx) {
-                        return ExprFunctionCallResult::HasFunctionCalls { result: Err(e) };
+                        return Some(Err(e));
                     }
                 }
             }
             for expr in &ident.bracket_indices {
                 if let Err(e) = resolver.discover_expr_function_calls(expr, ctx) {
-                    return ExprFunctionCallResult::HasFunctionCalls { result: Err(e) };
+                    return Some(Err(e));
                 }
             }
-            ExprFunctionCallResult::NoFunctionCalls
+            None
         }
     }
     fn build_expr_recipe(
