@@ -60,7 +60,6 @@ impl FromRule for StcreStatement {
     }
 }
 
-
 impl Transpile for StcreStatement {
     fn transpile(
         &self,

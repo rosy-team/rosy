@@ -20,7 +20,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for `DAPEW unit da_var var_i order_n;`.
@@ -72,7 +75,6 @@ impl FromRule for DapewStatement {
         }))
     }
 }
-
 
 impl Transpile for DapewStatement {
     fn transpile(

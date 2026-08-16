@@ -21,7 +21,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for `CDNF input t1 t2 t3 resonances res_dims n_res result;`.
@@ -91,7 +94,6 @@ impl FromRule for CdnfStatement {
         }))
     }
 }
-
 
 impl Transpile for CdnfStatement {
     fn transpile(

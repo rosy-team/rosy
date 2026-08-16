@@ -150,7 +150,7 @@ impl TranspileableStatement for LoopStatement {
             Some(source_location),
         );
         inner_ctx.variables.insert(self.iterator.clone(), iter_slot);
-        Some(resolver.discover_slots(&self.body, &mut inner_ctx),)
+        Some(resolver.discover_slots(&self.body, &mut inner_ctx))
     }
     fn hydrate_resolved_types(
         &mut self,

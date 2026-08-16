@@ -26,7 +26,10 @@
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind, VariableScope};
+use crate::transpile::{
+    TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind,
+    VariableScope,
+};
 use anyhow::{Context, Error, Result};
 use rosy_lib::{RosyBaseType, RosyType};
 use std::collections::BTreeSet;

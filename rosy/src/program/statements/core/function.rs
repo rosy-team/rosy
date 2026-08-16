@@ -221,18 +221,16 @@ impl TranspileableStatement for FunctionStatement {
         }
 
         // If the return type is NOT explicit, it depends on the inner return var
-        if self.return_type.is_none()
-            && resolver.nodes.contains_key(&inner_ret_var_slot)
-        {
-                let node = resolver.nodes.get_mut(&ret_slot).unwrap();
-                node.rule = ResolutionRule::Mirror {
-                    source: inner_ret_var_slot.clone(),
-                    reason: format!(
-                        "inferred from assignment to return variable '{}'",
-                        self.name
-                    ),
-                };
-                node.depends_on.insert(inner_ret_var_slot);
+        if self.return_type.is_none() && resolver.nodes.contains_key(&inner_ret_var_slot) {
+            let node = resolver.nodes.get_mut(&ret_slot).unwrap();
+            node.rule = ResolutionRule::Mirror {
+                source: inner_ret_var_slot.clone(),
+                reason: format!(
+                    "inferred from assignment to return variable '{}'",
+                    self.name
+                ),
+            };
+            node.depends_on.insert(inner_ret_var_slot);
         }
 
         Some(Ok(()))
@@ -256,7 +254,7 @@ impl TranspileableStatement for FunctionStatement {
             if let Some(node) = resolver.nodes.get(&slot)
                 && let Some(t) = &node.resolved
             {
-                    self.return_type = Some(*t);
+                self.return_type = Some(*t);
             }
         }
 
@@ -268,7 +266,7 @@ impl TranspileableStatement for FunctionStatement {
                 if let Some(node) = resolver.nodes.get(&slot)
                     && let Some(t) = &node.resolved
                 {
-                        arg.r#type = Some(*t);
+                    arg.r#type = Some(*t);
                 }
             }
         }
@@ -362,10 +360,10 @@ impl Transpile for FunctionStatement {
             if let Some(prev) = previous
                 && prev.scope != VariableScope::Higher
             {
-                    errors.push(anyhow!(
-                        "Argument '{}' is already defined in this scope!",
-                        arg_data.name
-                    ));
+                errors.push(anyhow!(
+                    "Argument '{}' is already defined in this scope!",
+                    arg_data.name
+                ));
             }
         }
 

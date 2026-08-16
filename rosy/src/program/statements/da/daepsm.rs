@@ -20,7 +20,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for the `DAEPSM v;` DA epsilon getter statement.
@@ -49,7 +52,6 @@ impl FromRule for DaepsmStatement {
         Ok(Some(DaepsmStatement { result }))
     }
 }
-
 
 impl Transpile for DaepsmStatement {
     fn transpile(

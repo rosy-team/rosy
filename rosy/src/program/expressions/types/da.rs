@@ -18,7 +18,9 @@ use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
 use crate::{
     ast::{FromRule, Rule},
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind,
+    },
 };
 use anyhow::{Context, Error};
 use rosy_lib::RosyType;

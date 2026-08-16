@@ -21,12 +21,13 @@ use std::collections::BTreeSet;
 
 use crate::{
     ast::*,
-    program::expressions::{
-            Expr, string_convert::string_convert_transpile_helper,
-        },
+    program::expressions::{Expr, string_convert::string_convert_transpile_helper},
     program::statements::SourceLocation,
     resolve::{ScopeContext, TypeResolver},
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for the `WRITE unit expr+;` statement.

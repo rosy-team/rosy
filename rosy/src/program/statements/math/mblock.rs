@@ -25,7 +25,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, ValueKind, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        ValueKind, add_context_to_all,
+    },
 };
 
 #[derive(Debug)]
@@ -89,7 +92,6 @@ impl FromRule for MblockStatement {
         }))
     }
 }
-
 
 impl Transpile for MblockStatement {
     fn transpile(

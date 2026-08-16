@@ -19,7 +19,9 @@ use anyhow::{Context, Error, Result, ensure};
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+    },
 };
 
 /// AST node for the `DAEPS c;` DA epsilon statement.

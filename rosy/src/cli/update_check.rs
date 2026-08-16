@@ -9,10 +9,12 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(serde::Deserialize)]
 struct GithubRelease {
-    tag_name: String}
+    tag_name: String,
+}
 
 pub struct UpdateHandle {
-    rx: mpsc::Receiver<Option<String>>}
+    rx: mpsc::Receiver<Option<String>>,
+}
 
 /// Spawn a background thread that checks for a newer release on GitHub.
 /// Returns a handle you can later call `.check()` on to print a warning if needed.

@@ -68,7 +68,6 @@ impl FromRule for RecstStatement {
     }
 }
 
-
 impl Transpile for RecstStatement {
     fn transpile(
         &self,

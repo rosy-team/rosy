@@ -5,7 +5,9 @@
 
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind};
+use crate::transpile::{
+    TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind,
+};
 use anyhow::{Context, Error, Result, bail};
 use rosy_lib::RosyType;
 use std::collections::{BTreeSet, HashSet};
@@ -22,9 +24,8 @@ impl Transpile for IntrinsicCallExpr {
         &self,
         context: &mut TranspilationInputContext,
     ) -> Result<TranspilationOutput, Vec<Error>> {
-        let spec = rosy_lib::lookup_intrinsic(&self.name).ok_or_else(|| {
-            vec![anyhow::anyhow!("Unknown intrinsic `{}`", self.name)]
-        })?;
+        let spec = rosy_lib::lookup_intrinsic(&self.name)
+            .ok_or_else(|| vec![anyhow::anyhow!("Unknown intrinsic `{}`", self.name)])?;
 
         if self.args.len() != spec.arity {
             return Err(vec![anyhow::anyhow!(

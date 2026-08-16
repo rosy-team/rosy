@@ -193,7 +193,7 @@ impl TranspileableStatement for IfStatement {
         if let Some(else_body) = &self.else_body
             && let Err(e) = resolver.discover_slots(else_body, &mut ctx.clone())
         {
-                return Some(Err(e));
+            return Some(Err(e));
         }
         Some(Ok(()))
     }
@@ -213,7 +213,7 @@ impl TranspileableStatement for IfStatement {
         if let Some(else_body) = &mut self.else_body
             && let Err(e) = resolver.apply_to_ast(else_body, current_scope)
         {
-                return Some(Err(e));
+            return Some(Err(e));
         }
         Some(Ok(()))
     }

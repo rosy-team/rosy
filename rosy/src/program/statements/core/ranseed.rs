@@ -23,7 +23,9 @@ use anyhow::{Context, Error, Result, ensure};
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+    },
 };
 
 /// AST node for the `RANSEED seed;` statement.
@@ -52,7 +54,6 @@ impl FromRule for RanseedStatement {
         Ok(Some(RanseedStatement { seed: seed_expr }))
     }
 }
-
 
 impl Transpile for RanseedStatement {
     fn transpile(

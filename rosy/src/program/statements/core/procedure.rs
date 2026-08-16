@@ -182,7 +182,7 @@ impl TranspileableStatement for ProcedureStatement {
                 if let Some(node) = resolver.nodes.get(&slot)
                     && let Some(t) = &node.resolved
                 {
-                        arg.r#type = Some(*t);
+                    arg.r#type = Some(*t);
                 }
             }
         }
@@ -274,10 +274,10 @@ impl Transpile for ProcedureStatement {
             if let Some(prev) = previous
                 && prev.scope != VariableScope::Higher
             {
-                    errors.push(anyhow!(
-                        "Argument '{}' is already defined in this scope!",
-                        arg_data.name
-                    ));
+                errors.push(anyhow!(
+                    "Argument '{}' is already defined in this scope!",
+                    arg_data.name
+                ));
             }
         }
 

@@ -34,7 +34,9 @@ use super::variable_identifier::VariableIdentifier;
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::transpile::TranspileableExpr;
-use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, ValueKind, VariableScope};
+use crate::transpile::{
+    TranspilationInputContext, TranspilationOutput, Transpile, ValueKind, VariableScope,
+};
 use anyhow::{Context, Error, Result, anyhow};
 use rosy_lib::RosyType;
 use std::collections::BTreeSet;
@@ -267,12 +269,7 @@ impl TranspileableExpr for VarExpr {
                 }
             }
             // Wire up call-site argument type dependencies
-            Some(resolver.discover_call_site_deps(
-                    &ident.name,
-                    &ident.paren_groups[0],
-                    true,
-                    ctx,
-                ),)
+            Some(resolver.discover_call_site_deps(&ident.name, &ident.paren_groups[0], true, ctx))
         } else {
             // Variable access — recurse into any index expressions
             for group in &ident.paren_groups {

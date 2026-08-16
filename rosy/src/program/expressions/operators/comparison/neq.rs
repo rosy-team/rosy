@@ -68,7 +68,7 @@ impl TranspileableExpr for NeqExpr {
         if let Err(e) = resolver.discover_expr_function_calls(&self.left, ctx) {
             return Some(Err(e));
         }
-        Some(resolver.discover_expr_function_calls(&self.right, ctx),)
+        Some(resolver.discover_expr_function_calls(&self.right, ctx))
     }
     fn build_expr_recipe(
         &self,

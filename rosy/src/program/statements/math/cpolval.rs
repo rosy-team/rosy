@@ -37,7 +37,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for `CPOLVAL L P NP A NA R NR;`.
@@ -99,7 +102,6 @@ impl FromRule for CpolvalStatement {
         }))
     }
 }
-
 
 impl Transpile for CpolvalStatement {
     fn transpile(

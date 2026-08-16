@@ -20,7 +20,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for the `DARAN da_var sparsity;` random DA fill statement.
@@ -55,7 +58,6 @@ impl FromRule for DaranStatement {
         Ok(Some(DaranStatement { da_var, sparsity }))
     }
 }
-
 
 impl Transpile for DaranStatement {
     fn transpile(

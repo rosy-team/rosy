@@ -23,7 +23,9 @@ use std::collections::{BTreeSet, HashSet};
 
 use crate::{
     ast::{FromRule, Rule},
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind,
+    },
 };
 use rosy_lib::RosyType;
 

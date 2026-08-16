@@ -20,7 +20,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for `DAREA unit da_var num_vars;`.
@@ -65,7 +68,6 @@ impl FromRule for DareaStatement {
         }))
     }
 }
-
 
 impl Transpile for DareaStatement {
     fn transpile(

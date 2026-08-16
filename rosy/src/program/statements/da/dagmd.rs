@@ -20,7 +20,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for the `DAGMD g f result dim;` Lie derivative statement.
@@ -73,7 +76,6 @@ impl FromRule for DagmdStatement {
         Ok(Some(DagmdStatement { g, f, result, dim }))
     }
 }
-
 
 impl Transpile for DagmdStatement {
     fn transpile(

@@ -195,7 +195,7 @@ impl TranspileableStatement for PLoopStatement {
             Some(&RosyType::RE()),
             Some(source_location),
         );
-        Some(resolver.discover_slots(&self.body, &mut inner_ctx),)
+        Some(resolver.discover_slots(&self.body, &mut inner_ctx))
     }
     fn hydrate_resolved_types(
         &mut self,

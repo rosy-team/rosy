@@ -62,7 +62,6 @@ impl FromRule for ArggetStatement {
     }
 }
 
-
 impl Transpile for ArggetStatement {
     fn transpile(
         &self,

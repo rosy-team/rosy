@@ -37,6 +37,7 @@ fn main() {
 
     // Re-run if source changes
     println!("cargo:rerun-if-changed=src/program");
+    println!("cargo:rerun-if-changed=src/compiler");
     println!("cargo:rerun-if-changed=../rosy-lib/src");
 
     // Generate the embedded files at compile time
@@ -603,9 +604,7 @@ fn sync_pest_intrinsic_name(pest_path: &Path, names: &[String]) {
         .map(|n| format!("^\"{n}\""))
         .collect::<Vec<_>>()
         .join(" | ");
-    let new_line = format!(
-        "  intrinsic_name = @{{ ({alts}) ~ !(ASCII_ALPHANUMERIC | \"_\") }}"
-    );
+    let new_line = format!("  intrinsic_name = @{{ ({alts}) ~ !(ASCII_ALPHANUMERIC | \"_\") }}");
 
     let src = fs::read_to_string(pest_path).expect("read rosy.pest");
     let mut replaced = false;

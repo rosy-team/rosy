@@ -23,7 +23,9 @@ use std::collections::HashSet;
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind};
+use crate::transpile::{
+    TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind,
+};
 use anyhow::{Error, Result, anyhow};
 use rosy_lib::RosyType;
 
@@ -60,7 +62,7 @@ impl TranspileableExpr for NegExpr {
         resolver: &mut TypeResolver,
         ctx: &ScopeContext,
     ) -> Option<Result<()>> {
-        Some(resolver.discover_expr_function_calls(&self.operand, ctx),)
+        Some(resolver.discover_expr_function_calls(&self.operand, ctx))
     }
     fn build_expr_recipe(
         &self,

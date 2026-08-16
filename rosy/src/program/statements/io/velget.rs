@@ -23,7 +23,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::{Expr, core::variable_identifier::VariableIdentifier},
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, VariableScope, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        VariableScope, add_context_to_all,
+    },
 };
 
 /// AST node for `VELGET vec_expr component_expr output_var;`.

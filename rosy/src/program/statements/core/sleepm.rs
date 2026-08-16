@@ -20,10 +20,7 @@
 use anyhow::{Context, Error, Result, ensure};
 use std::collections::BTreeSet;
 
-use crate::{
-    ast::*, program::expressions::Expr,
-    transpile::*,
-};
+use crate::{ast::*, program::expressions::Expr, transpile::*};
 
 /// AST node for `SLEEPM c;`.
 #[derive(Debug)]

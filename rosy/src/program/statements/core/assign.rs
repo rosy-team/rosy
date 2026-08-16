@@ -104,8 +104,8 @@ impl TranspileableStatement for AssignStatement {
         // Discover function call sites within the RHS expression
         if let Err(e) = resolver.discover_expr_function_calls(value, ctx) {
             return Some(Err(e.context(
-                    "...while discovering function call dependencies in assignment statement",
-                )),);
+                "...while discovering function call dependencies in assignment statement",
+            )));
         }
 
         let var_name = &self.identifier.name;
@@ -138,66 +138,66 @@ impl TranspileableStatement for AssignStatement {
                 if let Ok(new_type) = resolver.evaluate_recipe(&recipe)
                     && new_type != explicit_type
                 {
-                        let scope_str = if ctx.scope_path.is_empty() {
-                            "global scope".to_string()
-                        } else {
-                            format!("'{}'", ctx.scope_path.join(" > "))
-                        };
-                        let decl_hint = node
-                            .declared_at
-                            .as_ref()
-                            .map(|loc| format!("\n│  📍 Declared at: {}", loc))
-                            .unwrap_or_default();
-                        let assign_hint = format!("\n│  📍 Assigned at: {}", source_location);
-                        // Mode-aware hint for common VE↔RE patterns
-                        let ve_hint = {
-                            let re = RosyType::RE();
-                            let ve = RosyType::VE();
-                            if explicit_type == ve && new_type == re {
-                                if crate::syntax_config::is_cosy_syntax() {
-                                    format!(
-                                        "\n│\n\
+                    let scope_str = if ctx.scope_path.is_empty() {
+                        "global scope".to_string()
+                    } else {
+                        format!("'{}'", ctx.scope_path.join(" > "))
+                    };
+                    let decl_hint = node
+                        .declared_at
+                        .as_ref()
+                        .map(|loc| format!("\n│  📍 Declared at: {}", loc))
+                        .unwrap_or_default();
+                    let assign_hint = format!("\n│  📍 Assigned at: {}", source_location);
+                    // Mode-aware hint for common VE↔RE patterns
+                    let ve_hint = {
+                        let re = RosyType::RE();
+                        let ve = RosyType::VE();
+                        if explicit_type == ve && new_type == re {
+                            if crate::syntax_config::is_cosy_syntax() {
+                                format!(
+                                    "\n│\n\
                                          │  📖 In COSY, RE values were implicitly upcast to VE.\n\
                                          │     In Rosy, use an explicit conversion instead:\n\
                                          │     • Wrap the value:            {} := VE(<expr>);\n\
                                          │     • Build via concatenation:   {} := 0 & 1 & 2;",
-                                        var_name, var_name
-                                    )
-                                } else {
-                                    format!(
-                                        "\n│\n\
+                                    var_name, var_name
+                                )
+                            } else {
+                                format!(
+                                    "\n│\n\
                                          │  📖 To assign a scalar to a VE variable, wrap it explicitly:\n\
                                          │     • Wrap the value:            {} := VE(<expr>);\n\
                                          │     • Build via concatenation:   {} := 0 & 1 & 2;",
-                                        var_name, var_name
-                                    )
-                                }
-                            } else if (explicit_type == re && new_type == ve)
-                                || (explicit_type == ve && new_type == re)
-                            {
-                                if crate::syntax_config::is_cosy_syntax() {
-                                    format!(
-                                        "\n│\n\
+                                    var_name, var_name
+                                )
+                            }
+                        } else if (explicit_type == re && new_type == ve)
+                            || (explicit_type == ve && new_type == re)
+                        {
+                            if crate::syntax_config::is_cosy_syntax() {
+                                format!(
+                                    "\n│\n\
                                          │  📖 Common COSY vector patterns:\n\
                                          │     • Build via concatenation:  {} := 0 & 1 & 2;\n\
                                          │     • Pre-sized array:          VARIABLE {} <mem> <dim>;",
-                                        var_name, var_name
-                                    )
-                                } else {
-                                    format!(
-                                        "\n│\n\
+                                    var_name, var_name
+                                )
+                            } else {
+                                format!(
+                                    "\n│\n\
                                          │  📖 Common vector patterns:\n\
                                          │     • Build via concatenation:  {} := 0 & 1 & 2;\n\
                                          │     • Declare as array:         VARIABLE (RE <dim>) {};",
-                                        var_name, var_name
-                                    )
-                                }
-                            } else {
-                                String::new()
+                                    var_name, var_name
+                                )
                             }
-                        };
-                        let msg = format!(
-                            "\n╭─ Type Conflict ──────────────────────────────────────────\n\
+                        } else {
+                            String::new()
+                        }
+                    };
+                    let msg = format!(
+                        "\n╭─ Type Conflict ──────────────────────────────────────────\n\
                                 │\n\
                                 │  Variable '{}' (in {}) is declared as {} but is\n\
                                 │  assigned a value of type {}.{}{}\n\
@@ -207,19 +207,19 @@ impl TranspileableStatement for AssignStatement {
                                 │     • Split into separate variables: {}_{:?}  and  {}_{:?}\n\
                                 │{}\n\
                                 ╰──────────────────────────────────────────────────────────",
-                            var_name,
-                            scope_str,
-                            explicit_type,
-                            new_type,
-                            decl_hint,
-                            assign_hint,
-                            var_name,
-                            explicit_type.base_type,
-                            var_name,
-                            new_type.base_type,
-                            ve_hint,
-                        );
-                        return Some(Err(RosyError::at(source_location.clone(), msg).into()),);
+                        var_name,
+                        scope_str,
+                        explicit_type,
+                        new_type,
+                        decl_hint,
+                        assign_hint,
+                        var_name,
+                        explicit_type.base_type,
+                        var_name,
+                        new_type.base_type,
+                        ve_hint,
+                    );
+                    return Some(Err(RosyError::at(source_location.clone(), msg).into()));
                 }
                 return Some(Ok(())); // already has explicit type, no inference needed
             }
@@ -309,15 +309,15 @@ impl TranspileableStatement for AssignStatement {
                 if new_type_result.is_err()
                     && let Ok(ref old_type) = old_type_result
                 {
-                        // Temporarily mark this slot as resolved
-                        if let Some(node) = resolver.nodes.get_mut(&var_slot) {
-                            node.resolved = Some(*old_type);
-                        }
-                        new_type_result = resolver.evaluate_recipe(&dimensioned_recipe);
-                        // Undo the temporary resolution
-                        if let Some(node) = resolver.nodes.get_mut(&var_slot) {
-                            node.resolved = None;
-                        }
+                    // Temporarily mark this slot as resolved
+                    if let Some(node) = resolver.nodes.get_mut(&var_slot) {
+                        node.resolved = Some(*old_type);
+                    }
+                    new_type_result = resolver.evaluate_recipe(&dimensioned_recipe);
+                    // Undo the temporary resolution
+                    if let Some(node) = resolver.nodes.get_mut(&var_slot) {
+                        node.resolved = None;
+                    }
                 }
 
                 // Undo temporary leaf resolutions
@@ -330,48 +330,48 @@ impl TranspileableStatement for AssignStatement {
                 if let (Ok(old_type), Ok(new_type)) = (old_type_result, new_type_result)
                     && old_type != new_type
                 {
-                        let scope_str = if ctx.scope_path.is_empty() {
-                            "global scope".to_string()
-                        } else {
-                            format!("'{}'", ctx.scope_path.join(" > "))
-                        };
-                        let first_assign_hint = resolver
-                            .nodes
-                            .get(&var_slot)
-                            .and_then(|n| n.assigned_at.as_ref())
-                            .map(|loc| format!("\n│  📍 First assigned at:  {}", loc))
-                            .unwrap_or_default();
-                        let second_assign_hint =
-                            format!("\n│  📍 Then assigned at:   {}", source_location);
-                        // Migration hint for RE→VE pattern
-                        let ve_hint = {
-                            let re = RosyType::RE();
-                            let ve = RosyType::VE();
-                            if old_type == re && new_type == ve {
-                                if crate::syntax_config::is_cosy_syntax() {
-                                    format!(
-                                        "\n│\n\
+                    let scope_str = if ctx.scope_path.is_empty() {
+                        "global scope".to_string()
+                    } else {
+                        format!("'{}'", ctx.scope_path.join(" > "))
+                    };
+                    let first_assign_hint = resolver
+                        .nodes
+                        .get(&var_slot)
+                        .and_then(|n| n.assigned_at.as_ref())
+                        .map(|loc| format!("\n│  📍 First assigned at:  {}", loc))
+                        .unwrap_or_default();
+                    let second_assign_hint =
+                        format!("\n│  📍 Then assigned at:   {}", source_location);
+                    // Migration hint for RE→VE pattern
+                    let ve_hint = {
+                        let re = RosyType::RE();
+                        let ve = RosyType::VE();
+                        if old_type == re && new_type == ve {
+                            if crate::syntax_config::is_cosy_syntax() {
+                                format!(
+                                    "\n│\n\
                                          │  📖 In COSY, RE values were implicitly upcast to VE.\n\
                                          │     In Rosy, make the first assignment a VE explicitly:\n\
                                          │     • Wrap the value:            {} := VE(<expr>);\n\
                                          │     • Build via concatenation:   {} := 0 & 1 & 2;",
-                                        var_name, var_name
-                                    )
-                                } else {
-                                    format!(
-                                        "\n│\n\
+                                    var_name, var_name
+                                )
+                            } else {
+                                format!(
+                                    "\n│\n\
                                          │  📖 To make '{}' a VE, ensure the first assignment is a VE:\n\
                                          │     • Wrap the value:            {} := VE(<expr>);\n\
                                          │     • Build via concatenation:   {} := 0 & 1 & 2;",
-                                        var_name, var_name, var_name
-                                    )
-                                }
-                            } else {
-                                String::new()
+                                    var_name, var_name, var_name
+                                )
                             }
-                        };
-                        let msg = format!(
-                            "\n╭─ Type Conflict ──────────────────────────────────────────\n\
+                        } else {
+                            String::new()
+                        }
+                    };
+                    let msg = format!(
+                        "\n╭─ Type Conflict ──────────────────────────────────────────\n\
                                 │\n\
                                 │  Variable '{}' (in {}) is assigned conflicting types:\n\
                                 │     • First inferred as:  {}\n\
@@ -384,21 +384,21 @@ impl TranspileableStatement for AssignStatement {
                                 │     • Split into separate variables: {}_{:?}  and  {}_{:?}\n\
                                 │{}\n\
                                 ╰──────────────────────────────────────────────────────────",
-                            var_name,
-                            scope_str,
-                            old_type,
-                            new_type,
-                            first_assign_hint,
-                            second_assign_hint,
-                            old_type.base_type,
-                            var_name,
-                            var_name,
-                            old_type.base_type,
-                            var_name,
-                            new_type.base_type,
-                            ve_hint,
-                        );
-                        return Some(Err(RosyError::at(source_location.clone(), msg).into()),);
+                        var_name,
+                        scope_str,
+                        old_type,
+                        new_type,
+                        first_assign_hint,
+                        second_assign_hint,
+                        old_type.base_type,
+                        var_name,
+                        var_name,
+                        old_type.base_type,
+                        var_name,
+                        new_type.base_type,
+                        ve_hint,
+                    );
+                    return Some(Err(RosyError::at(source_location.clone(), msg).into()));
                 }
             }
 
