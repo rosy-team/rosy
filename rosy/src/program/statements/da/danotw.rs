@@ -21,7 +21,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for the `DANOTW weights size;` weighted order statement.
@@ -58,7 +61,6 @@ impl FromRule for DanotwStatement {
         Ok(Some(DanotwStatement { weights, size }))
     }
 }
-
 
 impl Transpile for DanotwStatement {
     fn transpile(

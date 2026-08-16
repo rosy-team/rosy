@@ -22,7 +22,9 @@ use crate::{
     ast::*,
     program::expressions::Expr,
     syntax_config,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+    },
 };
 
 /// AST node for the `DAINI order nvars [output_unit num_monomials_out];` statement.

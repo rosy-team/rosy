@@ -31,7 +31,7 @@ fn write_if_changed(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> std::
 include!(concat!(env!("OUT_DIR"), "/embedded_rosy_lib.rs"));
 
 /// Embedded main.rs template for generated projects
-const MAIN_RS_TEMPLATE: &str = include_str!("../assets/output_template/main.rs");
+const MAIN_RS_TEMPLATE: &str = include_str!("../../assets/output_template/main.rs");
 
 /// Writes the vendored rosy_lib to the output directory
 fn write_vendored_lib(output_dir: &Path) -> Result<()> {

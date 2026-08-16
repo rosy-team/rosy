@@ -19,7 +19,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::core::variable_identifier::VariableIdentifier,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, VariableScope, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        VariableScope, add_context_to_all,
+    },
 };
 
 #[derive(Debug)]
@@ -47,7 +50,6 @@ impl FromRule for PwtimeStatement {
         Ok(Some(PwtimeStatement { identifier }))
     }
 }
-
 
 impl Transpile for PwtimeStatement {
     fn transpile(

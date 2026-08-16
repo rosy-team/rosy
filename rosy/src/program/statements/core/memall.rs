@@ -49,7 +49,6 @@ impl FromRule for MemallStatement {
     }
 }
 
-
 impl Transpile for MemallStatement {
     fn transpile(
         &self,

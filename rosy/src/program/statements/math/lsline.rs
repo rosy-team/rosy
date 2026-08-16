@@ -25,7 +25,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::{Expr, core::variable_identifier::VariableIdentifier},
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, ValueKind, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        ValueKind, add_context_to_all,
+    },
 };
 
 /// AST node for `LSLINE x y n a b;`.
@@ -86,7 +89,6 @@ impl FromRule for LslineStatement {
         }))
     }
 }
-
 
 impl Transpile for LslineStatement {
     fn transpile(

@@ -100,20 +100,30 @@ fn dispatch_builtin_function(
 
     match name.as_str() {
         "DA" => {
-            anyhow::ensure!(args.len() == 1, "`DA` expects 1 argument, got {}", args.len());
+            anyhow::ensure!(
+                args.len() == 1,
+                "`DA` expects 1 argument, got {}",
+                args.len()
+            );
             Ok(Expr {
                 inner: DAExpr {
                     index: Box::new(args.remove(0)),
-                }.into(),
+                }
+                .into(),
                 source_location: loc,
             })
         }
         "CD" => {
-            anyhow::ensure!(args.len() == 1, "`CD` expects 1 argument, got {}", args.len());
+            anyhow::ensure!(
+                args.len() == 1,
+                "`CD` expects 1 argument, got {}",
+                args.len()
+            );
             Ok(Expr {
                 inner: CDExpr {
                     index: Box::new(args.remove(0)),
-                }.into(),
+                }
+                .into(),
                 source_location: loc,
             })
         }
@@ -156,7 +166,8 @@ impl FromRule for Expr {
                         Ok(Expr {
                             inner: NegExpr {
                                 operand: Box::new(operand),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: loc,
                         })
                     }
@@ -203,7 +214,8 @@ impl FromRule for Expr {
                         Ok(Expr {
                             inner: NotExpr {
                                 operand: Box::new(operand),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: not_loc,
                         })
                     }
@@ -261,7 +273,8 @@ impl FromRule for Expr {
                             inner: AddExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -274,7 +287,8 @@ impl FromRule for Expr {
                             inner: SubExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -287,7 +301,8 @@ impl FromRule for Expr {
                             inner: MultExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -300,7 +315,8 @@ impl FromRule for Expr {
                             inner: DivExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -312,7 +328,8 @@ impl FromRule for Expr {
                             inner: PowExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -327,7 +344,8 @@ impl FromRule for Expr {
                             inner: ConcatExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -340,7 +358,8 @@ impl FromRule for Expr {
                             inner: ExtractExpr {
                                 object: Box::new(left),
                                 index: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -353,7 +372,8 @@ impl FromRule for Expr {
                             inner: DeriveExpr {
                                 object: Box::new(left),
                                 index: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -366,7 +386,8 @@ impl FromRule for Expr {
                             inner: EqExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -379,7 +400,8 @@ impl FromRule for Expr {
                             inner: NeqExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -392,7 +414,8 @@ impl FromRule for Expr {
                             inner: LtExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -405,7 +428,8 @@ impl FromRule for Expr {
                             inner: GtExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -418,7 +442,8 @@ impl FromRule for Expr {
                             inner: LteExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -431,7 +456,8 @@ impl FromRule for Expr {
                             inner: GteExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -444,7 +470,8 @@ impl FromRule for Expr {
                             inner: AndExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -457,7 +484,8 @@ impl FromRule for Expr {
                             inner: OrExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }.into(),
+                            }
+                            .into(),
                             source_location: op_loc.clone(),
                         })
                     }

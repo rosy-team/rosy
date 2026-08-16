@@ -110,7 +110,7 @@ pub fn build_type(pair: pest::iterators::Pair<Rule>) -> Result<(RosyType, Vec<Ex
 #[cfg(test)]
 mod intrinsic_name_sync {
     fn pest_intrinsic_names() -> Vec<String> {
-        let pest = include_str!("../assets/rosy.pest");
+        let pest = include_str!("../../assets/rosy.pest");
         let mut names = Vec::new();
         for line in pest.lines() {
             let trimmed = line.trim();

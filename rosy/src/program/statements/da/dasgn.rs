@@ -25,7 +25,10 @@ use anyhow::{Context, Error, Result, ensure};
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for `DASGN da_var;`.
@@ -52,7 +55,6 @@ impl FromRule for DasgnStatement {
         Ok(Some(DasgnStatement { da_expr }))
     }
 }
-
 
 impl Transpile for DasgnStatement {
     fn transpile(

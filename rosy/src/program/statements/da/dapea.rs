@@ -20,7 +20,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for `DAPEA da_var exps_array size result;`.
@@ -72,7 +75,6 @@ impl FromRule for DapeaStatement {
         }))
     }
 }
-
 
 impl Transpile for DapeaStatement {
     fn transpile(

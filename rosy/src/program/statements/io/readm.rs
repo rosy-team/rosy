@@ -35,7 +35,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::{Expr, core::variable_identifier::VariableIdentifier},
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, TranspileableStatement, ValueKind, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement, ValueKind, add_context_to_all,
+    },
 };
 
 /// AST node for `READM output_var var_info length dp_array int_array da_params;`.
@@ -117,7 +120,6 @@ impl FromRule for ReadmStatement {
         }))
     }
 }
-
 
 impl Transpile for ReadmStatement {
     fn transpile(

@@ -14,9 +14,11 @@
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/expressions/functions/conversion/string_convert.rosy"))]
 //! ```
 
-use anyhow::{anyhow, Error, Result};
 use crate::program::expressions::Expr;
-use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind};
+use crate::transpile::{
+    TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind,
+};
+use anyhow::{Error, Result, anyhow};
 
 /// Shared emit path for `ST(expr)` — used by the intrinsic and by `WRITE`.
 pub fn string_convert_transpile_helper(
@@ -42,4 +44,3 @@ pub fn string_convert_transpile_helper(
         value_kind: ValueKind::Owned,
     })
 }
-

@@ -44,10 +44,10 @@ use std::collections::{BTreeSet, HashSet};
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use rosy_lib::BinaryOp;
 use crate::transpile::TranspileableExpr;
 use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, ValueKind};
 use anyhow::{Error, Result, anyhow};
+use rosy_lib::BinaryOp;
 use rosy_lib::RosyType;
 
 /// AST node for the binary addition operator (`+`).
@@ -87,7 +87,7 @@ impl TranspileableExpr for AddExpr {
         if let Err(e) = resolver.discover_expr_function_calls(&self.left, ctx) {
             return Some(Err(e));
         }
-        Some(resolver.discover_expr_function_calls(&self.right, ctx),)
+        Some(resolver.discover_expr_function_calls(&self.right, ctx))
     }
     fn build_expr_recipe(
         &self,

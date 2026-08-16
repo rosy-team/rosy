@@ -26,7 +26,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for `DADER da_var var_index;`.
@@ -64,7 +67,6 @@ impl FromRule for DaderStatement {
         }))
     }
 }
-
 
 impl Transpile for DaderStatement {
     fn transpile(

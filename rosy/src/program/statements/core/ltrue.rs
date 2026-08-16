@@ -46,7 +46,6 @@ impl FromRule for LtrueStatement {
     }
 }
 
-
 impl Transpile for LtrueStatement {
     fn transpile(
         &self,

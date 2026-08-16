@@ -22,7 +22,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for the `CDF2 input tune1 tune2 tune3 result;` statement.
@@ -74,7 +77,6 @@ impl FromRule for Cdf2Statement {
         }))
     }
 }
-
 
 impl Transpile for Cdf2Statement {
     fn transpile(

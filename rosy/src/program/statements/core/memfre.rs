@@ -48,7 +48,6 @@ impl FromRule for MemfreStatement {
     }
 }
 
-
 impl Transpile for MemfreStatement {
     fn transpile(
         &self,

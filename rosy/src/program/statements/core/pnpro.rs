@@ -46,7 +46,6 @@ impl FromRule for PnproStatement {
     }
 }
 
-
 impl Transpile for PnproStatement {
     fn transpile(
         &self,

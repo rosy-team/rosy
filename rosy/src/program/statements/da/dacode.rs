@@ -23,7 +23,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for the `DACODE params size result;` monomial decode statement.
@@ -63,7 +66,6 @@ impl FromRule for DacodeStatement {
         }))
     }
 }
-
 
 impl Transpile for DacodeStatement {
     fn transpile(

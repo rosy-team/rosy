@@ -17,11 +17,16 @@ use std::path::{Path, PathBuf};
 
 use crate::{
     ast::{CosyParser, FromRule, Rule},
-    manifest::RosyToml,
     program::statements::Statement,
     transpile::*,
 };
+
+pub mod expressions;
+pub mod manifest;
+pub mod statements;
+pub mod syntax_config;
 use anyhow::{Context, Error, Result, bail};
+use manifest::RosyToml;
 use pest::Parser;
 
 /// Discriminator for the `MODULE` statement's source-type literal.
@@ -49,9 +54,6 @@ struct ModuleInfo {
     path: String,
     version: Option<String>,
 }
-
-pub mod expressions;
-pub mod statements;
 
 /// Tracks INCLUDE resolution across one compilation unit.
 ///

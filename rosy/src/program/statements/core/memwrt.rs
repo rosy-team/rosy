@@ -21,7 +21,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for `MEMWRT c;`.
@@ -48,7 +51,6 @@ impl FromRule for MemwrtStatement {
         Ok(Some(MemwrtStatement { unit_expr }))
     }
 }
-
 
 impl Transpile for MemwrtStatement {
     fn transpile(

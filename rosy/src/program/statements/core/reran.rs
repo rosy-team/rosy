@@ -19,9 +19,7 @@ use anyhow::{Context, Error, Result, ensure};
 use std::collections::BTreeSet;
 
 use crate::{
-    ast::*,
-    program::expressions::core::variable_identifier::VariableIdentifier,
-    transpile::*,
+    ast::*, program::expressions::core::variable_identifier::VariableIdentifier, transpile::*,
 };
 
 #[derive(Debug)]
@@ -47,7 +45,6 @@ impl FromRule for ReranStatement {
         Ok(Some(ReranStatement { output_var }))
     }
 }
-
 
 impl Transpile for ReranStatement {
     fn transpile(

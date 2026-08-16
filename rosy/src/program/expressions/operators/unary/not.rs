@@ -54,7 +54,7 @@ impl TranspileableExpr for NotExpr {
         resolver: &mut TypeResolver,
         ctx: &ScopeContext,
     ) -> Option<Result<()>> {
-        Some(resolver.discover_expr_function_calls(&self.operand, ctx),)
+        Some(resolver.discover_expr_function_calls(&self.operand, ctx))
     }
     fn build_expr_recipe(
         &self,

@@ -27,7 +27,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::core::variable_identifier::VariableIdentifier,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, ValueKind, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        ValueKind, add_context_to_all,
+    },
 };
 
 /// AST node for `RKCO c b e a1 a2;`.
@@ -84,7 +87,6 @@ impl FromRule for RkcoStatement {
         }))
     }
 }
-
 
 impl Transpile for RkcoStatement {
     fn transpile(

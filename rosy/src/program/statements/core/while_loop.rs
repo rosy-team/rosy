@@ -95,7 +95,7 @@ impl TranspileableStatement for WhileStatement {
         ctx: &mut ScopeContext,
         _source_location: SourceLocation,
     ) -> Option<Result<()>> {
-        Some(resolver.discover_slots(&self.body, &mut ctx.clone()),)
+        Some(resolver.discover_slots(&self.body, &mut ctx.clone()))
     }
     fn hydrate_resolved_types(
         &mut self,

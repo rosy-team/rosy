@@ -75,7 +75,6 @@ impl FromRule for VelsetStatement {
     }
 }
 
-
 impl Transpile for VelsetStatement {
     fn transpile(
         &self,

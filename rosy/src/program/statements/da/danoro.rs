@@ -26,7 +26,10 @@ use anyhow::{Context, Error, Result, ensure};
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for `DANORO da_var;`.
@@ -55,7 +58,6 @@ impl FromRule for DanoroStatement {
         Ok(Some(DanoroStatement { da_expr }))
     }
 }
-
 
 impl Transpile for DanoroStatement {
     fn transpile(

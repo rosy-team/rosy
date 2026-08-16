@@ -20,7 +20,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        add_context_to_all,
+    },
 };
 
 /// AST node for the `CDFLO rhs ic result dim;` complex ODE flow statement.
@@ -66,7 +69,6 @@ impl FromRule for CdfloStatement {
         }))
     }
 }
-
 
 impl Transpile for CdfloStatement {
     fn transpile(

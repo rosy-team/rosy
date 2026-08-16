@@ -19,7 +19,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::core::variable_identifier::VariableIdentifier,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, VariableScope},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        VariableScope,
+    },
 };
 
 /// AST node for `CPUSEC v;`.
@@ -52,7 +55,6 @@ impl FromRule for CpusecStatement {
         Ok(Some(CpusecStatement { identifier }))
     }
 }
-
 
 impl Transpile for CpusecStatement {
     fn transpile(

@@ -271,11 +271,11 @@ impl TranspileableStatement for VarDeclStatement {
             if let Some(node) = resolver.nodes.get(&slot)
                 && let Some(t) = &node.resolved
             {
-                    let mut resolved = *t;
-                    if !self.data.dimension_exprs.is_empty() {
-                        resolved.dimensions = self.data.dimension_exprs.len();
-                    }
-                    self.data.r#type = Some(resolved);
+                let mut resolved = *t;
+                if !self.data.dimension_exprs.is_empty() {
+                    resolved.dimensions = self.data.dimension_exprs.len();
+                }
+                self.data.r#type = Some(resolved);
             }
         }
         Some(Ok(()))
@@ -316,10 +316,10 @@ impl Transpile for VarDeclStatement {
         if let Some(prev) = previous
             && prev.scope != VariableScope::Higher
         {
-                return Err(vec![anyhow!(
-                    "Variable '{}' is already defined in this scope!",
-                    self.data.name
-                )]);
+            return Err(vec![anyhow!(
+                "Variable '{}' is already defined in this scope!",
+                self.data.name
+            )]);
         }
 
         let data_output = self.data.transpile(context)?;

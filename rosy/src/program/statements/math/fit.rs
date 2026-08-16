@@ -31,7 +31,10 @@ use crate::{
         statements::{SourceLocation, Statement},
     },
     resolve::{ScopeContext, TypeResolver},
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, TranspileableStatement, indent},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement, indent,
+    },
 };
 use rosy_lib::RosyType;
 
@@ -167,7 +170,7 @@ impl TranspileableStatement for FitStatement {
         ctx: &mut ScopeContext,
         _source_location: SourceLocation,
     ) -> Option<Result<()>> {
-        Some(resolver.discover_slots(&self.body, &mut ctx.clone()),)
+        Some(resolver.discover_slots(&self.body, &mut ctx.clone()))
     }
     fn hydrate_resolved_types(
         &mut self,

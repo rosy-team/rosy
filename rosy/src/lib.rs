@@ -14,12 +14,13 @@
 //! - **[Example programs](https://github.com/rosy-team/rosy/tree/master/examples)** on GitHub
 //! - **[Installation & usage](https://github.com/rosy-team/rosy)** in the README
 
-pub mod ast;
-pub mod embedded;
-pub mod errors;
+pub mod compiler;
 pub mod lsp;
-pub mod manifest;
 pub mod program;
-pub mod resolve;
-pub mod syntax_config;
-pub mod transpile;
+
+pub use compiler::ast;
+pub use compiler::embedded;
+pub use compiler::errors;
+pub use compiler::resolve;
+pub use compiler::transpile;
+pub use program::syntax_config;

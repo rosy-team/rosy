@@ -46,7 +46,6 @@ impl FromRule for ImunitStatement {
     }
 }
 
-
 impl Transpile for ImunitStatement {
     fn transpile(
         &self,

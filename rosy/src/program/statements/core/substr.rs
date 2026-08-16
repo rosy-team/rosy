@@ -83,7 +83,6 @@ impl FromRule for SubstrStatement {
     }
 }
 
-
 impl Transpile for SubstrStatement {
     fn transpile(
         &self,

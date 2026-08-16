@@ -25,7 +25,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, ValueKind, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        ValueKind, add_context_to_all,
+    },
 };
 
 /// AST node for `LDET matrix n alloc_dim result ;`.
@@ -77,7 +80,6 @@ impl FromRule for LdetStatement {
         }))
     }
 }
-
 
 impl Transpile for LdetStatement {
     fn transpile(

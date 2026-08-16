@@ -25,7 +25,10 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::{Expr, core::variable_identifier::VariableIdentifier},
-    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, ValueKind, add_context_to_all},
+    transpile::{
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        ValueKind, add_context_to_all,
+    },
 };
 
 /// AST node for `WRITEM input var_info length dp_array int_array da_params;`.
@@ -110,7 +113,6 @@ impl FromRule for WritemStatement {
         }))
     }
 }
-
 
 impl Transpile for WritemStatement {
     fn transpile(

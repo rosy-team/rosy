@@ -1,9 +1,11 @@
 //! Closed statement AST. Replaces `Box<dyn TranspileableStatement>`.
 
 use super::*;
-use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement};
-use crate::resolve::{ScopeContext, TypeResolver};
 use crate::program::statements::SourceLocation;
+use crate::resolve::{ScopeContext, TypeResolver};
+use crate::transpile::{
+    TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+};
 use anyhow::{Error, Result};
 
 macro_rules! stmt_kind {
