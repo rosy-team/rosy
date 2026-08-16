@@ -110,13 +110,14 @@ impl FromRule for FunctionStatement {
 
         let body = {
             let mut statements = vec![Statement {
-                inner: Box::new(VarDeclStatement {
+                inner: VarDeclStatement {
                     data: VariableDeclarationData {
                         name: name.clone(),
                         r#type: return_type,
                         dimension_exprs: Vec::new(),
                     },
-                }),
+                }
+                .into(),
                 source_location: SourceLocation {
                     line: 0,
                     col: 0,

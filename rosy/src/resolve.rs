@@ -17,7 +17,8 @@ use crate::program::Program;
 use crate::program::expressions::*;
 use crate::program::statements::*;
 use crate::transpile::{
-    ExprFunctionCallResult, InferenceEdgeResult, TypeHydrationResult, TypeslotDeclarationResult,
+    ExprFunctionCallResult, InferenceEdgeResult, TranspileableExpr, TranspileableStatement,
+    TypeHydrationResult, TypeslotDeclarationResult,
 };
 use anyhow::{Result, anyhow};
 use rosy_lib::RosyType;
@@ -142,8 +143,9 @@ impl ExprRecipe {
             ExprRecipe::BinaryOp { left, right, .. } | ExprRecipe::Concat(left, right) => {
                 left.references_slot(target) || right.references_slot(target)
             }
-            ExprRecipe::UnaryIntrinsic { inner, .. }
-            | ExprRecipe::WithDimensions(inner, _) => inner.references_slot(target),
+            ExprRecipe::UnaryIntrinsic { inner, .. } | ExprRecipe::WithDimensions(inner, _) => {
+                inner.references_slot(target)
+            }
         }
     }
 }
@@ -753,9 +755,8 @@ impl TypeResolver {
             }
             ExprRecipe::UnaryIntrinsic { name, inner } => {
                 let input_type = self.evaluate_recipe(inner)?;
-                rosy_lib::unary_return_type(name, &input_type).ok_or_else(|| {
-                    anyhow!("No {name} rule for {}", input_type)
-                })
+                rosy_lib::unary_return_type(name, &input_type)
+                    .ok_or_else(|| anyhow!("No {name} rule for {}", input_type))
             }
             ExprRecipe::Unknown(reason) => {
                 let detail = reason

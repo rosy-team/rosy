@@ -51,7 +51,10 @@
 pub mod core;
 pub mod da;
 pub mod io;
+pub mod kind;
 pub mod math;
+
+pub use kind::StmtKind;
 
 pub use core::assign::AssignStatement;
 pub use core::r#break::BreakStatement;
@@ -225,7 +228,7 @@ impl SourceLocation {
 
 #[derive(Debug)]
 pub struct Statement {
-    pub inner: Box<dyn TranspileableStatement>,
+    pub inner: StmtKind,
     pub source_location: SourceLocation,
 }
 impl TranspileableStatement for Statement {
@@ -263,7 +266,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -272,7 +275,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -281,7 +284,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -290,7 +293,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -299,7 +302,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -307,7 +310,7 @@ impl FromRule for Statement {
                 .context("...while building READS statement!")
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -316,7 +319,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -325,7 +328,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -334,7 +337,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -343,7 +346,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -352,7 +355,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -361,7 +364,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -369,7 +372,7 @@ impl FromRule for Statement {
                 .context("...while building REWF statement!")
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -377,7 +380,7 @@ impl FromRule for Statement {
                 .context("...while building BACKF statement!")
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -386,7 +389,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -395,7 +398,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -404,7 +407,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -413,7 +416,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -422,7 +425,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -431,7 +434,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -440,7 +443,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -449,7 +452,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -458,7 +461,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -467,7 +470,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -476,7 +479,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -486,7 +489,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -495,7 +498,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -504,7 +507,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -513,7 +516,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -522,7 +525,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -531,7 +534,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -540,7 +543,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -549,7 +552,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -558,7 +561,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -567,7 +570,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -576,7 +579,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -585,7 +588,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -594,7 +597,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -602,7 +605,7 @@ impl FromRule for Statement {
                 .context("...while building INTPOL statement!")
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -611,7 +614,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -620,7 +623,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -629,7 +632,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -638,7 +641,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -647,7 +650,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -656,7 +659,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -665,7 +668,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -674,7 +677,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -683,7 +686,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -692,7 +695,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -701,7 +704,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -710,7 +713,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -719,7 +722,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -728,7 +731,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -737,7 +740,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -746,7 +749,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -755,7 +758,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -764,7 +767,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -773,7 +776,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -782,7 +785,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -791,7 +794,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -800,7 +803,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -809,7 +812,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -818,7 +821,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -827,7 +830,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -836,7 +839,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -845,7 +848,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -854,7 +857,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -863,7 +866,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -872,7 +875,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -881,7 +884,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -890,7 +893,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -899,7 +902,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -908,7 +911,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -917,7 +920,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -926,7 +929,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -935,7 +938,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -944,7 +947,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -953,7 +956,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -962,7 +965,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -971,7 +974,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -980,7 +983,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -989,7 +992,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -998,7 +1001,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1007,7 +1010,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1016,7 +1019,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1025,7 +1028,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1034,7 +1037,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1043,7 +1046,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1053,7 +1056,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1062,7 +1065,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1071,7 +1074,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1080,7 +1083,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1088,7 +1091,7 @@ impl FromRule for Statement {
                 .context("...while building MEMALL statement!")
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1096,7 +1099,7 @@ impl FromRule for Statement {
                 .context("...while building MEMWRT statement!")
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1104,7 +1107,7 @@ impl FromRule for Statement {
                 .context("...while building LTRUE statement!")
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1112,7 +1115,7 @@ impl FromRule for Statement {
                 .context("...while building LFALSE statement!")
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1122,7 +1125,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
@@ -1131,7 +1134,7 @@ impl FromRule for Statement {
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
-                        inner: Box::new(stmt),
+                        inner: stmt.into(),
                         source_location: loc.clone(),
                     })
                 }),
