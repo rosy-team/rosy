@@ -1,6 +1,6 @@
 //! # Rosy
 //!
-#![doc = concat!("**Version:** `v", env!("CARGO_PKG_VERSION"), "` — Built `", env!("BUILD_TIMESTAMP"), "` — [Changelog](https://github.com/rosy-team/rosy/releases)")]
+#![doc = concat!("**Version:** `v", env!("CARGO_PKG_VERSION"), "` — [Changelog](https://github.com/rosy-team/rosy/releases)")]
 //!
 //! A modern transpiler for the Rosy scientific programming language,
 //! designed for beam physics and differential algebra applications.

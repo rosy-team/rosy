@@ -1,45 +1,11 @@
 //! Not-equals operator for Rosy types.
-//!
-//! This module provides the `RosyNeq` trait and implementations for all
-//! supported type combinations. The compatibility rules are defined in the
-//! `NEQ_REGISTRY` constant below.
-//!
-//! # Type Compatibility
-//! 
-//! See `assets/operators/neq/neq_table.md` for the full compatibility table.
-//!
-//! # Examples
-//! 
-//! See `assets/operators/neq/neq.rosy` for Rosy examples and 
-//! `assets/operators/neq/neq.fox` for equivalent COSY INFINITY code.
 
 use anyhow::Result;
 use crate::RosyType;
 use crate::{RE, ST, LO};
-use std::sync::OnceLock;
-use std::collections::HashMap;
-use crate::operators::{TypeRule, build_type_registry};
-
-/// Type compatibility registry for not-equals operator.
-/// 
-/// This is the single source of truth for what type combinations are allowed.
-/// The build script (`build.rs`) parses this to generate:
-/// - Documentation table (`neq_table.md`)
-/// - Rosy test script (`neq.rosy`)
-/// - COSY test script (`neq.fox`)
-/// - Integration tests
-pub const NEQ_REGISTRY: &[TypeRule] = &[
-    TypeRule::new("RE", "RE", "LO"),
-    TypeRule::new("ST", "ST", "LO"),
-    TypeRule::new("LO", "LO", "LO"),
-];
-
-static NEQ_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    NEQ_MAP.get_or_init(|| build_type_registry(NEQ_REGISTRY))
-        .get(&(*lhs, *rhs))
-        .copied()
+    crate::operators::eq::get_return_type(lhs, rhs)
 }
 
 pub trait RosyNeq<Rhs = Self> {

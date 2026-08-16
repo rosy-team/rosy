@@ -1,63 +1,12 @@
 //! Addition operator for Rosy types.
-//!
-//! This module provides the `RosyAdd` trait and implementations for all
-//! supported type combinations. The compatibility rules are defined in the
-//! `ADD_REGISTRY` constant below.
-//!
-//! # Type Compatibility
-//! 
-//! See `assets/operators/add/add_table.md` for the full compatibility table.
-//!
-//! # Examples
-//! 
-//! See `assets/operators/add/add.rosy` for Rosy examples and 
-//! `assets/operators/add/add.fox` for equivalent COSY INFINITY code.
 
 use anyhow::Result;
 use num_complex::Complex64;
 use crate::RosyType;
 use crate::{RE, CM, VE, DA, CD, LO};
-use std::sync::OnceLock;
-use std::collections::HashMap;
-use crate::operators::{TypeRule, build_type_registry};
-
-/// Type compatibility registry for addition operator.
-/// 
-/// This is the single source of truth for what type combinations are allowed.
-/// The build script (`build.rs`) parses this to generate:
-/// - Documentation table (`add_table.md`)
-/// - Rosy test script (`add.rosy`)
-/// - COSY test script (`add.fox`)
-/// - Integration tests
-pub const ADD_REGISTRY: &[TypeRule] = &[
-    TypeRule::new("RE", "RE", "RE"),
-    TypeRule::new("RE", "CM", "CM"),
-    TypeRule::new("RE", "VE", "VE"),
-    TypeRule::new("RE", "DA", "DA"),
-    TypeRule::new("RE", "CD", "CD"),
-    TypeRule::new("LO", "LO", "LO"),
-    TypeRule::new("CM", "RE", "CM"),
-    TypeRule::new("CM", "CM", "CM"),
-    TypeRule::new("CM", "DA", "CD"),
-    TypeRule::new("CM", "CD", "CD"),
-    TypeRule::new("VE", "RE", "VE"),
-    TypeRule::new("VE", "VE", "VE"),
-    TypeRule::new("DA", "RE", "DA"),
-    TypeRule::new("DA", "CM", "CD"),
-    TypeRule::new("DA", "DA", "DA"),
-    TypeRule::new("DA", "CD", "CD"),
-    TypeRule::new("CD", "RE", "CD"),
-    TypeRule::new("CD", "CM", "CD"),
-    TypeRule::new("CD", "DA", "CD"),
-    TypeRule::new("CD", "CD", "CD"),
-];
-
-static ADD_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    ADD_MAP.get_or_init(|| build_type_registry(ADD_REGISTRY))
-        .get(&(*lhs, *rhs))
-        .copied()
+    crate::operators::arith_return(lhs, rhs, true)
 }
 
 pub trait RosyAdd<Rhs = Self> {

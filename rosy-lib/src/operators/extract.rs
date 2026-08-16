@@ -1,56 +1,20 @@
 //! Extraction operator for Rosy types.
-//!
-//! This module provides the `RosyExtract` trait and implementations for all
-//! supported type combinations. The compatibility rules are defined in the
-//! `EXTRACT_REGISTRY` constant below.
-//!
-//! # Type Compatibility
-//! 
-//! See `assets/operators/extract/extract_table.md` for the full compatibility table.
-//!
-//! # Examples
-//! 
-//! See `assets/operators/extract/extract.rosy` for Rosy examples and 
-//! `assets/operators/extract/extract.fox` for equivalent COSY INFINITY code.
 
 use anyhow::{Result, bail};
 
-use crate::RosyType;
+use crate::{RosyType, RosyBaseType};
 use crate::{RE, ST, VE, CM, DA, CD};
-use std::sync::OnceLock;
-use std::collections::HashMap;
-use crate::operators::{TypeRule, build_type_registry};
 use crate::taylor::monomial::Monomial;
 
-/// Type compatibility registry for extraction operator.
-/// 
-/// This is the single source of truth for what type combinations are allowed.
-/// The build script (`build.rs`) parses this to generate:
-/// - Documentation table (`extract_table.md`)
-/// - Rosy test script (`extract.rosy`)
-/// - COSY test script (`extract.fox`)
-/// - Integration tests
-/// 
-/// This registry matches COSY INFINITY's | operator capabilities exactly,
-/// as documented in manual.md Section A.2.
-pub const EXTRACT_REGISTRY: &[TypeRule] = &[
-    TypeRule::new("ST", "RE", "ST"),
-    TypeRule::new("ST", "VE", "ST"),
-    TypeRule::new("CM", "RE", "RE"),
-    TypeRule::new("VE", "RE", "RE"),
-    TypeRule::new("VE", "VE", "VE"),
-    TypeRule::new("DA", "RE", "RE"),
-    TypeRule::new("DA", "VE", "RE"),
-    TypeRule::new("CD", "RE", "CM"),
-    TypeRule::new("CD", "VE", "CM"),
-];
-
-static EXTRACT_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
-
 pub fn get_return_type(base: &RosyType, index: &RosyType) -> Option<RosyType> {
-    EXTRACT_MAP.get_or_init(|| build_type_registry(EXTRACT_REGISTRY))
-        .get(&(*base, *index))
-        .copied()
+    use RosyBaseType::*;
+    match crate::operators::dim0(base, index)? {
+        (ST, RE) | (ST, VE) => Some(RosyType::ST()),
+        (CM, RE) | (VE, RE) | (DA, RE) | (DA, VE) => Some(RosyType::RE()),
+        (VE, VE) => Some(RosyType::VE()),
+        (CD, RE) | (CD, VE) => Some(RosyType::CM()),
+        _ => None,
+    }
 }
 
 /// Trait for extracting components from Rosy data types

@@ -1,61 +1,11 @@
 //! Division operator for Rosy types.
-//!
-//! This module provides the `RosyDiv` trait and implementations for all
-//! supported type combinations. The compatibility rules are defined in the
-//! `DIV_REGISTRY` constant below.
-//!
-//! # Type Compatibility
-//! 
-//! See `assets/operators/div/div_table.md` for the full compatibility table.
-//!
-//! # Examples
-//! 
-//! See `assets/operators/div/div.rosy` for Rosy examples and 
-//! `assets/operators/div/div.fox` for equivalent COSY INFINITY code.
 
 use anyhow::Result;
 use crate::RosyType;
 use crate::{RE, CM, VE, DA, CD};
-use std::sync::OnceLock;
-use std::collections::HashMap;
-use crate::operators::{TypeRule, build_type_registry};
-
-/// Type compatibility registry for division operator.
-/// 
-/// This is the single source of truth for what type combinations are allowed.
-/// The build script (`build.rs`) parses this to generate:
-/// - Documentation table (`div_table.md`)
-/// - Rosy test script (`div.rosy`)
-/// - COSY test script (`div.fox`)
-/// - Integration tests
-pub const DIV_REGISTRY: &[TypeRule] = &[
-    TypeRule::new("RE", "RE", "RE"),
-    TypeRule::new("RE", "CM", "CM"),
-    TypeRule::new("RE", "VE", "VE"),
-    TypeRule::new("RE", "DA", "DA"),
-    TypeRule::new("RE", "CD", "CD"),
-    TypeRule::new("CM", "RE", "CM"),
-    TypeRule::new("CM", "CM", "CM"),
-    TypeRule::new("CM", "DA", "CD"),
-    TypeRule::new("CM", "CD", "CD"),
-    TypeRule::new("VE", "RE", "VE"),
-    TypeRule::new("VE", "VE", "VE"),
-    TypeRule::new("DA", "RE", "DA"),
-    TypeRule::new("DA", "CM", "CD"),
-    TypeRule::new("DA", "DA", "DA"),
-    TypeRule::new("DA", "CD", "CD"),
-    TypeRule::new("CD", "RE", "CD"),
-    TypeRule::new("CD", "CM", "CD"),
-    TypeRule::new("CD", "DA", "CD"),
-    TypeRule::new("CD", "CD", "CD"),
-];
-
-static DIV_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-    DIV_MAP.get_or_init(|| build_type_registry(DIV_REGISTRY))
-        .get(&(*lhs, *rhs))
-        .copied()
+    crate::operators::arith_return(lhs, rhs, false)
 }
 
 pub trait RosyDiv<Rhs = Self> {

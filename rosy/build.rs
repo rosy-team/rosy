@@ -4,37 +4,6 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 fn main() {
-    // Emit build timestamp (UTC) as a compile-time env var
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    // Format as a human-readable UTC timestamp without pulling in chrono
-    let secs = now;
-    let days_since_epoch = secs / 86400;
-    let time_of_day = secs % 86400;
-    let hours = time_of_day / 3600;
-    let minutes = (time_of_day % 3600) / 60;
-    let seconds = time_of_day % 60;
-
-    // Compute year/month/day from days since 1970-01-01 (civil calendar algorithm)
-    let z = days_since_epoch as i64 + 719468;
-    let era = z / 146097;
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-
-    let timestamp = format!(
-        "{:04}-{:02}-{:02} {:02}:{:02}:{:02} UTC",
-        y, m, d, hours, minutes, seconds
-    );
-    println!("cargo:rustc-env=BUILD_TIMESTAMP={}", timestamp);
-
     // Re-run if source changes
     println!("cargo:rerun-if-changed=src/program");
     println!("cargo:rerun-if-changed=src/compiler");
