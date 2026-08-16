@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (CM) Z;
-    Z := CMPLX(3.0);
-    WRITE 6 ST(Z);
-END;

@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (ST) S;
-    S := LTRIM('   world');
-    WRITE 6 S;
-END;

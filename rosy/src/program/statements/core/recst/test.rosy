@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (ST) S;
-    RECST 3.14 '(F10.4)' S;
-    WRITE 6 S;
-END;

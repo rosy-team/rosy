@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (RE) M;
-    MEMFRE M;
-    IF M > 0;
-        WRITE 6 'memfre ok';
-    ENDIF;
-END;

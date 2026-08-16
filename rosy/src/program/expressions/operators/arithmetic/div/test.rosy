@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    X := 10 / 4;
-    WRITE 6 X;
-END;

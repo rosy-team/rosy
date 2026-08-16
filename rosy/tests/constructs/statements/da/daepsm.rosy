@@ -1,0 +1,26 @@
+BEGIN;
+    VARIABLE (RE) eps;
+    DAINI 3 2 0 0;
+    DAEPS 0.0000000001;
+    DAEPSM eps;
+    WRITE 6 eps;
+    WRITE 6 'daepsm ok';
+END;
+
+======= expect
+ 0.1000000000000000E-009
+daepsm ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    VARIABLE eps 1;
+    DAINI 3 2 0 NM;
+    DAEPS 1e-10;
+    DAEPSM eps;
+    WRITE 6 eps;
+    WRITE 6 'daepsm ok';
+ENDPROCEDURE;
+RUN;
+END;

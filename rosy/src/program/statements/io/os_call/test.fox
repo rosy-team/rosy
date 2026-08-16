@@ -1,6 +1,0 @@
-BEGIN;
-PROCEDURE RUN;
-    OS 'echo os_call ok';
-ENDPROCEDURE;
-RUN;
-END;

@@ -1,8 +1,0 @@
-BEGIN;
-PROCEDURE RUN;
-    VARIABLE S 80;
-    S := 'hello';
-    WRITE 6 S;
-ENDPROCEDURE;
-RUN;
-END;

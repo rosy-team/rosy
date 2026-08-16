@@ -1,0 +1,18 @@
+BEGIN;
+    VARIABLE (ST) S;
+    S := LTRIM('   world');
+    WRITE 6 S;
+END;
+
+======= expect
+world
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE S 80;
+    S := LTRIM('   world');
+    WRITE 6 S;
+ENDPROCEDURE;
+RUN;
+END;

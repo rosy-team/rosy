@@ -1,0 +1,20 @@
+BEGIN;
+    PROCEDURE SHOW X;
+        WRITE 6 X;
+    ENDPROCEDURE;
+    SHOW 99;
+END;
+
+======= expect
+ 99.00000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    PROCEDURE SHOW X;
+        WRITE 6 X;
+    ENDPROCEDURE;
+    SHOW 99;
+ENDPROCEDURE;
+RUN;
+END;

@@ -1,0 +1,20 @@
+BEGIN;
+    VARIABLE (RE) T;
+    CPUSEC T;
+    IF T >= 0;
+        WRITE 6 'cpusec ok';
+    ENDIF;
+END;
+
+======= expect
+cpusec ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE T 1;
+    CPUSEC T;
+    WRITE 6 'cpusec ok';
+ENDPROCEDURE;
+RUN;
+END;

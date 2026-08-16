@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (VE) V;
-    VARIABLE (RE) N;
-    V := 3 & 2;
-    N := LDA(V);
-    WRITE 6 N;
-END;

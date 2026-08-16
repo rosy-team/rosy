@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (RE) T;
-    PWTIME T;
-    IF T >= 0;
-        WRITE 6 'pwtime ok';
-    ENDIF;
-END;

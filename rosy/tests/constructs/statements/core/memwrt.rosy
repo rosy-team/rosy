@@ -1,0 +1,20 @@
+BEGIN;
+    VARIABLE (RE) U;
+    U := 6;
+    MEMWRT U;
+    WRITE 6 'memwrt ok';
+END;
+
+======= expect
+memwrt ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE U 1;
+    U := 6;
+    MEMWRT U;
+    WRITE 6 'memwrt ok';
+ENDPROCEDURE;
+RUN;
+END;

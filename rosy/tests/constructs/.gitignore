@@ -1,0 +1,2 @@
+# I/O constructs write temp files next to the case (cwd = that directory)
+test_*

@@ -1,6 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    X := 42;
-    MEMDPV 6 X;
-    WRITE 6 'memdpv ok';
-END;

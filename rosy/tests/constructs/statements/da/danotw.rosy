@@ -1,0 +1,36 @@
+BEGIN;
+    VARIABLE (VE) W;
+    VARIABLE (DA 1) RES;
+
+    { Test: Weighted DA with weights (1,2), order 4, 2 vars }
+    W := 1&2;
+    DANOTW W 2;
+    DAINI 4 2 0 0;
+
+    RES(1) := DA(1) + DA(2) + DA(1)*DA(1) + DA(1)*DA(2) + DA(2)*DA(2);
+    DAPRV RES 1 2 2 6;
+END;
+
+======= expect
+   1.000000000000     10
+   1.000000000000     20
+   1.000000000000     02
+   1.000000000000     12
+   1.000000000000     04
+ ------------------------------------------------------------------------------
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE W 1 2;
+    VARIABLE RES 2000 1;
+
+    W(1) := 1; W(2) := 2;
+    DANOTW W 2;
+    DAINI 4 2 0 0;
+
+    RES(1) := DA(1) + DA(2) + DA(1)*DA(1) + DA(1)*DA(2) + DA(2)*DA(2);
+    DAPRV RES 1 2 2 6;
+ENDPROCEDURE;
+RUN;
+END;

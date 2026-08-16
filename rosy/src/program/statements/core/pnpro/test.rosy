@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (RE) NP;
-    PNPRO NP;
-    WRITE 6 NP;
-END;

@@ -203,13 +203,11 @@ fn scan_modules_recursive(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            let mod_file = path.join("mod.rs");
-            if mod_file.is_file()
-                && let Some(doc) = parse_module_doc(&mod_file, &path, base_dir, kind)
-            {
-                docs.insert(doc.keyword.clone(), doc);
-            }
             scan_modules_recursive(base_dir, &path, kind, docs);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs")
+            && let Some(doc) = parse_module_doc(&path, &path.with_extension(""), base_dir, kind)
+        {
+            docs.insert(doc.keyword.clone(), doc);
         }
     }
 }

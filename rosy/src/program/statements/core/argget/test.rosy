@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (ST) S;
-    ARGGET 0 S;
-    WRITE 6 'argget ok';
-END;

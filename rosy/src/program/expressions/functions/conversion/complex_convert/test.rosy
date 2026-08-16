@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (CM) Z;
-    Z := CM(3&4);
-    WRITE 6 ST(Z);
-END;

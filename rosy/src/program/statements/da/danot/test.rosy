@@ -1,5 +1,0 @@
-BEGIN;
-    DAINI 5 2 0 0;
-    DANOT 3;
-    WRITE 6 'danot ok';
-END;

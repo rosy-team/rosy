@@ -1,0 +1,25 @@
+BEGIN;
+    VARIABLE (DA 1) A;
+    VARIABLE (RE) R;
+    DAINI 3 2 0 0;
+    A(1) := DA(1) + 2*DA(2);
+    DANOW A(1) 1.5 R;
+    WRITE 6 'DANOW result:' R;
+END;
+
+======= expect
+DANOW result:
+ 3.000000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE A 2000;
+    VARIABLE R 1;
+    DAINI 3 2 0 0;
+    A := DA(1) + 2*DA(2);
+    DANOW A 1.5 R;
+    WRITE 6 'DANOW result:' R;
+ENDPROCEDURE;
+RUN;
+END;

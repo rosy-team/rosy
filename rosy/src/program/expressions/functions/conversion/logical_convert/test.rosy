@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (LO) B;
-    B := LO(1);
-    WRITE 6 B;
-    B := LO(0);
-    WRITE 6 B;
-END;

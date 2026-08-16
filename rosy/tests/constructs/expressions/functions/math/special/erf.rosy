@@ -1,0 +1,18 @@
+BEGIN;
+    VARIABLE (RE) X;
+    X := ERF(1.0);
+    WRITE 6 X;
+END;
+
+======= expect
+ 0.8427007929497149
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE X 1;
+    X := ERF(1.0);
+    WRITE 6 X;
+ENDPROCEDURE;
+RUN;
+END;

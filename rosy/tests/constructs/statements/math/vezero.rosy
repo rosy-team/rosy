@@ -1,0 +1,20 @@
+BEGIN;
+    VARIABLE (VE) V;
+    V := 0.001 & 5 & 0.0001;
+    VEZERO V 3 0.01;
+    WRITE 6 ST(V);
+END;
+
+======= expect
+ 0.1000000E-002  0.0000000     0.1000000E-003
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE V 100;
+    V := 0.001 & 5 & 0.0001;
+    VEZERO V 3 0.01;
+    WRITE 6 V;
+ENDPROCEDURE;
+RUN;
+END;

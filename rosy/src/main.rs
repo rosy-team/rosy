@@ -4,7 +4,13 @@ use anyhow::{Context, Result, anyhow, ensure};
 use clap::{Parser as ClapParser, Subcommand};
 use pest::Parser;
 use rosy::{ast, embedded, program::Program, resolve, syntax_config, transpile::*};
-use std::{fs, fs::write, path::PathBuf, process::Command, time::Instant};
+use std::{
+    fs,
+    fs::write,
+    path::{Path, PathBuf},
+    process::Command,
+    time::Instant,
+};
 use tracing::info;
 
 // ANSI color helpers (stderr only)
@@ -71,9 +77,13 @@ enum Commands {
         #[arg(short, long)]
         release: bool,
 
-        /// Number of parallel test workers (each gets its own build directory)
+        /// Ignored: one incremental cargo target is faster than N isolated rustcs
         #[arg(short, long, default_value = "1")]
         parallel: usize,
+
+        /// Rewrite `======= expect` in fixtures from this run
+        #[arg(long)]
+        bless: bool,
     },
 
     /// Build a Rosy script and place the binary in PWD
@@ -131,7 +141,6 @@ fn rosy(
     release: bool,
     optimized: bool,
 ) -> Result<PathBuf> {
-    let total_start = Instant::now();
     let filename = script_path
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
@@ -146,7 +155,6 @@ fn rosy(
     eprintln!("{BOLD}        Rosy{RESET} v{}", env!("CARGO_PKG_VERSION"));
     eprintln!("{BOLD}  Transpiling{RESET} {filename} ({profile_label})");
 
-    // --- Step 0: Read source ---
     step(1, 6, "Reading");
     let t = Instant::now();
     let raw_script = std::fs::read_to_string(script_path).with_context(|| {
@@ -157,44 +165,70 @@ fn rosy(
     })?;
     step_done(t);
 
-    // --- Step 1: Parse ---
-    step(2, 6, "Parsing");
+    compile_source(
+        &raw_script,
+        Some(script_path.as_path()),
+        output_dir.unwrap_or_else(|| PathBuf::from(".rosy_output")),
+        release,
+        optimized,
+        false,
+    )
+}
+
+fn compile_source(
+    raw_script: &str,
+    script_path: Option<&Path>,
+    rosy_output_path: PathBuf,
+    release: bool,
+    optimized: bool,
+    quiet: bool,
+) -> Result<PathBuf> {
+    let total_start = Instant::now();
+
+    if !quiet {
+        step(2, 6, "Parsing");
+    }
     let t = Instant::now();
-    let program = ast::CosyParser::parse(ast::Rule::program, &raw_script)
+    let program = ast::CosyParser::parse(ast::Rule::program, raw_script)
         .context("Couldn't parse!")?
         .next()
         .context("Expected a program")?;
-    step_done(t);
+    if !quiet {
+        step_done(t);
+        step(3, 6, "Building AST");
+    }
 
-    // --- Step 2: AST Generation (resolves INCLUDEs at the AST level) ---
-    step(3, 6, "Building AST");
     let t = Instant::now();
     let mut ast = Program::from_rule_with_includes(
         program,
-        Some(script_path),
+        script_path,
         &mut rosy::program::IncludeTracker::default(),
     )
     .context("Failed to build AST!")?
     .context("Expected a program")?;
-    step_done(t);
+    if !quiet {
+        step_done(t);
+        step(4, 6, "Resolving types");
+    }
 
-    // --- Step 3: Type Resolution ---
-    step(4, 6, "Resolving types");
     let t = Instant::now();
     let (_resolver, warnings) =
         resolve::TypeResolver::resolve(&mut ast).context("Failed to resolve types!")?;
-    step_done(t);
-    for w in &warnings {
-        eprintln!("{BOLD}{YELLOW}    warning{RESET}: {}", w.message);
+    if !quiet {
+        step_done(t);
+        for w in &warnings {
+            eprintln!("{BOLD}{YELLOW}    warning{RESET}: {}", w.message);
+        }
+        step(5, 6, "Generating Rust code");
     }
 
-    // --- Step 4: Transpilation ---
-    step(5, 6, "Generating Rust code");
     let t = Instant::now();
     let TranspilationOutput { serialization, .. } = ast
         .transpile(&mut TranspilationInputContext::default())
         .map_err(|vec_errs| {
-            step_fail();
+            if !quiet {
+                step_fail();
+            }
             let mut combined = String::new();
             for (outer_ind, err) in vec_errs.iter().enumerate() {
                 let mut body = String::new();
@@ -214,41 +248,47 @@ fn rosy(
             )
         })?;
 
-    // Detect whether the program uses MPI (only PLOOP generates rosy_mpi_context references)
     let uses_mpi = serialization.contains("rosy_mpi_context");
     if uses_mpi {
         info!("Program uses PLOOP — MPI support enabled in output");
     }
 
-    // Determine output directory
-    let rosy_output_path = output_dir.unwrap_or_else(|| PathBuf::from(".rosy_output"));
-
-    // Create the output project structure from embedded templates
     embedded::create_output_project(&rosy_output_path, uses_mpi, optimized)
         .context("Failed to create output project structure")?;
 
-    // Inject the transpiled code into main.rs
     let new_contents = embedded::inject_code(&serialization, uses_mpi)
         .context("Failed to inject transpiled code into template")?;
 
     write(rosy_output_path.join("src/main.rs"), &new_contents)
         .context("Failed to write Rust output file!")?;
-    step_done(t);
+    if !quiet {
+        step_done(t);
+        eprintln!("{BOLD}{CYAN}[6/6]{RESET} Compiling generated Rust code...");
+    }
 
-    // --- Step 5: Compilation (piped to user's terminal) ---
-    eprintln!("{BOLD}{CYAN}[6/6]{RESET} Compiling generated Rust code...");
-    let mut cargo_args = vec!["build", "--bin", "rosy_output", "--color", "always"];
+    let mut cargo_args = vec!["build", "--bin", "rosy_output"];
+    if !quiet {
+        cargo_args.push("--color");
+        cargo_args.push("always");
+    }
     if release {
         cargo_args.push("--release");
     }
 
-    let status = Command::new("cargo")
-        .args(&cargo_args)
+    let mut cmd = Command::new("cargo");
+    cmd.args(&cargo_args)
         .current_dir(&rosy_output_path)
-        .stdin(std::process::Stdio::null())
-        .status()
-        .context("Failed to spawn cargo build process")?;
-    if !status.success() {
+        .stdin(std::process::Stdio::null());
+    if quiet {
+        cmd.stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+    }
+    let output = cmd.output().context("Failed to spawn cargo build process")?;
+    if !output.status.success() {
+        if quiet {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("generated code failed to compile\n{stderr}");
+        }
         eprintln!();
         eprintln!("{BOLD}{RED}  error:{RESET} The generated Rust code failed to compile.");
         eprintln!();
@@ -257,7 +297,7 @@ fn rosy(
         eprintln!("  Include your {BOLD}.rosy{RESET} file and the error output above.");
         anyhow::bail!(
             "Internal transpiler error: generated code failed to compile (exit code {:?})",
-            status.code()
+            output.status.code()
         );
     }
 
@@ -269,58 +309,113 @@ fn rosy(
     };
     let binary_path = rosy_output_path.join(format!("target/{}/{}", build_profile, binary_name));
 
-    let total_ms = total_start.elapsed().as_millis();
-    eprintln!(
-        "{BOLD}{GREEN}    Finished{RESET} in {DIM}{:.2}s{RESET}",
-        total_ms as f64 / 1000.0
-    );
+    if !quiet {
+        let total_ms = total_start.elapsed().as_millis();
+        eprintln!(
+            "{BOLD}{GREEN}    Finished{RESET} in {DIM}{:.2}s{RESET}",
+            total_ms as f64 / 1000.0
+        );
+    }
 
     Ok(binary_path)
 }
 
 // ─── Construct Test Runner (`rosy test`) ────────────────────────────────────
 
-/// Discover construct directories containing `test.rosy` under a base directory.
-fn discover_construct_dirs(base: &std::path::Path) -> Vec<(String, PathBuf)> {
+struct CaseFile {
+    source: String,
+    expect: Option<String>,
+    fox: Option<String>,
+}
+
+fn parse_case(text: &str) -> CaseFile {
+    let mut source = String::new();
+    let mut expect = None;
+    let mut fox = None;
+    let mut dest = 0u8; // 0 source, 1 expect, 2 fox, 3 other
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("======= ") {
+            dest = match rest.trim() {
+                "expect" => {
+                    expect = Some(String::new());
+                    1
+                }
+                "fox" => {
+                    fox = Some(String::new());
+                    2
+                }
+                _ => 3,
+            };
+            continue;
+        }
+        let buf = match dest {
+            1 => expect.as_mut().unwrap(),
+            2 => fox.as_mut().unwrap(),
+            3 => continue,
+            _ => &mut source,
+        };
+        if !buf.is_empty() {
+            buf.push('\n');
+        }
+        buf.push_str(line);
+    }
+    CaseFile {
+        source,
+        expect,
+        fox,
+    }
+}
+
+fn norm_out(s: &str) -> String {
+    s.lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+fn write_blessed(path: &Path, case: &CaseFile, stdout: &str) -> Result<()> {
+    let mut out = case.source.trim_end().to_string();
+    out.push_str("\n\n======= expect\n");
+    out.push_str(stdout.trim_end());
+    out.push('\n');
+    if let Some(fox) = &case.fox {
+        out.push_str("\n======= fox\n");
+        out.push_str(fox.trim_end());
+        out.push('\n');
+    }
+    fs::write(path, out)?;
+    Ok(())
+}
+
+fn discover_case_files(base: &Path) -> Vec<(String, PathBuf)> {
     let mut results = Vec::new();
-    discover_construct_dirs_recursive(base, &mut results);
+    discover_case_files_recursive(base, base, &mut results);
     results.sort_by(|a, b| a.0.cmp(&b.0));
     results
 }
 
-fn discover_construct_dirs_recursive(dir: &std::path::Path, results: &mut Vec<(String, PathBuf)>) {
+fn discover_case_files_recursive(root: &Path, dir: &Path, results: &mut Vec<(String, PathBuf)>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
     let mut entries: Vec<_> = entries.flatten().collect();
     entries.sort_by_key(|e| e.path());
-
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
-            if path.join("test.rosy").is_file() {
-                let name = path.file_name().unwrap().to_string_lossy().to_string();
-                results.push((name, path.clone()));
-            }
-            discover_construct_dirs_recursive(&path, results);
+            discover_case_files_recursive(root, &path, results);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rosy") {
+            let name = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .with_extension("")
+                .to_string_lossy()
+                .to_string();
+            results.push((name, path));
         }
     }
-}
-
-/// Extract the meaningful output from COSY's stdout.
-fn extract_cosy_output(raw: &str) -> String {
-    let mut after_exec = false;
-    let mut lines = Vec::new();
-
-    for line in raw.lines() {
-        if after_exec {
-            lines.push(line);
-        } else if line.contains("BEGINNING EXECUTION") {
-            after_exec = true;
-        }
-    }
-
-    lines.join("\n")
 }
 
 /// Result of a single construct test.
@@ -332,131 +427,131 @@ struct TestResult {
     failure_msg: Option<String>,
 }
 
-/// Run a single construct test using the given build directory.
 fn run_single_test(
-    category: &str,
     name: &str,
-    construct_path: &std::path::Path,
-    build_dir: &std::path::Path,
-    workspace_root: &std::path::Path,
-    cosy_bin: Option<&std::path::Path>,
+    case_path: &Path,
+    build_dir: &Path,
     release: bool,
+    bless: bool,
 ) -> TestResult {
-    let test_label = format!("{category}/{name}");
     let t = Instant::now();
-
-    let rosy_script = construct_path.join("test.rosy");
-    let fox_script = construct_path.join("test.fox");
-    let rosy_output_path = construct_path.join("rosy_output.txt");
-    let cosy_output_path = construct_path.join("cosy_output.txt");
-
-    let mut cmd = Command::new("cargo");
-    cmd.arg("run");
-    if release {
-        cmd.arg("--release");
-    }
-    cmd.arg("--manifest-path")
-        .arg(workspace_root.join("Cargo.toml"))
-        .arg("-p")
-        .arg("rosy")
-        .arg("--")
-        .arg("run")
-        .arg(&rosy_script)
-        .arg("-d")
-        .arg(build_dir)
-        .current_dir(build_dir);
-
-    let rosy_result = cmd.output();
-
-    match rosy_result {
-        Ok(output) if output.status.success() => {
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            if stdout.trim().is_empty() {
-                return TestResult {
-                    label: test_label,
-                    ok: false,
-                    elapsed_secs: t.elapsed().as_secs_f64(),
-                    failure_msg: Some("empty output".to_string()),
-                };
-            }
-            fs::write(&rosy_output_path, &stdout).ok();
-
-            // Run COSY if available
-            if let Some(cosy) = cosy_bin
-                && fox_script.exists()
-            {
-                let child = Command::new(cosy)
-                    .stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .current_dir(construct_path)
-                    .spawn();
-
-                if let Ok(mut child) = child {
-                    {
-                        use std::io::Write;
-                        if let Some(mut stdin) = child.stdin.take() {
-                            let _ = stdin.write_all(b"test\n");
-                        }
-                    }
-                    if let Ok(cosy_result) = child.wait_with_output() {
-                        let cosy_stdout =
-                            String::from_utf8_lossy(&cosy_result.stdout).to_string();
-                        let cosy_output = extract_cosy_output(&cosy_stdout);
-                        if !cosy_output.trim().is_empty() {
-                            fs::write(&cosy_output_path, &cosy_output).ok();
-                        }
-                    }
-                }
-            }
-
-            TestResult {
-                label: test_label,
-                ok: true,
-                elapsed_secs: t.elapsed().as_secs_f64(),
-                failure_msg: None,
-            }
-        }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            TestResult {
-                label: test_label,
+    let raw = match fs::read_to_string(case_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return TestResult {
+                label: name.to_string(),
                 ok: false,
                 elapsed_secs: t.elapsed().as_secs_f64(),
-                failure_msg: Some(format!("transpilation/execution failed\n{stderr}")),
-            }
+                failure_msg: Some(format!("read failed: {e}")),
+            };
         }
-        Err(e) => TestResult {
-            label: test_label,
+    };
+    let case = parse_case(&raw);
+
+    let binary = match compile_source(
+        &case.source,
+        Some(case_path),
+        build_dir.to_path_buf(),
+        release,
+        false,
+        true,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            return TestResult {
+                label: name.to_string(),
+                ok: false,
+                elapsed_secs: t.elapsed().as_secs_f64(),
+                failure_msg: Some(format!("{e:#}")),
+            };
+        }
+    };
+
+    let output = match Command::new(&binary)
+        .current_dir(case_path.parent().unwrap_or(case_path))
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            return TestResult {
+                label: name.to_string(),
+                ok: false,
+                elapsed_secs: t.elapsed().as_secs_f64(),
+                failure_msg: Some(format!("failed to spawn: {e}")),
+            };
+        }
+    };
+    if !output.status.success() {
+        return TestResult {
+            label: name.to_string(),
             ok: false,
             elapsed_secs: t.elapsed().as_secs_f64(),
-            failure_msg: Some(format!("failed to spawn: {e}")),
-        },
+            failure_msg: Some(format!(
+                "runtime failed\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            )),
+        };
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if bless {
+        if let Err(e) = write_blessed(case_path, &case, &stdout) {
+            return TestResult {
+                label: name.to_string(),
+                ok: false,
+                elapsed_secs: t.elapsed().as_secs_f64(),
+                failure_msg: Some(format!("bless failed: {e}")),
+            };
+        }
+        return TestResult {
+            label: name.to_string(),
+            ok: true,
+            elapsed_secs: t.elapsed().as_secs_f64(),
+            failure_msg: None,
+        };
+    }
+
+    let Some(expect) = case.expect else {
+        return TestResult {
+            label: name.to_string(),
+            ok: false,
+            elapsed_secs: t.elapsed().as_secs_f64(),
+            failure_msg: Some("missing `======= expect` (rosy test --bless)".into()),
+        };
+    };
+    if norm_out(&stdout) != norm_out(&expect) {
+        return TestResult {
+            label: name.to_string(),
+            ok: false,
+            elapsed_secs: t.elapsed().as_secs_f64(),
+            failure_msg: Some(format!(
+                "stdout mismatch\n--- expected ---\n{}\n--- got ---\n{}",
+                expect.trim_end(),
+                stdout.trim_end()
+            )),
+        };
+    }
+
+    TestResult {
+        label: name.to_string(),
+        ok: true,
+        elapsed_secs: t.elapsed().as_secs_f64(),
+        failure_msg: None,
     }
 }
 
-/// Run all construct tests, printing results as they complete.
-fn run_construct_tests(filter: Option<&str>, release: bool, parallel: usize) -> Result<()> {
-    let parallel = parallel.max(1);
+fn run_construct_tests(
+    filter: Option<&str>,
+    release: bool,
+    parallel: usize,
+    bless: bool,
+) -> Result<()> {
     let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = crate_root
-        .parent()
-        .expect("Failed to get workspace root")
-        .to_path_buf();
-
-    let stmt_dir = crate_root.join("src/program/statements");
-    let expr_dir = crate_root.join("src/program/expressions");
-
-    let mut all_tests: Vec<(String, String, PathBuf)> = Vec::new();
-    for (name, path) in discover_construct_dirs(&stmt_dir) {
-        all_tests.push(("statements".to_string(), name, path));
-    }
-    for (name, path) in discover_construct_dirs(&expr_dir) {
-        all_tests.push(("expressions".to_string(), name, path));
-    }
+    let cases_dir = crate_root.join("tests/constructs");
+    let mut all_tests = discover_case_files(&cases_dir);
 
     if let Some(f) = filter {
-        all_tests.retain(|(_, name, _)| name.contains(f));
+        all_tests.retain(|(name, _)| name.contains(f));
     }
 
     let total = all_tests.len();
@@ -479,120 +574,46 @@ fn run_construct_tests(filter: Option<&str>, release: bool, parallel: usize) -> 
         eprintln!("        Mode: release");
     }
     if parallel > 1 {
-        eprintln!("    Parallel: {parallel} workers");
+        eprintln!(
+            "    {DIM}--parallel {parallel} ignored (one incremental target){RESET}"
+        );
+    }
+    if bless {
+        eprintln!("        Bless: rewriting expect sections");
     }
 
-    let cosy_bin = workspace_root.join("assets").join("cosy");
-    let has_cosy = cosy_bin.exists() && cosy_bin.is_file();
-    if has_cosy {
-        eprintln!("        COSY: {GREEN}found{RESET}");
-    }
-    eprintln!();
-
-    // Create build directories in tmp upfront
-    let tmp_base = std::env::temp_dir().join(format!("rosy_test_{}", std::process::id()));
-    let build_dirs: Vec<PathBuf> = (0..parallel)
-        .map(|i| {
-            let dir = tmp_base.join(format!("worker_{i}"));
-            fs::create_dir_all(&dir).expect("Failed to create build directory");
-            dir
-        })
-        .collect();
-
-    eprintln!("  Build dirs: {}\n", tmp_base.display());
+    let build_dir = std::env::temp_dir().join(format!("rosy_test_{}", std::process::id()));
+    fs::create_dir_all(&build_dir).context("Failed to create build directory")?;
+    eprintln!("  Build dir: {}\n", build_dir.display());
 
     let total_start = Instant::now();
+    let mut results = Vec::with_capacity(total);
 
-    // Shared state for the work queue
-    use std::sync::{
-        Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
-    };
-    let work_index = Arc::new(AtomicUsize::new(0));
-    let all_tests = Arc::new(all_tests);
-    let results: Arc<Mutex<Vec<TestResult>>> = Arc::new(Mutex::new(Vec::with_capacity(total)));
-
-    // Spawn worker threads
-    let mut handles = Vec::new();
-    for build_dir in build_dirs.iter().take(parallel) {
-        let work_index = Arc::clone(&work_index);
-        let all_tests = Arc::clone(&all_tests);
-        let results = Arc::clone(&results);
-        let build_dir = build_dir.clone();
-        let workspace_root = workspace_root.clone();
-        let cosy_bin = if has_cosy {
-            Some(cosy_bin.clone())
+    for (i, (name, path)) in all_tests.iter().enumerate() {
+        let result = run_single_test(name, path, &build_dir, release, bless);
+        let n = i + 1;
+        if result.ok {
+            eprintln!(
+                "{DIM}[{n:>3}/{total}]{RESET} {}... {GREEN}ok{RESET} {DIM}({:.1}s){RESET}",
+                result.label, result.elapsed_secs
+            );
         } else {
-            None
-        };
-
-        handles.push(std::thread::spawn(move || {
-            loop {
-                let i = work_index.fetch_add(1, Ordering::SeqCst);
-                if i >= all_tests.len() {
-                    break;
-                }
-
-                let (category, name, construct_path) = &all_tests[i];
-                let result = run_single_test(
-                    category,
-                    name,
-                    construct_path,
-                    &build_dir,
-                    &workspace_root,
-                    cosy_bin.as_deref(),
-                    release,
-                );
-
-                results.lock().unwrap().push(result);
-            }
-        }));
-    }
-
-    // Wait for all workers, printing results as they arrive
-    let print_handle = std::thread::spawn({
-        let results = Arc::clone(&results);
-        move || {
-            let mut printed = 0usize;
-            while printed < total {
-                std::thread::sleep(std::time::Duration::from_millis(50));
-                let results = results.lock().unwrap();
-                while printed < results.len() {
-                    let r = &results[printed];
-                    printed += 1;
-                    if r.ok {
-                        eprintln!(
-                            "{DIM}[{:>3}/{}]{RESET} {}... {GREEN}ok{RESET} {DIM}({:.1}s){RESET}",
-                            printed, total, r.label, r.elapsed_secs
-                        );
-                    } else {
-                        eprintln!(
-                            "{DIM}[{:>3}/{}]{RESET} {}... {RED}FAIL{RESET} {DIM}({:.1}s){RESET}",
-                            printed, total, r.label, r.elapsed_secs
-                        );
-                    }
-                }
-            }
+            eprintln!(
+                "{DIM}[{n:>3}/{total}]{RESET} {}... {RED}FAIL{RESET} {DIM}({:.1}s){RESET}",
+                result.label, result.elapsed_secs
+            );
         }
-    });
-
-    for h in handles {
-        h.join().expect("Worker thread panicked");
+        results.push(result);
     }
-    print_handle.join().expect("Print thread panicked");
 
-    // Cleanup build directories
-    let _ = fs::remove_dir_all(&tmp_base);
+    let _ = fs::remove_dir_all(&build_dir);
 
-    // Summarize
-    let all_results = Arc::try_unwrap(results).unwrap().into_inner().unwrap();
-    let passed = all_results.iter().filter(|r| r.ok).count();
-    let failed = all_results.iter().filter(|r| !r.ok).count();
+    let passed = results.iter().filter(|r| r.ok).count();
+    let failed = results.iter().filter(|r| !r.ok).count();
     let total_secs = total_start.elapsed().as_secs_f64();
 
     eprintln!();
-
-    let failures: Vec<&TestResult> = all_results.iter().filter(|r| !r.ok).collect();
+    let failures: Vec<&TestResult> = results.iter().filter(|r| !r.ok).collect();
     if !failures.is_empty() {
         eprintln!("{BOLD}{RED}failures:{RESET}\n");
         for f in &failures {
@@ -864,10 +885,11 @@ fn main() -> Result<()> {
         filter,
         release,
         parallel,
+        bless,
     } = &cli.command
     {
         update_handle.finish();
-        return run_construct_tests(filter.as_deref(), *release, *parallel);
+        return run_construct_tests(filter.as_deref(), *release, *parallel, *bless);
     }
 
     // Extract common fields and transpile

@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    VARIABLE (LO) IsNonZero;
-    X := 3.14;
-    IsNonZero := VARPOI(X) > 0;
-    WRITE 6 IsNonZero;
-END;

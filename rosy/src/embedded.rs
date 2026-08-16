@@ -12,6 +12,21 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 
+fn write_if_changed(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
+    let path = path.as_ref();
+    let contents = contents.as_ref();
+    if path
+        .exists()
+        .then(|| std::fs::read(path).ok())
+        .flatten()
+        .as_deref()
+        == Some(contents)
+    {
+        return Ok(());
+    }
+    std::fs::write(path, contents)
+}
+
 // Include the auto-generated embedded rosy_lib files
 include!(concat!(env!("OUT_DIR"), "/embedded_rosy_lib.rs"));
 
@@ -30,7 +45,7 @@ fn write_vendored_lib(output_dir: &Path) -> Result<()> {
                 .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
         }
 
-        std::fs::write(&target_path, embedded_file.content)
+        write_if_changed(&target_path, embedded_file.content)
             .with_context(|| format!("Failed to write file: {}", target_path.display()))?;
     }
 
@@ -57,7 +72,7 @@ memory-stats = "1"
 libc = "0.2"
 "#;
 
-    std::fs::write(lib_dir.join("Cargo.toml"), lib_cargo_toml)
+    write_if_changed(lib_dir.join("Cargo.toml"), lib_cargo_toml)
         .context("Failed to write vendored rosy_lib Cargo.toml")?;
 
     Ok(())
@@ -105,7 +120,7 @@ pub fn create_output_project(output_dir: &Path, uses_mpi: bool, optimized: bool)
     write_vendored_lib(output_dir).context("Failed to write vendored rosy_lib")?;
 
     // Write Cargo.toml
-    std::fs::write(
+    write_if_changed(
         output_dir.join("Cargo.toml"),
         generate_cargo_toml(uses_mpi, optimized),
     )

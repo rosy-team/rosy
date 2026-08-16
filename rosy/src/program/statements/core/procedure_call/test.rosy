@@ -1,6 +1,0 @@
-BEGIN;
-    PROCEDURE SHOW X;
-        WRITE 6 X;
-    ENDPROCEDURE;
-    SHOW 99;
-END;

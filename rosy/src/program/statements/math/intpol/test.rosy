@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (VE) C;
-    VARIABLE (RE) N;
-    N := 2;
-    INTPOL C N;
-    WRITE 6 C[1];
-END;

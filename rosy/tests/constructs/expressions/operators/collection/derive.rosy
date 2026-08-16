@@ -1,0 +1,25 @@
+BEGIN;
+    DAINI 3 2 0 0;
+    VARIABLE (DA) F;
+    VARIABLE (DA) DF;
+    F := DA(1) * DA(1);
+    DF := F % 1;
+    WRITE 6 ST(CONS(DF));
+END;
+
+======= expect
+ 0.000000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    VARIABLE F 2000;
+    VARIABLE DF 2000;
+    DAINI 3 2 0 NM;
+    F := DA(1) * DA(1);
+    DF := F % 1;
+    WRITE 6 CONS(DF);
+ENDPROCEDURE;
+RUN;
+END;

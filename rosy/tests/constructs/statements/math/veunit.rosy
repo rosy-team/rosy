@@ -1,0 +1,22 @@
+BEGIN;
+    VARIABLE (VE) V;
+    VARIABLE (VE) U;
+    V := 3&4;
+    VEUNIT V U;
+    WRITE 6 ST(U);
+END;
+
+======= expect
+  0.6000000      0.8000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE V 100;
+    VARIABLE U 100;
+    V := 3&4;
+    VEUNIT V U;
+    WRITE 6 U;
+ENDPROCEDURE;
+RUN;
+END;

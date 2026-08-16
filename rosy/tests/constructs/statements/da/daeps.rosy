@@ -1,0 +1,19 @@
+BEGIN;
+    DAINI 3 2 0 0;
+    DAEPS 0.0000000001;
+    WRITE 6 'daeps ok';
+END;
+
+======= expect
+daeps ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    DAINI 3 2 0 NM;
+    DAEPS 0.0000000001;
+    WRITE 6 'daeps ok';
+ENDPROCEDURE;
+RUN;
+END;

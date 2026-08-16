@@ -1,5 +1,0 @@
-        ORDER   1  IN COLUMN    1
-     I  COEFFICIENT          ORDER EXPONENTS
-     1   1.000000000000000       1   0 0
-     -----------------------------------
-dapew ok

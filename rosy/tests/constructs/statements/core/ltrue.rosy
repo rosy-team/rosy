@@ -1,0 +1,22 @@
+BEGIN;
+    VARIABLE (LO) B;
+    LTRUE B;
+    IF B;
+        WRITE 6 'ltrue ok';
+    ENDIF;
+END;
+
+======= expect
+ltrue ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE B 7;
+    LTRUE B;
+    IF B;
+        WRITE 6 'ltrue ok';
+    ENDIF;
+ENDPROCEDURE;
+RUN;
+END;

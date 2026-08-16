@@ -1,8 +1,0 @@
-BEGIN;
-    FUNCTION SQUARE X;
-        SQUARE := X * X;
-    ENDFUNCTION;
-    VARIABLE (RE) R;
-    R := SQUARE(5);
-    WRITE 6 R;
-END;

@@ -1,0 +1,22 @@
+BEGIN;
+    VARIABLE (VE) V;
+    VARIABLE (RE) N;
+    V := 1.5 & -2.5 & 3.5;
+    N := NORM(V);
+    WRITE 6 ST(N);
+END;
+
+======= expect
+ 7.500000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE V 100;
+    VARIABLE N 100;
+    V := 1.5 & -2.5 & 3.5;
+    N := NORM(V);
+    WRITE 6 N;
+ENDPROCEDURE;
+RUN;
+END;

@@ -1,0 +1,20 @@
+BEGIN;
+    OPENF 20 'test_closef_tmp.dat' 'UNKNOWN';
+    WRITE 20 'data';
+    CLOSEF 20;
+    WRITE 6 'closef ok';
+END;
+
+======= expect
+closef ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    OPENF 20 'test_closef_tmp.dat' 'UNKNOWN';
+    WRITE 20 'data';
+    CLOSEF 20;
+    WRITE 6 'closef ok';
+ENDPROCEDURE;
+RUN;
+END;

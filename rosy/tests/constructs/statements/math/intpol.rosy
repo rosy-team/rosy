@@ -1,0 +1,22 @@
+BEGIN;
+    VARIABLE (VE) C;
+    VARIABLE (RE) N;
+    N := 2;
+    INTPOL C N;
+    WRITE 6 C[1];
+END;
+
+======= expect
+ 1.000000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE C 100;
+    VARIABLE N 1;
+    N := 2;
+    INTPOL C N;
+    WRITE 6 C[1];
+ENDPROCEDURE;
+RUN;
+END;

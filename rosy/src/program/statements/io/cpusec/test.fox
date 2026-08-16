@@ -1,8 +1,0 @@
-BEGIN;
-PROCEDURE RUN;
-    VARIABLE T 1;
-    CPUSEC T;
-    WRITE 6 'cpusec ok';
-ENDPROCEDURE;
-RUN;
-END;

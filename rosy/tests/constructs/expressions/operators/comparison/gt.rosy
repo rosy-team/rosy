@@ -1,0 +1,18 @@
+BEGIN;
+    VARIABLE (LO) R;
+    R := 5 > 3;
+    WRITE 6 R;
+END;
+
+======= expect
+TRUE
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE R 1;
+    R := 5 > 3;
+    WRITE 6 R;
+ENDPROCEDURE;
+RUN;
+END;

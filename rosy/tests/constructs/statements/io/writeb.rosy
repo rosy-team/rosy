@@ -1,0 +1,24 @@
+BEGIN;
+    VARIABLE (VE) V;
+    V := 1&2&3;
+    OPENFB 22 'test_writeb_tmp.bin' 'UNKNOWN';
+    WRITEB 22 V;
+    CLOSEF 22;
+    WRITE 6 'writeb ok';
+END;
+
+======= expect
+writeb ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE V 100;
+    V := 1&2&3;
+    OPENFB 22 'test_writeb_tmp.bin' 'UNKNOWN';
+    WRITEB 22 V;
+    CLOSEF 22;
+    WRITE 6 'writeb ok';
+ENDPROCEDURE;
+RUN;
+END;

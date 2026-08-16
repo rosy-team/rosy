@@ -1,9 +1,0 @@
-BEGIN;
-    VARIABLE (VE) A;
-    VARIABLE (VE) B;
-    VARIABLE (RE) D;
-    A := 1&2&3;
-    B := 4&5&6;
-    VEDOT A B D;
-    WRITE 6 D;
-END;

@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (LO) B;
-    LTRUE B;
-    IF B;
-        WRITE 6 'ltrue ok';
-    ENDIF;
-END;

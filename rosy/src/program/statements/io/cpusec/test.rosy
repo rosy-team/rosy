@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (RE) T;
-    CPUSEC T;
-    IF T >= 0;
-        WRITE 6 'cpusec ok';
-    ENDIF;
-END;

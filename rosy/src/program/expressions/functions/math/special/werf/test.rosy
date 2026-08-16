@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (CM) Z;
-    Z := WERF(CM(0.0 & 1.0));
-    WRITE 6 Z;
-END;

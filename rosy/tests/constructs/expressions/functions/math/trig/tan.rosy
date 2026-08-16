@@ -1,0 +1,18 @@
+BEGIN;
+    VARIABLE (RE) X;
+    X := TAN(1.0);
+    WRITE 6 X;
+END;
+
+======= expect
+ 1.557407724654902
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE X 1;
+    X := TAN(1.0);
+    WRITE 6 X;
+ENDPROCEDURE;
+RUN;
+END;

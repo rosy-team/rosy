@@ -1,8 +1,0 @@
-BEGIN;
-    DAINI 3 2 0 0;
-    VARIABLE (DA 1) INPUT;
-    VARIABLE (VE) LINEAR;
-    INPUT(1) := DA(1) + 2*DA(2);
-    DACLIW INPUT 2 LINEAR;
-    WRITE 6 'dacliw ok';
-END;

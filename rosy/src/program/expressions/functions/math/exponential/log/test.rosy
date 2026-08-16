@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    X := LOG(2.718281828);
-    WRITE 6 X;
-END;

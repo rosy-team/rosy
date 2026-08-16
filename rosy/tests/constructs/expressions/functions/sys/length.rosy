@@ -1,0 +1,22 @@
+BEGIN;
+    VARIABLE (ST) S;
+    VARIABLE (RE) L;
+    S := 'hello';
+    L := LENGTH(S);
+    WRITE 6 L;
+END;
+
+======= expect
+ 5.000000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE S 80;
+    VARIABLE L 1;
+    S := 'hello';
+    L := LENGTH(S);
+    WRITE 6 L;
+ENDPROCEDURE;
+RUN;
+END;

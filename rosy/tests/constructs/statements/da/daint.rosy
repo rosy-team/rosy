@@ -1,0 +1,28 @@
+BEGIN;
+    DAINI 3 2 0 0;
+    VARIABLE (DA 1) X;
+    X(1) := 1 + DA(1);
+    DAINT X 1;
+    DAPRV X 1 2 2 6;
+    WRITE 6 'daint ok';
+END;
+
+======= expect
+   1.000000000000     10
+   0.500000000000     20
+ ------------------------------------------------------------------------------
+daint ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    VARIABLE X 2000;
+    VARIABLE Y 2000;
+    DAINI 3 2 0 NM;
+    X := 1 + DA(1);
+    DAINT 1 X Y;
+    WRITE 6 'daint ok';
+ENDPROCEDURE;
+RUN;
+END;

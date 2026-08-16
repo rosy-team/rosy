@@ -1,9 +1,0 @@
-BEGIN;
-PROCEDURE RUN;
-    VARIABLE R 1;
-    RERAN R;
-    WRITE 6 'random value' R;
-    WRITE 6 'reran ok';
-ENDPROCEDURE;
-RUN;
-END;

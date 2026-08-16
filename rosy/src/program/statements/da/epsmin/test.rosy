@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (RE) threshold;
-    DAINI 3 2 0 0;
-    EPSMIN threshold;
-    WRITE 6 threshold;
-    WRITE 6 'epsmin ok';
-END;

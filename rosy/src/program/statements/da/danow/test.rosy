@@ -1,8 +1,0 @@
-BEGIN;
-    VARIABLE (DA 1) A;
-    VARIABLE (RE) R;
-    DAINI 3 2 0 0;
-    A(1) := DA(1) + 2*DA(2);
-    DANOW A(1) 1.5 R;
-    WRITE 6 'DANOW result:' R;
-END;

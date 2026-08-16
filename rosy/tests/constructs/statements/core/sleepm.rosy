@@ -1,0 +1,16 @@
+BEGIN;
+    SLEEPM 1;
+    WRITE 6 'sleepm ok';
+END;
+
+======= expect
+sleepm ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    SLEEPM 1;
+    WRITE 6 'sleepm ok';
+ENDPROCEDURE;
+RUN;
+END;

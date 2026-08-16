@@ -1,0 +1,30 @@
+BEGIN;
+    DAINI 3 2 0 0;
+    VARIABLE (DA 1) X;
+    X(1) := 1 + DA(1) + DA(1)*DA(1);
+    DANORO X;
+    DAPRV X 1 2 2 6;
+    WRITE 6 'danoro ok';
+END;
+
+======= expect
+   1.000000000000     00
+   1.000000000000     20
+ ------------------------------------------------------------------------------
+danoro ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    VARIABLE X 2000;
+    VARIABLE NORMS 1 10;
+    VARIABLE MAXPOW 1;
+    DAINI 3 2 0 NM;
+    X := 1 + DA(1) + DA(1)*DA(1);
+    DANORO X 0 10 NORMS MAXPOW;
+    WRITE 6 MAXPOW;
+    WRITE 6 'danoro ok';
+ENDPROCEDURE;
+RUN;
+END;

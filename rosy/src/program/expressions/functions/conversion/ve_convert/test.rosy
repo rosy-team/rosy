@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (VE) V;
-    V := VE(CM(3&4));
-    WRITE 6 ST(V);
-END;

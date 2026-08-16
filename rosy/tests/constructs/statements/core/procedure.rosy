@@ -1,0 +1,21 @@
+BEGIN;
+    PROCEDURE GREET NAME;
+        WRITE 6 'Hello ' NAME;
+    ENDPROCEDURE;
+    GREET 'World';
+END;
+
+======= expect
+Hello 
+World
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    PROCEDURE GREET NAME;
+        WRITE 6 'Hello ' NAME;
+    ENDPROCEDURE;
+    GREET 'World';
+ENDPROCEDURE;
+RUN;
+END;

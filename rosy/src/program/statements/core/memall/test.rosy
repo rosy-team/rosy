@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (RE) M;
-    MEMALL M;
-    IF M >= 0;
-        WRITE 6 'memall ok';
-    ENDIF;
-END;

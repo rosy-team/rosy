@@ -1,0 +1,36 @@
+BEGIN;
+    VARIABLE (DA 1) template;
+    VARIABLE (DA 1) A;
+    VARIABLE (DA 1) B;
+    DAINI 3 2 0 0;
+    template(1) := DA(1) + DA(2);
+    A(1) := DA(1) + 2*DA(2) + 3*DA(1)*DA(2);
+    DAFSET template;
+    DAFILT A B;
+    DAPRV B 1 2 2 6;
+    WRITE 6 'dafilt ok';
+END;
+
+======= expect
+   1.000000000000     10
+   2.000000000000     01
+ ------------------------------------------------------------------------------
+dafilt ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    VARIABLE template 2000;
+    VARIABLE A 2000 1;
+    VARIABLE B 2000 1;
+    DAINI 3 2 0 NM;
+    template := DA(1) + DA(2);
+    A(1) := DA(1) + 2*DA(2) + 3*DA(1)*DA(2);
+    DAFSET template;
+    DAFILT A B;
+    DAPRV B 1 2 2 6;
+    WRITE 6 'dafilt ok';
+ENDPROCEDURE;
+RUN;
+END;

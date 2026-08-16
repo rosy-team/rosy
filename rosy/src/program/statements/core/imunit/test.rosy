@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (CM) Z;
-    IMUNIT Z;
-    WRITE 6 ST(Z);
-END;

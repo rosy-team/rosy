@@ -1,7 +1,0 @@
-BEGIN;
-PROCEDURE RUN;
-    SAVE 'testfile';
-    WRITE 6 'save ok';
-ENDPROCEDURE;
-RUN;
-END;

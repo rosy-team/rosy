@@ -1,0 +1,14 @@
+BEGIN;
+    VARIABLE (VE) C;
+    VARIABLE (VE) B;
+    VARIABLE (VE) E;
+    VARIABLE (VE) A1;
+    VARIABLE (VE) A2;
+    RKCO C B E A1 A2;
+    WRITE 6 C(1);
+    WRITE 6 B(1);
+END;
+
+======= expect
+ 0.000000000000000    
+ 0.5429373411656873E-001

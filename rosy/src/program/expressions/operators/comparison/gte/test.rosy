@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (LO) R;
-    R := 5 >= 3;
-    WRITE 6 R;
-END;
