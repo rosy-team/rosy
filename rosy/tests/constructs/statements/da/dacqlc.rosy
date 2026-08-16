@@ -1,0 +1,31 @@
+BEGIN;
+    DAINI 3 2 0 0;
+    VARIABLE (DA 1) INPUT;
+    VARIABLE (RE 2 2) HESS;
+    VARIABLE (VE) LINEAR;
+    VARIABLE (RE) CONST;
+    INPUT(1) := 1.0 + DA(1) + 2*DA(2) + DA(1)*DA(2);
+    DACQLC INPUT 2 HESS LINEAR CONST;
+    WRITE 6 'dacqlc ok';
+END;
+
+======= expect
+dacqlc ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    VARIABLE INPUT 2000;
+    VARIABLE HESS 1 4;
+    VARIABLE LINEAR 1 2;
+    VARIABLE CONST 1;
+    DAINI 3 2 0 NM;
+    INPUT := 1.0 + DA(1) + 2*DA(2) + DA(1)*DA(2);
+    DACQLC INPUT 2 HESS LINEAR CONST;
+    WRITE 6 LINEAR(1);
+    WRITE 6 LINEAR(2);
+    WRITE 6 'dacqlc ok';
+ENDPROCEDURE;
+RUN;
+END;

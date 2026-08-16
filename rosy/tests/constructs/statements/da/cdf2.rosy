@@ -1,0 +1,24 @@
+BEGIN;
+    { CDF2: Apply exp(:f2:) phase rotation in Floquet variables }
+    { 4 variables = 2 conjugate pairs (z1, z1*, z2, z2*) }
+    VARIABLE (CD 1) A;
+    VARIABLE (CD 1) R;
+    VARIABLE (DA 1) rp;
+    DAINI 3 4 0 0;
+
+    { Identity map in Floquet coordinates }
+    A(1) := CD(1);
+
+    { Apply exp(:f2:) with tune1 = pi/4 }
+    CDF2 A 0.7853981633974483 0.0 0.0 R;
+
+    { Extract real part for display }
+    rp(1) := REAL(R(1));
+    DAPRV rp 1 4 4 6;
+    WRITE 6 'cdf2 ok';
+END;
+
+======= expect
+   0.707106781187     1000
+ ------------------------------------------------------------------------------
+cdf2 ok

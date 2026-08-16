@@ -14,13 +14,9 @@
 //! 3. `alloc_dim` — allocation dimension (RE, used as usize)
 //! 4. `result`    — variable to receive the determinant (RE, must be a variable identifier)
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/math/ldet.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

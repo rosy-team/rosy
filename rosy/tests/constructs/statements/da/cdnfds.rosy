@@ -1,0 +1,24 @@
+BEGIN;
+    { CDNFDS: Sj operator for spin normal forms }
+    VARIABLE (CD 1) A;
+    VARIABLE (CD 1) R;
+    VARIABLE (VE) moduli;
+    VARIABLE (VE) args;
+    VARIABLE (DA 1) rp;
+    DAINI 3 4 0 0;
+
+    A(1) := CD(1);
+    moduli := 1&1&1&1;
+    args := 0.5&0.3&0&0;
+
+    CDNFDS A moduli args 0.1 4 0.001 R;
+
+    rp(1) := REAL(R(1));
+    DAPRV rp 1 4 4 6;
+    WRITE 6 'cdnfds ok';
+END;
+
+======= expect
+   0.743748935678     1000
+ ------------------------------------------------------------------------------
+cdnfds ok

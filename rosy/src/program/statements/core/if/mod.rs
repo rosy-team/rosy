@@ -19,21 +19,9 @@
 //! > **COSY note:** COSY INFINITY does not have an `ELSE` keyword.
 //! > The idiomatic equivalent is `ELSEIF LO(1);` (always-true guard).
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
-//! ```
-//! ## COSY INFINITY Example
-//! ```text
-#![doc = include_str!("test.fox")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("cosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/core/if.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, anyhow, bail, ensure};

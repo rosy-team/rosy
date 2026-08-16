@@ -1,8 +1,0 @@
-BEGIN;
-    DAINI 3 2 0 0;
-    VARIABLE (DA 1) INPUT;
-    VARIABLE (DA 1) OUTPUT;
-    INPUT(1) := DA(1);
-    DAPLU INPUT 1 2.0 OUTPUT;
-    WRITE 6 'daplu ok';
-END;

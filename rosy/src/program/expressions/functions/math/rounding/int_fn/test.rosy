@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    X := INT(2.9);
-    WRITE 6 X;
-END;

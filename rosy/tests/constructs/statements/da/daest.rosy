@@ -1,0 +1,28 @@
+BEGIN;
+    DAINI 3 2 0 0;
+    VARIABLE (DA 1) A;
+    VARIABLE (RE) R;
+    A(1) := DA(1) + 2*DA(1)*DA(2) + 3*DA(2)*DA(2);
+    DAEST A 0 2 R;
+    WRITE 6 R;
+    WRITE 6 'daest ok';
+END;
+
+======= expect
+ 5.000000000000000    
+daest ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    VARIABLE A 2000;
+    VARIABLE R 1;
+    DAINI 3 2 0 NM;
+    A := DA(1) + 2*DA(1)*DA(2) + 3*DA(2)*DA(2);
+    DAEST A 0 2 R;
+    WRITE 6 R;
+    WRITE 6 'daest ok';
+ENDPROCEDURE;
+RUN;
+END;

@@ -1,6 +1,0 @@
-BEGIN;
-    VARIABLE (VE) V;
-    V := 1&2&3;
-    VELSET V 2 99;
-    WRITE 6 ST(V);
-END;

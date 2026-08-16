@@ -17,21 +17,9 @@
 //! The unique degree-n polynomial satisfying all n+1 conditions at x=1 is P(x) = 1.
 //! Thus the coefficient array is [1, 0, 0, ..., 0] (n+1 elements).
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
-//! ```
-//! ## COSY INFINITY Example
-//! ```text
-#![doc = include_str!("test.fox")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("cosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/math/intpol.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

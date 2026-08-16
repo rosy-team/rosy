@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    X := -(5);
-    WRITE 6 X;
-END;

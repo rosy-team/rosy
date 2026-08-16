@@ -14,13 +14,9 @@
 //! - `alloc_dim` — allocation dimension (RE, used as usize)
 //! - `n`         — number of actual entries (RE, used as usize)
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/math/mblock.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

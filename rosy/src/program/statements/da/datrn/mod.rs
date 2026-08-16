@@ -17,24 +17,9 @@
 //! 5. `m2`     (RE, read)         - end variable index (1-based, inclusive)
 //! 6. `output` (DA vector, write) - result DA array
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
-//! ```
-//! ## COSY Example
-//!
-//! > **COSY note**: In COSY INFINITY, scalar arrays passed to `DATRN` must be declared
-//! > as `VARIABLE X 1 N;` (N indexable scalars), not `VARIABLE X N;` (single N-slot variable).
-//! ```text
-#![doc = include_str!("test.fox")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("cosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/da/datrn.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

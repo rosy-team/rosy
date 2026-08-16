@@ -1,9 +1,0 @@
-BEGIN;
-PROCEDURE RUN;
-    OPENF 20 'test_openf_tmp.dat' 'UNKNOWN';
-    WRITE 20 'hello from file';
-    CLOSEF 20;
-    WRITE 6 'openf ok';
-ENDPROCEDURE;
-RUN;
-END;

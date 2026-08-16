@@ -1,0 +1,28 @@
+BEGIN;
+    VARIABLE (RE) P;
+    P := POSITION('hello world', 'world');
+    WRITE 6 P;
+    P := POSITION('hello', 'h');
+    WRITE 6 P;
+    P := POSITION('hello', 'xyz');
+    WRITE 6 P;
+END;
+
+======= expect
+ 7.000000000000000    
+ 1.000000000000000    
+ 0.000000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE P 1;
+    P := POSITION('hello world', 'world');
+    WRITE 6 P;
+    P := POSITION('hello', 'h');
+    WRITE 6 P;
+    P := POSITION('hello', 'xyz');
+    WRITE 6 P;
+ENDPROCEDURE;
+RUN;
+END;

@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    VARIABLE (RE) A;
-    X := 3.14;
-    A := VARMEM(X);
-    WRITE 6 (A > 0);
-END;

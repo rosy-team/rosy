@@ -1,0 +1,18 @@
+BEGIN;
+    VARIABLE (RE) X;
+    X := 10 / 4;
+    WRITE 6 X;
+END;
+
+======= expect
+ 2.500000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE X 1;
+    X := 10 / 4;
+    WRITE 6 X;
+ENDPROCEDURE;
+RUN;
+END;

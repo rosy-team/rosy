@@ -15,21 +15,9 @@
 //! The right-hand side expression must be type-compatible with the target
 //! variable. Indexed assignments check that the resulting element type matches.
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
-//! ```
-//! ## COSY INFINITY Example
-//! ```text
-#![doc = include_str!("test.fox")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("cosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/core/assign.rosy"))]
 //! ```
 
 use std::collections::{BTreeSet, HashSet};

@@ -1,6 +1,0 @@
- ** FOXDMP ** DUMP OF INA (=       8),    NTYP() =  1,  NBEG() =   100014
- NOMAX =  0, NVMAX =    0, NMMAX =     0,               NEND() =   100014
- NOCUT =  0, EPS   = 0.100000D-19,                      NMAX() =   100014
- ADDRESS I     NC(I)          CC(I)
-    100014         0    42.00000000000000     
-memdpv ok

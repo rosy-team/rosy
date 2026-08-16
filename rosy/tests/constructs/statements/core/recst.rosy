@@ -1,0 +1,18 @@
+BEGIN;
+    VARIABLE (ST) S;
+    RECST 3.14 '(F10.4)' S;
+    WRITE 6 S;
+END;
+
+======= expect
+    3.1400
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE S 80;
+    RECST 3.14 '(F10.4)' S;
+    WRITE 6 S;
+ENDPROCEDURE;
+RUN;
+END;

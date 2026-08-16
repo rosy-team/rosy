@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (CM) Z;
-    VARIABLE (RE) R;
-    Z := CM(3&4);
-    R := REAL(Z);
-    WRITE 6 R;
-END;

@@ -1,8 +1,0 @@
-BEGIN;
-    FUNCTION DOUBLE X;
-        DOUBLE := X + X;
-    ENDFUNCTION;
-    VARIABLE (RE) R;
-    R := DOUBLE(21);
-    WRITE 6 R;
-END;

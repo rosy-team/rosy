@@ -16,21 +16,9 @@
 //! > it computes the **summation norms of power-sorted parts** of a DA and takes
 //! > 5 arguments `(DA, var_index, array_size, norms_out, max_power_out)`.
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
-//! ```
-//! ## COSY INFINITY Example
-//! ```text
-#![doc = include_str!("test.fox")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("cosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/da/danors.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

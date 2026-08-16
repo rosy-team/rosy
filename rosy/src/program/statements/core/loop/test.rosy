@@ -1,8 +1,0 @@
-BEGIN;
-    VARIABLE (RE) SUM;
-    SUM := 0;
-    LOOP I 1 5;
-        SUM := SUM + I;
-    ENDLOOP;
-    WRITE 6 SUM;
-END;

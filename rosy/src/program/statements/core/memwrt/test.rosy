@@ -1,6 +1,0 @@
-BEGIN;
-    VARIABLE (RE) U;
-    U := 6;
-    MEMWRT U;
-    WRITE 6 'memwrt ok';
-END;

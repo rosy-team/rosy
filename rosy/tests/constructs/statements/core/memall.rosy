@@ -1,0 +1,22 @@
+BEGIN;
+    VARIABLE (RE) M;
+    MEMALL M;
+    IF M >= 0;
+        WRITE 6 'memall ok';
+    ENDIF;
+END;
+
+======= expect
+memall ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE M 1;
+    MEMALL M;
+    IF M >= 0;
+        WRITE 6 'memall ok';
+    ENDIF;
+ENDPROCEDURE;
+RUN;
+END;

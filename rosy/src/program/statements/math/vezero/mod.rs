@@ -14,21 +14,9 @@
 //! - `num_elements` — RE expression for number of VE array elements to check
 //! - `threshold`    — RE expression for the threshold value
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
-//! ```
-//! ## COSY INFINITY Example
-//! ```text
-#![doc = include_str!("test.fox")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("cosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/math/vezero.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

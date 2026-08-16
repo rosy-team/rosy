@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    X := 6 * 7;
-    WRITE 6 X;
-END;

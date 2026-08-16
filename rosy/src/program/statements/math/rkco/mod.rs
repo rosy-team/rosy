@@ -16,13 +16,9 @@
 //! - `a1` — coupling matrix rows 2..7, flattened (21 values)
 //! - `a2` — coupling matrix rows 8..13, flattened (57 values)
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/math/rkco.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

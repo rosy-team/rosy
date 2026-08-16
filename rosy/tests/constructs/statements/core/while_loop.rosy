@@ -1,0 +1,24 @@
+BEGIN;
+    VARIABLE (RE) I;
+    I := 0;
+    WHILE I < 5;
+        I := I + 1;
+    ENDWHILE;
+    WRITE 6 I;
+END;
+
+======= expect
+ 5.000000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE I 1;
+    I := 0;
+    WHILE I<5;
+        I := I + 1;
+    ENDWHILE;
+    WRITE 6 I;
+ENDPROCEDURE;
+RUN;
+END;

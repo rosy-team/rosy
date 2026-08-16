@@ -16,21 +16,9 @@
 //! > **i-th independent variable** by a factor and takes 4 arguments `(DA, i, a, result)`.
 //! > Rosy's form scales **all coefficients** in place with 2 arguments.
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
-//! ```
-//! ## COSY INFINITY Example
-//! ```text
-#![doc = include_str!("test.fox")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("cosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/da/dascl.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

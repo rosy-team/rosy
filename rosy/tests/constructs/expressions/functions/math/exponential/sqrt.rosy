@@ -1,0 +1,18 @@
+BEGIN;
+    VARIABLE (RE) X;
+    X := SQRT(9.0);
+    WRITE 6 X;
+END;
+
+======= expect
+ 3.000000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE X 1;
+    X := SQRT(9.0);
+    WRITE 6 X;
+ENDPROCEDURE;
+RUN;
+END;

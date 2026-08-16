@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    X := ABS(-3.5);
-    WRITE 6 X;
-END;

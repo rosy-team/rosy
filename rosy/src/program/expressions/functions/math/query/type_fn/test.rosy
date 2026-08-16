@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    VARIABLE (RE) T;
-    X := 42;
-    T := TYPE(X);
-    WRITE 6 T;
-END;

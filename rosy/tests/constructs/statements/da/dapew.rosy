@@ -1,0 +1,27 @@
+BEGIN;
+    DAINI 3 2 0 0;
+    VARIABLE (DA 1) A;
+    A(1) := DA(1) + DA(2)*DA(2) + 2;
+    DAPEW 6 A 1 1;
+    WRITE 6 'dapew ok';
+END;
+
+======= expect
+        ORDER   1  IN COLUMN    1
+     I  COEFFICIENT          ORDER EXPONENTS
+     1   1.000000000000000         1    1  0
+     -----------------------------------
+dapew ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    VARIABLE A 2000;
+    DAINI 3 2 0 NM;
+    A := DA(1) + DA(2)*DA(2) + 2;
+    DAPEW 6 A 1 1;
+    WRITE 6 'dapew ok';
+ENDPROCEDURE;
+RUN;
+END;

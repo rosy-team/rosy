@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (ST) S;
-    S := 'hello';
-    WRITE 6 S;
-END;

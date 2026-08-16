@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (ST) S;
-    VARIABLE (RE) L;
-    S := 'hello';
-    L := LENGTH(S);
-    WRITE 6 L;
-END;

@@ -1,0 +1,31 @@
+BEGIN;
+    VARIABLE (RE) X;
+    X := 42;
+    X := X + 8;
+    WRITE 6 X;
+
+    { Test: 2D indexed assignment with explicit type }
+    VARIABLE (RE 3 3) M;
+    M(1)(1) := 99;
+    WRITE 6 M(1)(1);
+END;
+
+======= expect
+ 50.00000000000000    
+ 99.00000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE X 1;
+    X := 42;
+    X := X + 8;
+    WRITE 6 X;
+
+    { Test: 2D indexed assignment with explicit type }
+    VARIABLE M 3 3;
+    M(1)(1) := 99;
+    WRITE 6 M(1)(1);
+ENDPROCEDURE;
+RUN;
+END;

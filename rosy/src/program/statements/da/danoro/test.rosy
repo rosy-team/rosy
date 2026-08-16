@@ -1,8 +1,0 @@
-BEGIN;
-    DAINI 3 2 0 0;
-    VARIABLE (DA 1) X;
-    X(1) := 1 + DA(1) + DA(1)*DA(1);
-    DANORO X;
-    DAPRV X 1 2 2 6;
-    WRITE 6 'danoro ok';
-END;

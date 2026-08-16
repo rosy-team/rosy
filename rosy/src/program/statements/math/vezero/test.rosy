@@ -1,6 +1,0 @@
-BEGIN;
-    VARIABLE (VE) V;
-    V := 0.001 & 5 & 0.0001;
-    VEZERO V 3 0.01;
-    WRITE 6 ST(V);
-END;

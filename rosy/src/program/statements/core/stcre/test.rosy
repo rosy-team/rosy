@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    STCRE '3.14' X;
-    WRITE 6 X;
-END;

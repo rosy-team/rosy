@@ -14,13 +14,9 @@
 //! - `a` — variable that receives the slope (RE)
 //! - `b` — variable that receives the intercept (RE)
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/math/lsline.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

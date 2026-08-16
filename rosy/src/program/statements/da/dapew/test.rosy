@@ -1,7 +1,0 @@
-BEGIN;
-    DAINI 3 2 0 0;
-    VARIABLE (DA 1) A;
-    A(1) := DA(1) + DA(2)*DA(2) + 2;
-    DAPEW 6 A 1 1;
-    WRITE 6 'dapew ok';
-END;

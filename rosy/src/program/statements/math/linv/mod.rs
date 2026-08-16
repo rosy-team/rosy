@@ -14,13 +14,9 @@
 //! - `alloc_dim`  — allocation dimension (RE, used as usize)
 //! - `error_flag` — variable to receive error code (0: no error, 132: singular)
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/math/linv.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

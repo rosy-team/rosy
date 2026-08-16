@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (VE) V;
-    VARIABLE (VE) U;
-    V := 3&4;
-    VEUNIT V U;
-    WRITE 6 ST(U);
-END;

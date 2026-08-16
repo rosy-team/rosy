@@ -13,13 +13,9 @@
 //! - If `seed_expr` evaluates to a **non-negative** value, it is truncated
 //!   to an unsigned integer and used as a deterministic seed.
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/core/ranseed.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

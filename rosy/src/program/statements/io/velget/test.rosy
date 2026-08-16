@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (VE) V;
-    VARIABLE (RE) X;
-    V := 10&20&30;
-    VELGET V 2 X;
-    WRITE 6 X;
-END;

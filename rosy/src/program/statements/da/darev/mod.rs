@@ -9,24 +9,9 @@
 //! DAREV array num_components max_vars current_vars unit;
 //! ```
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
-//! ```
-//! ## COSY Example
-//!
-//! > **COSY note**: COSY's `DAREV` requires exactly 5 map components (hardcoded limit)
-//! > and the output array must be pre-initialized as DA type before calling.
-//! ```text
-#![doc = include_str!("test.fox")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("cosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/da/darev.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

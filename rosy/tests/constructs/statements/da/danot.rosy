@@ -1,0 +1,19 @@
+BEGIN;
+    DAINI 5 2 0 0;
+    DANOT 3;
+    WRITE 6 'danot ok';
+END;
+
+======= expect
+danot ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    DAINI 5 2 0 NM;
+    DANOT 3;
+    WRITE 6 'danot ok';
+ENDPROCEDURE;
+RUN;
+END;

@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    X := LCM(50);
-    WRITE 6 X;
-END;

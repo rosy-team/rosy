@@ -1,0 +1,14 @@
+BEGIN;
+    VARIABLE (RE 10 10) M;
+    VARIABLE (RE 10 10) T;
+    VARIABLE (RE 10 10) TI;
+    M(1)(1) := 2;
+    M(1)(2) := 1;
+    M(2)(1) := 1;
+    M(2)(2) := 2;
+    MBLOCK M T TI 10 2;
+    WRITE 6 'mblock ok';
+END;
+
+======= expect
+mblock ok

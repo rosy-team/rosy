@@ -1,0 +1,16 @@
+BEGIN;
+    SAVE 'testfile';
+    WRITE 6 'save ok';
+END;
+
+======= expect
+save ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    SAVE 'testfile';
+    WRITE 6 'save ok';
+ENDPROCEDURE;
+RUN;
+END;

@@ -26,9 +26,9 @@
 //! variables into CD polynomials, and by COCR / CRCO for the
 //! COSY-to-circular-representation transform.
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/math/cpolval.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

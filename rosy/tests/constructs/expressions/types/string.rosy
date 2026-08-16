@@ -1,0 +1,18 @@
+BEGIN;
+    VARIABLE (ST) S;
+    S := 'hello';
+    WRITE 6 S;
+END;
+
+======= expect
+hello
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE S 80;
+    S := 'hello';
+    WRITE 6 S;
+ENDPROCEDURE;
+RUN;
+END;

@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    X := NINT(2.6);
-    WRITE 6 X;
-END;

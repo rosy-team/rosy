@@ -1,0 +1,22 @@
+BEGIN;
+    VARIABLE (RE) X;
+    VARIABLE (RE) A;
+    X := 3.14;
+    A := VARMEM(X);
+    WRITE 6 (A > 0);
+END;
+
+======= expect
+TRUE
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE X 1;
+    VARIABLE A 1;
+    X := 3.14;
+    A := VARMEM(X);
+    WRITE 6 (A > 0);
+ENDPROCEDURE;
+RUN;
+END;

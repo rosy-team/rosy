@@ -1,0 +1,18 @@
+BEGIN;
+    VARIABLE (RE) X;
+    X := SINH(1.0);
+    WRITE 6 X;
+END;
+
+======= expect
+ 1.175201193643801
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE X 1;
+    X := SINH(1.0);
+    WRITE 6 X;
+ENDPROCEDURE;
+RUN;
+END;

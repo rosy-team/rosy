@@ -1,8 +1,0 @@
-BEGIN;
-    VARIABLE (RE) eps;
-    DAINI 3 2 0 0;
-    DAEPS 0.0000000001;
-    DAEPSM eps;
-    WRITE 6 eps;
-    WRITE 6 'daepsm ok';
-END;

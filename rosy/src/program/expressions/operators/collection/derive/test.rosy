@@ -1,8 +1,0 @@
-BEGIN;
-    DAINI 3 2 0 0;
-    VARIABLE (DA) F;
-    VARIABLE (DA) DF;
-    F := DA(1) * DA(1);
-    DF := F % 1;
-    WRITE 6 ST(CONS(DF));
-END;

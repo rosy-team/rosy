@@ -1,9 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    VARIABLE (RE) OBJ;
-    X := 0;
-    FIT X;
-        OBJ := (X - 3) * (X - 3);
-    ENDFIT 0.0000000001 1000 1 OBJ;
-    WRITE 6 X;
-END;

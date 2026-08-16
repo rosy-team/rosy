@@ -11,19 +11,10 @@
 //! CDF2 input tune1 tune2 tune3 result;
 //! ```
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/da/cdf2.rosy"))]
 //! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
-//! ```
-//!
-//! Note: the standalone `test.rosy` exercises CDF2 directly with hand-built
-//! CD inputs and runs end-to-end. A `test.fox` cosy-parity fixture is
-//! deferred — it would require running the cosy.fox / libcosy normal-form
-//! pipeline (DANF / NF) against the COSY 10.2 binary and diffing output.
 
 use anyhow::{Context, Error, Result, ensure};
 use std::collections::BTreeSet;

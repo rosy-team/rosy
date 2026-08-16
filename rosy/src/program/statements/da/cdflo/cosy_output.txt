@@ -1,4 +1,0 @@
-     I  COEFFICIENT            ORDER EXPONENTS
-     1   2.718281828459046       1   1
-     ---------------------------------
-cdflo ok

@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    X := ASIN(0.5);
-    WRITE 6 X;
-END;

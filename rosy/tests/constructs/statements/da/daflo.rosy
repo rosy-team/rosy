@@ -1,0 +1,55 @@
+BEGIN;
+    { Harmonic oscillator: x1' = x2, x2' = -x1 }
+    { Exact flow at t=1: x1 -> cos(1)*x1 + sin(1)*x2 }
+    {                     x2 -> -sin(1)*x1 + cos(1)*x2 }
+    VARIABLE (DA 2) rhs;
+    VARIABLE (DA 2) ic;
+    VARIABLE (DA 2) result;
+    DAINI 5 2 0 0;
+    rhs(1) := DA(2);
+    rhs(2) := -1*DA(1);
+    ic(1) := DA(1);
+    ic(2) := DA(2);
+    DAFLO rhs ic result 2;
+    DAPRV result 1 2 2 6;
+    WRITE 6 '---';
+    DAPRV result 2 2 2 6;
+    WRITE 6 'daflo ok';
+END;
+
+======= expect
+   0.540302305868     10
+   0.841470984808     01
+ ------------------------------------------------------------------------------
+---
+   0.540302305868     10
+   0.841470984808     01
+ ------------------------------------------------------------------------------
+  -0.841470984808     10
+   0.540302305868     01
+ ------------------------------------------------------------------------------
+daflo ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    VARIABLE rhs 2000 2;
+    VARIABLE ic 2000;
+    VARIABLE result 2000;
+    DAINI 5 2 0 NM;
+    rhs(1) := DA(2);
+    rhs(2) := -1*DA(1);
+    { Component 1: ic = x1 }
+    ic := DA(1);
+    DAFLO rhs ic result 2;
+    WRITE 6 result;
+    WRITE 6 '---';
+    { Component 2: ic = x2 }
+    ic := DA(2);
+    DAFLO rhs ic result 2;
+    WRITE 6 result;
+    WRITE 6 'daflo ok';
+ENDPROCEDURE;
+RUN;
+END;

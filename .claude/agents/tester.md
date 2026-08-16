@@ -18,14 +18,8 @@ You validate implementations of ROSY language constructs by building, testing, a
    - `cargo run --bin rosy -- run rosy/assets/operators/<name>/<name>.rosy`
    - or `cargo run --bin rosy -- run rosy/assets/intrinsics/<name>/<name>.rosy`
 5. **Run integration test**: `cargo run --bin rosy -- run examples/test_<name>.rosy`
-6. **Write minimal tests** if none exist for this construct:
-   ```
-   BEGIN;
-       VARIABLE (RE) x;
-       { test the construct with different types }
-       WRITE 6 ST(result);
-   END;
-   ```
+6. **Write a construct case** if none exists: one file under `rosy/tests/constructs/`
+   (`======= expect` required; `======= fox` optional). `rosy test --filter <name>`.
 
 ## What to Check in Output
 

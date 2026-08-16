@@ -1,8 +1,0 @@
-BEGIN;
-PROCEDURE RUN;
-    WRITE 6 'before quit';
-    QUIT 0;
-    WRITE 6 'after quit';
-ENDPROCEDURE;
-RUN;
-END;

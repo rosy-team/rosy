@@ -1,9 +1,0 @@
-BEGIN;
-    OPENF 10 'test_rewf.txt' 'unknown';
-    WRITE 10 'line1';
-    CLOSEF 10;
-    OPENF 10 'test_rewf.txt' 'old';
-    REWF 10;
-    CLOSEF 10;
-    WRITE 6 'rewf ok';
-END;

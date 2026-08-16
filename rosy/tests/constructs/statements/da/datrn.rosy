@@ -1,0 +1,37 @@
+BEGIN;
+    DAINI 3 2 0 0;
+    VARIABLE (DA 1) INPUT;
+    VARIABLE (DA 1) OUTPUT;
+    VARIABLE (VE) SCALES;
+    VARIABLE (VE) SHIFTS;
+    INPUT(1) := DA(1);
+    SCALES := 2.0 & 1.0;
+    SHIFTS := 1.0 & 0.0;
+    DATRN INPUT SCALES SHIFTS 1 1 OUTPUT;
+    DAPRV OUTPUT 1 2 2 6;
+END;
+
+======= expect
+   1.000000000000     00
+   2.000000000000     10
+ ------------------------------------------------------------------------------
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    VARIABLE INPUT 2000;
+    VARIABLE OUTPUT 2000;
+    VARIABLE SCALES 1 2;
+    VARIABLE SHIFTS 1 2;
+    DAINI 3 2 0 NM;
+    INPUT := DA(1);
+    SCALES(1) := 2.0;
+    SCALES(2) := 1.0;
+    SHIFTS(1) := 1.0;
+    SHIFTS(2) := 0.0;
+    DATRN INPUT SCALES SHIFTS 1 1 OUTPUT;
+    WRITE 6 'datrn ok';
+ENDPROCEDURE;
+RUN;
+END;

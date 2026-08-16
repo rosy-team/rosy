@@ -1,3 +1,0 @@
-BEGIN;
-    OS 'echo os_call ok';
-END;

@@ -12,14 +12,8 @@
 //! | Use `&` (concat), `\|` (extract), `%` (derive) | **[`operators::collection`]** |
 //! | Use `AND`, `OR` | **[`operators::logical`]** |
 //! | Use `NOT` or unary `-` | **[`operators::unary`]** |
-//! | Call `SIN`, `COS`, `TAN`, ... | **[`functions::math::trig`]** |
-//! | Call `EXP`, `LOG`, `SQRT`, `SQR`, `^` | **[`functions::math::exponential`]** |
-//! | Call `CMPLX`, `CONJ`, `REAL`, `IMAG` | **[`functions::math::complex`]** |
-//! | Call `ABS`, `INT`, `NINT`, `NORM`, `CONS` | **[`functions::math::rounding`]** |
-//! | Call `VMIN`, `VMAX` | **[`functions::math::vector`]** |
-//! | Call `TYPE`, `ISRT`, `ISRT3` | **[`functions::math::query`]** |
-//! | Convert types with `ST()`, `CM()`, `RE()`, `LO()`, `VE()` | **[`functions::conversion`]** |
-//! | Use `LENGTH`, `TRIM`, `LTRIM`, `POSITION` | **[`functions::sys`]** |
+//! | Call `SIN`, `ST`, … (named intrinsics) | [`core::intrinsic_call`] — types in `rosy_lib::registry` |
+//! | Raise to a power (`^`) | **[`functions::math::exponential::pow`]** |
 //! | Write a literal number, string, or boolean | **[`types`]** |
 //! | Construct `DA(n)` or `CD(n)` | **[`types::da`]**, **[`types::cd`]** |
 //!

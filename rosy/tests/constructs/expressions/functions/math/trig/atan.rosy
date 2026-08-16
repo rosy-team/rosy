@@ -1,0 +1,18 @@
+BEGIN;
+    VARIABLE (RE) X;
+    X := ATAN(1.0);
+    WRITE 6 X;
+END;
+
+======= expect
+ 0.7853981633974483
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE X 1;
+    X := ATAN(1.0);
+    WRITE 6 X;
+ENDPROCEDURE;
+RUN;
+END;

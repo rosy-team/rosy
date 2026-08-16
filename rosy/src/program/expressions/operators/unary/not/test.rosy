@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (LO) B;
-    B := !TRUE;
-    WRITE 6 B;
-    B := !FALSE;
-    WRITE 6 B;
-END;

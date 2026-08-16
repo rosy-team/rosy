@@ -1,4 +1,0 @@
-BEGIN;
-    SLEEPM 1;
-    WRITE 6 'sleepm ok';
-END;

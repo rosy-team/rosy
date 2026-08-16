@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    X := ISRT(4.0);
-    WRITE 6 X;
-END;

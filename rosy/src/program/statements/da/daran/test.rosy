@@ -1,6 +1,0 @@
-BEGIN;
-    VARIABLE (DA 1) A;
-    DAINI 3 2 0 0;
-    DARAN A 1.0;
-    WRITE 6 'daran ok';
-END;

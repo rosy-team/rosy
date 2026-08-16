@@ -1,0 +1,73 @@
+BEGIN;
+    VARIABLE (VE) params;
+    VARIABLE (RE 10 2) result;
+    DAINI 3 2 0 0;
+    params := 3&2;
+    DACODE params 10 result;
+    { Print exponents for all 10 monomials (graded lex order) }
+    WRITE 6 'M1:' result(1)(1) result(1)(2);
+    WRITE 6 'M2:' result(2)(1) result(2)(2);
+    WRITE 6 'M3:' result(3)(1) result(3)(2);
+    WRITE 6 'M4:' result(4)(1) result(4)(2);
+    WRITE 6 'M5:' result(5)(1) result(5)(2);
+    WRITE 6 'M6:' result(6)(1) result(6)(2);
+    WRITE 6 'M7:' result(7)(1) result(7)(2);
+    WRITE 6 'M8:' result(8)(1) result(8)(2);
+    WRITE 6 'M9:' result(9)(1) result(9)(2);
+    WRITE 6 'M10:' result(10)(1) result(10)(2);
+    WRITE 6 'dacode ok';
+END;
+
+======= expect
+M1:
+ 0.000000000000000    
+ 0.000000000000000    
+M2:
+ 0.000000000000000    
+ 1.000000000000000    
+M3:
+ 1.000000000000000    
+ 0.000000000000000    
+M4:
+ 0.000000000000000    
+ 2.000000000000000    
+M5:
+ 1.000000000000000    
+ 1.000000000000000    
+M6:
+ 2.000000000000000    
+ 0.000000000000000    
+M7:
+ 0.000000000000000    
+ 3.000000000000000    
+M8:
+ 1.000000000000000    
+ 2.000000000000000    
+M9:
+ 2.000000000000000    
+ 1.000000000000000    
+M10:
+ 3.000000000000000    
+ 0.000000000000000    
+dacode ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    VARIABLE X 2000 1;
+    VARIABLE VINFO 5;
+    VARIABLE LEN 1;
+    VARIABLE DVAL 1 10000;
+    VARIABLE IVAL 1 10000;
+    VARIABLE DAPAR 5;
+    DAINI 3 2 0 NM;
+    X(1) := DA(1);
+    LEN := 10000;
+    WRITEM X VINFO LEN DVAL IVAL DAPAR;
+    WRITE 6 'NM:' NM;
+    WRITE 6 'DAPAR:' DAPAR;
+    WRITE 6 'dacode ok';
+ENDPROCEDURE;
+RUN;
+END;

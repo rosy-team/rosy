@@ -16,21 +16,9 @@
 //! 4. `linear`   (VE, write)          - n-element vector L
 //! 5. `constant` (RE, write)          - scalar constant c
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
-//! ```
-//! ## COSY INFINITY Example
-//! ```text
-#![doc = include_str!("test.fox")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("cosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/da/dacqlc.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

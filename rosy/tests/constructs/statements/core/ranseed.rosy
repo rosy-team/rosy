@@ -1,0 +1,17 @@
+BEGIN;
+    VARIABLE (RE) R;
+
+    RANSEED 42;
+    RERAN R;
+    WRITE 6 'seed 42 first' R;
+
+    RANSEED 42;
+    RERAN R;
+    WRITE 6 'seed 42 again' R;
+END;
+
+======= expect
+seed 42 first
+ 0.5311481800554763E-001
+seed 42 again
+ 0.5311481800554763E-001

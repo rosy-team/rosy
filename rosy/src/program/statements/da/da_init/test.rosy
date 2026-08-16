@@ -1,9 +1,0 @@
-BEGIN;
-    { DAINI: initialize DA with 4 args — verify NM writeback }
-    VARIABLE (RE) NM;
-    DAINI 3 2 0 NM;
-    WRITE 6 NM;
-    DAINI 5 4 0 NM;
-    WRITE 6 NM;
-    WRITE 6 'daini ok';
-END;

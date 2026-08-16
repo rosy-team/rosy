@@ -1,8 +1,0 @@
-BEGIN;
-PROCEDURE RUN;
-    VARIABLE T 1;
-    PWTIME T;
-    WRITE 6 'pwtime ok';
-ENDPROCEDURE;
-RUN;
-END;

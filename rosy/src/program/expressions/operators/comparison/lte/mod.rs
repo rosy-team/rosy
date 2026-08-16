@@ -15,13 +15,9 @@
 //! | RE | RE | LO | Numeric less-than-or-equal |
 //! | ST | ST | LO | Lexicographic ordering |
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/expressions/operators/comparison/lte.rosy"))]
 //! ```
 
 use std::collections::BTreeSet;

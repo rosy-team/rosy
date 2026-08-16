@@ -14,21 +14,9 @@
 //! print that shows the variable's value using Rust's Debug formatting, writing
 //! to stderr regardless of the unit number.
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
-//! ```
-//! ## COSY Example
-//! ```text
-#![doc = include_str!("test.fox")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("cosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/core/memdpv.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

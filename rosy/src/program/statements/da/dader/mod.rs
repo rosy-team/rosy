@@ -15,21 +15,9 @@
 //! > **COSY note**: In COSY INFINITY, `DADER` takes 3 arguments `(index, input, result)`
 //! > and writes to a separate output variable. Rosy's form is in-place `(da_var, index)`.
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
-//! ```
-//! ## COSY INFINITY Example
-//! ```text
-#![doc = include_str!("test.fox")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("cosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/da/dader.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

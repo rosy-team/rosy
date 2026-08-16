@@ -1,11 +1,10 @@
 //! # Built-in Functions
 //!
-//! All intrinsic functions provided by the Rosy language.
+//! Named expression intrinsics (`SIN`, `ST`, …) parse as [`super::core::intrinsic_call`].
+//! Types and emit live in `rosy_lib::registry`. Cases: `rosy/tests/constructs/expressions/functions/`.
 //!
-//! - **[`math`]** — Mathematical functions: trig, exponential, complex, rounding, vector, and more
-//! - **[`conversion`]** — Type conversions: `CM()`, `ST()`, `RE()`, `LO()`, `VE()`
-//! - **[`sys`]** — Utilities: `LENGTH`, `TRIM`, `LTRIM`
+//! The only leftover AST here is [`math::exponential::pow`] (`^` is infix, not a call)
+//! and [`conversion::string_convert`] (shared emit for `WRITE`).
 
 pub mod conversion;
 pub mod math;
-pub mod sys;

@@ -1,0 +1,20 @@
+BEGIN;
+    VARIABLE (RE) T;
+    PWTIME T;
+    IF T >= 0;
+        WRITE 6 'pwtime ok';
+    ENDIF;
+END;
+
+======= expect
+pwtime ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE T 1;
+    PWTIME T;
+    WRITE 6 'pwtime ok';
+ENDPROCEDURE;
+RUN;
+END;

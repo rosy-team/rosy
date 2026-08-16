@@ -1,0 +1,14 @@
+BEGIN;
+    OS 'echo os_call ok';
+END;
+
+======= expect
+os_call ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    OS 'echo os_call ok';
+ENDPROCEDURE;
+RUN;
+END;

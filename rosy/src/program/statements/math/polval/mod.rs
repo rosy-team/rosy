@@ -18,13 +18,9 @@
 //! | R   | result array (output variable)          |
 //! | NR  | number of results                       |
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/math/polval.rosy"))]
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};

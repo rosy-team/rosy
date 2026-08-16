@@ -1,5 +1,0 @@
-BEGIN;
-    VARIABLE (RE) X;
-    X := LST(100);
-    WRITE 6 X;
-END;

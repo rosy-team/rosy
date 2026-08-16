@@ -1,0 +1,33 @@
+BEGIN;
+    VARIABLE (LO) R;
+    R := TRUE OR TRUE;
+    WRITE 6 R;
+    R := TRUE OR FALSE;
+    WRITE 6 R;
+    R := FALSE OR TRUE;
+    WRITE 6 R;
+    R := FALSE OR FALSE;
+    WRITE 6 R;
+END;
+
+======= expect
+TRUE
+TRUE
+TRUE
+FALSE
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE R 1;
+    R := LO(1) + LO(1);
+    WRITE 6 R;
+    R := LO(1) + LO(0);
+    WRITE 6 R;
+    R := LO(0) + LO(1);
+    WRITE 6 R;
+    R := LO(0) + LO(0);
+    WRITE 6 R;
+ENDPROCEDURE;
+RUN;
+END;

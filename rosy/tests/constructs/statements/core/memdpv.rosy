@@ -1,0 +1,20 @@
+BEGIN;
+    VARIABLE (RE) X;
+    X := 42;
+    MEMDPV 6 X;
+    WRITE 6 'memdpv ok';
+END;
+
+======= expect
+memdpv ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE X 1;
+    X := 42;
+    MEMDPV 6 X;
+    WRITE 6 'memdpv ok';
+ENDPROCEDURE;
+RUN;
+END;

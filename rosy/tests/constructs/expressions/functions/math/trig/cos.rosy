@@ -1,0 +1,18 @@
+BEGIN;
+    VARIABLE (RE) X;
+    X := COS(1.0);
+    WRITE 6 X;
+END;
+
+======= expect
+ 0.5403023058681398
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE X 1;
+    X := COS(1.0);
+    WRITE 6 X;
+ENDPROCEDURE;
+RUN;
+END;

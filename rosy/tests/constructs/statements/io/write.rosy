@@ -1,0 +1,19 @@
+BEGIN;
+    VARIABLE (RE) X;
+    X := 42;
+    WRITE 6 'Value: ' X;
+END;
+
+======= expect
+Value: 
+ 42.00000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE X 1;
+    X := 42;
+    WRITE 6 'Value: ' X;
+ENDPROCEDURE;
+RUN;
+END;

@@ -1,0 +1,21 @@
+BEGIN;
+    VARIABLE (DA 1) A;
+    DAINI 3 2 0 0;
+    DARAN A 1.0;
+    WRITE 6 'daran ok';
+END;
+
+======= expect
+daran ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    VARIABLE A 2000;
+    DAINI 3 2 0 NM;
+    DARAN A 1.0;
+    WRITE 6 'daran ok';
+ENDPROCEDURE;
+RUN;
+END;

@@ -7,13 +7,9 @@
 //! and PROCEDURE/FUNCTION definitions create scope boundaries that
 //! reset loop context.
 //!
-//! ## Rosy Example
+//! ## Example
 //! ```text
-#![doc = include_str!("test.rosy")]
-//! ```
-//! **Output**:
-//! ```text
-#![doc = include_str!("rosy_output.txt")]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/core/break.rosy"))]
 //! ```
 
 use anyhow::{Error, Result, anyhow, ensure};

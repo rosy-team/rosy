@@ -1,0 +1,26 @@
+BEGIN;
+    VARIABLE (RE) R;
+    RERAN R;
+    WRITE 6 'random value' R;
+    IF R >= 0;
+        IF R < 1;
+            WRITE 6 'reran ok';
+        ENDIF;
+    ENDIF;
+END;
+
+======= expect
+random value
+ 0.4622268317274090    
+reran ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE R 1;
+    RERAN R;
+    WRITE 6 'random value' R;
+    WRITE 6 'reran ok';
+ENDPROCEDURE;
+RUN;
+END;

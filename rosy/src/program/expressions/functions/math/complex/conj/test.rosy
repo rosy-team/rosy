@@ -1,7 +1,0 @@
-BEGIN;
-    VARIABLE (CM) Z;
-    VARIABLE (CM) C;
-    Z := CM(3&4);
-    C := CONJ(Z);
-    WRITE 6 ST(C);
-END;

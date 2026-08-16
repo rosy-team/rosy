@@ -1,0 +1,22 @@
+BEGIN;
+    VARIABLE (RE) M;
+    MEMFRE M;
+    IF M > 0;
+        WRITE 6 'memfre ok';
+    ENDIF;
+END;
+
+======= expect
+memfre ok
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE M 1;
+    MEMFRE M;
+    IF M > 0;
+        WRITE 6 'memfre ok';
+    ENDIF;
+ENDPROCEDURE;
+RUN;
+END;
