@@ -29,9 +29,9 @@ use crate::operators::{TypeRule, build_type_registry};
 /// - COSY test script (`eq.fox`)
 /// - Integration tests
 pub const EQ_REGISTRY: &[TypeRule] = &[
-    TypeRule::with_comment("RE", "RE", "LO", "3.14159", "3.14159", "Exact IEEE-754 equality (matches COSY behavior)"),
-    TypeRule::with_comment("ST", "ST", "LO", "'hello'", "'hello'", "String equality"),
-    TypeRule::with_comment("LO", "LO", "LO", "TRUE", "TRUE", "Logical equality"),
+    TypeRule::new("RE", "RE", "LO"),
+    TypeRule::new("ST", "ST", "LO"),
+    TypeRule::new("LO", "LO", "LO"),
 ];
 
 static EQ_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();

@@ -1,12 +1,5 @@
 use crate::{RE, VE};
-use crate::{IntrinsicTypeRule, RosyType};
-
-/// Type registry for VMIN intrinsic function.
-///
-/// VMIN returns the minimum element of a vector.
-pub const VMIN_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("VE", "RE", "1.5&2.5&3.5"),
-];
+use crate::RosyType;
 
 /// Get the return type of VMIN for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {

@@ -75,44 +75,6 @@ impl FromRule for VelsetStatement {
     }
 }
 
-impl TranspileableStatement for VelsetStatement {
-    fn register_typeslot_declaration(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
-    }
-    fn wire_inference_edges(
-        &self,
-        resolver: &mut TypeResolver,
-        ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
-        // Discover function call sites within the component and value expressions
-        if let Err(e) = resolver.discover_expr_function_calls(&self.component_expr, ctx) {
-            return InferenceEdgeResult::HasEdges { result: Err(e.context(
-                "...while discovering function call dependencies in VELSET component expression",
-            )) };
-        }
-        if let Err(e) = resolver.discover_expr_function_calls(&self.value_expr, ctx) {
-            return InferenceEdgeResult::HasEdges {
-                result: Err(e.context(
-                    "...while discovering function call dependencies in VELSET value expression",
-                )),
-            };
-        }
-        InferenceEdgeResult::HasEdges { result: Ok(()) }
-    }
-    fn hydrate_resolved_types(
-        &mut self,
-        _resolver: &TypeResolver,
-        _current_scope: &[String],
-    ) -> TypeHydrationResult {
-        TypeHydrationResult::NothingToHydrate
-    }
-}
 
 impl Transpile for VelsetStatement {
     fn transpile(
@@ -173,5 +135,26 @@ impl Transpile for VelsetStatement {
             requested_variables,
             ..Default::default()
         })
+    }
+}
+
+impl TranspileableStatement for VelsetStatement {
+    fn wire_inference_edges(
+        &self,
+        resolver: &mut TypeResolver,
+        ctx: &mut ScopeContext,
+        _source_location: SourceLocation,
+    ) -> Option<Result<()>> {
+        if let Err(e) = resolver.discover_expr_function_calls(&self.component_expr, ctx) {
+            return Some(Err(e.context(
+                "...while discovering function call dependencies in VELSET component expression",
+            )));
+        }
+        if let Err(e) = resolver.discover_expr_function_calls(&self.value_expr, ctx) {
+            return Some(Err(e.context(
+                "...while discovering function call dependencies in VELSET value expression",
+            )));
+        }
+        Some(Ok(()))
     }
 }

@@ -1,35 +1,16 @@
-use std::collections::HashMap;
-
-use crate::{IntrinsicTypeRule, RosyType};
+use crate::RosyType;
 use crate::{RE, CM, VE, DA, CD};
-
-/// Type registry for ABS intrinsic function.
-///
-/// ABS computes the absolute value. Supports:
-/// - RE -> RE (f64::abs)
-/// - CM -> RE (Complex modulus / norm)
-/// - VE -> RE (sum of absolute values of elements)
-/// - DA -> RE (max absolute value among coefficients)
-pub const ABS_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("RE", "RE", "1.5"),
-    IntrinsicTypeRule::new("CM", "RE", "CM(3.0&4.0)"),
-    IntrinsicTypeRule::new("VE", "RE", "1.5&2.5&3.5"),
-    IntrinsicTypeRule::new("DA", "RE", "DA(1)"),
-    IntrinsicTypeRule::new("CD", "RE", "CD(1)"),
-];
 
 /// Get the return type of ABS for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        m.insert(RosyType::RE(), RosyType::RE());
-        m.insert(RosyType::CM(), RosyType::RE());
-        m.insert(RosyType::VE(), RosyType::RE());
-        m.insert(RosyType::DA(), RosyType::RE());
-        m.insert(RosyType::CD(), RosyType::RE());
-        m
-    };
-    registry.get(input).copied()
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::RE()),
+        t if *t == RosyType::CM() => Some(RosyType::RE()),
+        t if *t == RosyType::VE() => Some(RosyType::RE()),
+        t if *t == RosyType::DA() => Some(RosyType::RE()),
+        t if *t == RosyType::CD() => Some(RosyType::RE()),
+        _ => None,
+    }
 }
 
 /// Trait for computing the absolute value of Rosy data types.

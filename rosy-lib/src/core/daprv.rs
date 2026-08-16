@@ -265,7 +265,7 @@ pub fn rosy_datrn(
 /// - `result`:  output DA array
 pub fn rosy_daplu(da_in: &Vec<DA>, var_idx: usize, c: f64, result: &mut Vec<DA>) -> Result<()> {
     use rustc_hash::FxHashMap;
-    use crate::taylor::MAX_VARS;
+    
 
     let config = get_config().context("DAPLU requires DA to be initialized (call OV first)")?;
     let var_0idx = var_idx

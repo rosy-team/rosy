@@ -18,10 +18,7 @@ use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
 use crate::{
     ast::{FromRule, Rule},
     program::expressions::Expr,
-    transpile::{
-        ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
-        TranspileableExpr, ValueKind,
-    },
+    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind},
 };
 use anyhow::{Context, Error};
 use rosy_lib::RosyType;
@@ -63,10 +60,8 @@ impl TranspileableExpr for CDExpr {
         &self,
         resolver: &mut TypeResolver,
         ctx: &ScopeContext,
-    ) -> ExprFunctionCallResult {
-        ExprFunctionCallResult::HasFunctionCalls {
-            result: resolver.discover_expr_function_calls(&self.index, ctx),
-        }
+    ) -> Option<anyhow::Result<()>> {
+        Some(resolver.discover_expr_function_calls(&self.index, ctx))
     }
     fn build_expr_recipe(
         &self,

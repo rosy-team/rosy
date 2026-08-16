@@ -18,14 +18,8 @@ use std::collections::BTreeSet;
 
 use crate::{
     ast::*,
-    program::{
-        expressions::core::variable_identifier::VariableIdentifier, statements::SourceLocation,
-    },
-    resolve::{ScopeContext, TypeResolver},
-    transpile::{
-        InferenceEdgeResult, TranspilationInputContext, TranspilationOutput, Transpile,
-        TranspileableStatement, TypeHydrationResult, TypeslotDeclarationResult, VariableScope,
-    },
+    program::expressions::core::variable_identifier::VariableIdentifier,
+    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, VariableScope},
 };
 
 /// AST node for `CPUSEC v;`.
@@ -59,31 +53,6 @@ impl FromRule for CpusecStatement {
     }
 }
 
-impl TranspileableStatement for CpusecStatement {
-    fn register_typeslot_declaration(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
-    }
-    fn wire_inference_edges(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
-        InferenceEdgeResult::NoEdges
-    }
-    fn hydrate_resolved_types(
-        &mut self,
-        _resolver: &TypeResolver,
-        _current_scope: &[String],
-    ) -> TypeHydrationResult {
-        TypeHydrationResult::NothingToHydrate
-    }
-}
 
 impl Transpile for CpusecStatement {
     fn transpile(
@@ -148,3 +117,5 @@ impl Transpile for CpusecStatement {
         })
     }
 }
+
+impl TranspileableStatement for CpusecStatement {}

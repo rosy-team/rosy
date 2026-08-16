@@ -26,12 +26,8 @@ use std::collections::BTreeSet;
 
 use crate::{
     ast::*,
-    program::{expressions::Expr, statements::SourceLocation},
-    resolve::{ScopeContext, TypeResolver},
-    transpile::{
-        InferenceEdgeResult, TranspilationInputContext, TranspilationOutput, Transpile,
-        TranspileableStatement, TypeHydrationResult, TypeslotDeclarationResult, add_context_to_all,
-    },
+    program::expressions::Expr,
+    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement, add_context_to_all},
 };
 
 /// AST node for `DAINT da_var var_index;`.
@@ -70,31 +66,6 @@ impl FromRule for DaintStatement {
     }
 }
 
-impl TranspileableStatement for DaintStatement {
-    fn register_typeslot_declaration(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
-    }
-    fn wire_inference_edges(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
-        InferenceEdgeResult::NoEdges
-    }
-    fn hydrate_resolved_types(
-        &mut self,
-        _resolver: &TypeResolver,
-        _current_scope: &[String],
-    ) -> TypeHydrationResult {
-        TypeHydrationResult::NothingToHydrate
-    }
-}
 
 impl Transpile for DaintStatement {
     fn transpile(
@@ -128,3 +99,5 @@ impl Transpile for DaintStatement {
         })
     }
 }
+
+impl TranspileableStatement for DaintStatement {}

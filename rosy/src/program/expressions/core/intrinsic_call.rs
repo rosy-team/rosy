@@ -5,10 +5,7 @@
 
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::transpile::{
-    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
-    TranspileableExpr, ValueKind,
-};
+use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind};
 use anyhow::{Context, Error, Result, bail};
 use rosy_lib::RosyType;
 use std::collections::{BTreeSet, HashSet};
@@ -110,13 +107,13 @@ impl TranspileableExpr for IntrinsicCallExpr {
         &self,
         resolver: &mut TypeResolver,
         ctx: &ScopeContext,
-    ) -> ExprFunctionCallResult {
+    ) -> Option<Result<()>> {
         for arg in &self.args {
             if let Err(e) = resolver.discover_expr_function_calls(arg, ctx) {
-                return ExprFunctionCallResult::HasFunctionCalls { result: Err(e) };
+                return Some(Err(e));
             }
         }
-        ExprFunctionCallResult::HasFunctionCalls { result: Ok(()) }
+        Some(Ok(()))
     }
 
     fn build_expr_recipe(

@@ -25,7 +25,7 @@ use std::collections::HashSet;
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::transpile::{ExprFunctionCallResult, TranspileableExpr};
+use crate::transpile::TranspileableExpr;
 use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, ValueKind};
 use anyhow::{Error, Result, anyhow};
 use rosy_lib::RosyType;
@@ -53,10 +53,8 @@ impl TranspileableExpr for NotExpr {
         &self,
         resolver: &mut TypeResolver,
         ctx: &ScopeContext,
-    ) -> ExprFunctionCallResult {
-        ExprFunctionCallResult::HasFunctionCalls {
-            result: resolver.discover_expr_function_calls(&self.operand, ctx),
-        }
+    ) -> Option<Result<()>> {
+        Some(resolver.discover_expr_function_calls(&self.operand, ctx),)
     }
     fn build_expr_recipe(
         &self,

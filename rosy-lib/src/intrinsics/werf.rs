@@ -1,33 +1,13 @@
-use std::collections::HashMap;
-
-use crate::{IntrinsicTypeRule, RosyType};
+use crate::RosyType;
 use crate::{CM, CD};
-
-/// Type registry for WERF intrinsic function (Faddeeva function).
-///
-/// According to COSY INFINITY manual, WERF supports:
-/// - CM -> CM (complex error function w)
-/// - CD -> CD (Taylor composition)
-pub const WERF_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("CM", "CM", "CM(0.5&1.5)"),
-    IntrinsicTypeRule::new("CD", "CD", "CD(1)"),
-];
 
 /// Get the return type of WERF for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec![
-            (RosyType::CM(), RosyType::CM()),
-            (RosyType::CD(), RosyType::CD()),
-        ];
-        for (input_type, result_type) in all {
-            m.insert(input_type, result_type);
-        }
-        m
-    };
-
-    registry.get(input).copied()
+    match input {
+        t if *t == RosyType::CM() => Some(RosyType::CM()),
+        t if *t == RosyType::CD() => Some(RosyType::CD()),
+        _ => None,
+    }
 }
 
 /// Trait for computing the Faddeeva function of Rosy data types.
@@ -120,7 +100,7 @@ fn faddeeva_w(z: CM) -> CM {
 /// For n=0: g_1 = -2*f0*g_0 + 2i/sqrt(pi)
 /// For n>=1: (n+1)*g_{n+1} = -2*f0*g_n - 2*g_{n-1}
 fn cd_werf(cd: &CD) -> anyhow::Result<CD> {
-    use crate::taylor::DACoefficient;
+    
     use num_complex::Complex64;
 
     let config = crate::taylor::get_config()?;

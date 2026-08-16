@@ -1,25 +1,15 @@
-use std::collections::HashMap;
-
 use crate::RosyType;
 use crate::{RE, CM, VE, CD};
 use anyhow::{Result, ensure};
 
-pub fn get_return_type ( lhs: &RosyType ) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec!(
-            (RosyType::RE(), RosyType::CM()),
-            (RosyType::CM(), RosyType::CM()),
-            (RosyType::VE(), RosyType::CM()),
-            (RosyType::CD(), RosyType::CM()),
-        );
-        for (left, result) in all {
-            m.insert(left, result);
-        }
-        m
-    };
-
-    registry.get(&*lhs).copied()
+pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::CM()),
+        t if *t == RosyType::CM() => Some(RosyType::CM()),
+        t if *t == RosyType::VE() => Some(RosyType::CM()),
+        t if *t == RosyType::CD() => Some(RosyType::CM()),
+        _ => None,
+    }
 }
 
 

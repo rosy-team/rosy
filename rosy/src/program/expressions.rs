@@ -41,7 +41,7 @@ use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile
 use crate::{
     ast::{FromRule, PRATT_PARSER, Rule},
     resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot},
-    transpile::{ExprFunctionCallResult, TranspileableExpr, add_context_to_all},
+    transpile::{TranspileableExpr, add_context_to_all},
 };
 use rosy_lib::RosyType;
 use std::collections::HashSet;
@@ -477,7 +477,7 @@ impl TranspileableExpr for Expr {
         &self,
         resolver: &mut TypeResolver,
         ctx: &ScopeContext,
-    ) -> ExprFunctionCallResult {
+    ) -> Option<Result<()>> {
         self.inner.discover_expr_function_calls(resolver, ctx)
     }
     fn build_expr_recipe(

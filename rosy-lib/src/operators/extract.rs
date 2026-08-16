@@ -34,15 +34,15 @@ use crate::taylor::monomial::Monomial;
 /// This registry matches COSY INFINITY's | operator capabilities exactly,
 /// as documented in manual.md Section A.2.
 pub const EXTRACT_REGISTRY: &[TypeRule] = &[
-    TypeRule::with_comment("ST", "RE", "ST", "'test'", "2", "Extract i-th character"),
-    TypeRule::with_comment("ST", "VE", "ST", "'test'", "2&3", "Extract substring by range"),
-    TypeRule::with_comment("CM", "RE", "RE", "CM(3&4)", "1", "Extract real part"),
-    TypeRule::with_comment("VE", "RE", "RE", "1&2", "2", "Extract i-th component"),
-    TypeRule::with_comment("VE", "VE", "VE", "1&2&3", "2&3", "Extract subvector by range"),
-    TypeRule::with_comment("DA", "RE", "RE", "DA(1)", "1", "Extract 1D DA coefficient for supplied exponent"),
-    TypeRule::with_comment("DA", "VE", "RE", "DA(1)", "0&1", "Extract DA coefficient by exponent vector"),
-    TypeRule::with_comment("CD", "RE", "CM", "CD(1)", "1", "Extract 1D CD coefficient for supplied exponent"),
-    TypeRule::with_comment("CD", "VE", "CM", "CD(1)", "0&1", "Extract CD coefficient by exponent vector"),
+    TypeRule::new("ST", "RE", "ST"),
+    TypeRule::new("ST", "VE", "ST"),
+    TypeRule::new("CM", "RE", "RE"),
+    TypeRule::new("VE", "RE", "RE"),
+    TypeRule::new("VE", "VE", "VE"),
+    TypeRule::new("DA", "RE", "RE"),
+    TypeRule::new("DA", "VE", "RE"),
+    TypeRule::new("CD", "RE", "CM"),
+    TypeRule::new("CD", "VE", "CM"),
 ];
 
 static EXTRACT_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();

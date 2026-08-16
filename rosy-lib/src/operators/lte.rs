@@ -15,8 +15,8 @@ use crate::operators::{TypeRule, build_type_registry};
 
 /// Type compatibility registry for less-than-or-equal operator.
 pub const LTE_REGISTRY: &[TypeRule] = &[
-    TypeRule::with_comment("RE", "RE", "LO", "2.0", "2.0", "Numeric less-than-or-equal"),
-    TypeRule::with_comment("ST", "ST", "LO", "'apple'", "'apple'", "Lexicographic ordering"),
+    TypeRule::new("RE", "RE", "LO"),
+    TypeRule::new("ST", "ST", "LO"),
 ];
 
 static LTE_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();

@@ -13,7 +13,6 @@ pub mod mblock;
 pub mod mtree;
 pub mod polval;
 pub mod recst;
-pub mod reran;
 pub mod rkco;
 pub mod rng;
 pub mod mem_serial;

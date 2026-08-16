@@ -29,9 +29,9 @@ use crate::operators::{TypeRule, build_type_registry};
 /// - COSY test script (`neq.fox`)
 /// - Integration tests
 pub const NEQ_REGISTRY: &[TypeRule] = &[
-    TypeRule::with_comment("RE", "RE", "LO", "3.14159", "2.71828", "Exact IEEE-754 not-equals (matches COSY behavior)"),
-    TypeRule::with_comment("ST", "ST", "LO", "'hello'", "'world'", "String not-equals"),
-    TypeRule::with_comment("LO", "LO", "LO", "TRUE", "FALSE", "Logical not-equals"),
+    TypeRule::new("RE", "RE", "LO"),
+    TypeRule::new("ST", "ST", "LO"),
+    TypeRule::new("LO", "LO", "LO"),
 ];
 
 static NEQ_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();

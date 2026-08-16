@@ -86,28 +86,26 @@ impl TranspileableStatement for WhileStatement {
         _resolver: &mut TypeResolver,
         _ctx: &mut ScopeContext,
         _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
+    ) -> Option<Result<()>> {
+        None
     }
     fn wire_inference_edges(
         &self,
         resolver: &mut TypeResolver,
         ctx: &mut ScopeContext,
         _source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
-        InferenceEdgeResult::HasEdges {
-            result: resolver.discover_slots(&self.body, &mut ctx.clone()),
-        }
+    ) -> Option<Result<()>> {
+        Some(resolver.discover_slots(&self.body, &mut ctx.clone()),)
     }
     fn hydrate_resolved_types(
         &mut self,
         resolver: &TypeResolver,
         current_scope: &[String],
-    ) -> TypeHydrationResult {
+    ) -> Option<Result<()>> {
         if let Err(e) = resolver.apply_to_ast(&mut self.body, current_scope) {
-            return TypeHydrationResult::Hydrated { result: Err(e) };
+            return Some(Err(e));
         }
-        TypeHydrationResult::Hydrated { result: Ok(()) }
+        Some(Ok(()))
     }
 }
 impl Transpile for WhileStatement {

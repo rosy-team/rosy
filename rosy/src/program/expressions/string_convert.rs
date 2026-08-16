@@ -16,9 +16,7 @@
 
 use anyhow::{anyhow, Error, Result};
 use crate::program::expressions::Expr;
-use crate::transpile::{
-    TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind,
-};
+use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind};
 
 /// Shared emit path for `ST(expr)` — used by the intrinsic and by `WRITE`.
 pub fn string_convert_transpile_helper(

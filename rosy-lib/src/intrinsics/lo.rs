@@ -1,23 +1,12 @@
-use std::collections::HashMap;
-
 use crate::RosyType;
-use crate::{RE, CM, VE, LO, ST, DA, CD};
-use crate::core::display::RosyDisplay;
+use crate::{RE, LO};
 
-pub fn get_return_type ( lhs: &RosyType ) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec!(
-            (RosyType::RE(), RosyType::LO()),
-            (RosyType::LO(), RosyType::LO()),
-        );
-        for (left, result) in all {
-            m.insert(left, result);
-        }
-        m
-    };
-
-    registry.get(&*lhs).copied()
+pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::LO()),
+        t if *t == RosyType::LO() => Some(RosyType::LO()),
+        _ => None,
+    }
 }           
 
 /// Trait for converting Rosy data types to strings

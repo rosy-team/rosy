@@ -241,7 +241,7 @@ impl TranspileableStatement for VarDeclStatement {
         resolver: &mut TypeResolver,
         ctx: &mut ScopeContext,
         source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
+    ) -> Option<Result<()>> {
         let slot = TypeSlot::Variable(ctx.scope_path.clone(), self.data.name.clone());
 
         resolver.insert_slot(
@@ -251,21 +251,21 @@ impl TranspileableStatement for VarDeclStatement {
         );
         ctx.variables.insert(self.data.name.clone(), slot);
 
-        TypeslotDeclarationResult::VarFuncOrProcedureDecl { result: Ok(()) }
+        Some(Ok(()))
     }
     fn wire_inference_edges(
         &self,
         _resolver: &mut TypeResolver,
         _ctx: &mut ScopeContext,
         _source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
-        InferenceEdgeResult::NoEdges
+    ) -> Option<Result<()>> {
+        None
     }
     fn hydrate_resolved_types(
         &mut self,
         resolver: &TypeResolver,
         current_scope: &[String],
-    ) -> TypeHydrationResult {
+    ) -> Option<Result<()>> {
         if self.data.r#type.is_none() {
             let slot = TypeSlot::Variable(current_scope.to_vec(), self.data.name.clone());
             if let Some(node) = resolver.nodes.get(&slot)
@@ -278,7 +278,7 @@ impl TranspileableStatement for VarDeclStatement {
                     self.data.r#type = Some(resolved);
             }
         }
-        TypeHydrationResult::Hydrated { result: Ok(()) }
+        Some(Ok(()))
     }
 }
 impl Transpile for VarDeclStatement {

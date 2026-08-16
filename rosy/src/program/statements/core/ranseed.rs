@@ -22,12 +22,8 @@ use anyhow::{Context, Error, Result, ensure};
 
 use crate::{
     ast::*,
-    program::{expressions::Expr, statements::SourceLocation},
-    resolve::{ScopeContext, TypeResolver},
-    transpile::{
-        InferenceEdgeResult, TranspilationInputContext, TranspilationOutput, Transpile,
-        TranspileableStatement, TypeHydrationResult, TypeslotDeclarationResult,
-    },
+    program::expressions::Expr,
+    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement},
 };
 
 /// AST node for the `RANSEED seed;` statement.
@@ -57,31 +53,6 @@ impl FromRule for RanseedStatement {
     }
 }
 
-impl TranspileableStatement for RanseedStatement {
-    fn register_typeslot_declaration(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
-    }
-    fn wire_inference_edges(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
-        InferenceEdgeResult::NoEdges
-    }
-    fn hydrate_resolved_types(
-        &mut self,
-        _resolver: &TypeResolver,
-        _current_scope: &[String],
-    ) -> TypeHydrationResult {
-        TypeHydrationResult::NothingToHydrate
-    }
-}
 
 impl Transpile for RanseedStatement {
     fn transpile(
@@ -106,3 +77,5 @@ impl Transpile for RanseedStatement {
         })
     }
 }
+
+impl TranspileableStatement for RanseedStatement {}

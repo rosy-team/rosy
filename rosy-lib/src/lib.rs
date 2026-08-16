@@ -1,6 +1,4 @@
 #![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
-#![allow(unused_imports)]
-#![allow(dead_code)]
 
 //! # Rosy Runtime Library
 //!
@@ -140,62 +138,24 @@ impl std::fmt::Display for RosyType {
     }
 }
 impl RosyType {
-    pub fn new(base_type: RosyBaseType, dimensions: usize) -> Self {
-        RosyType {
-            base_type,
-            dimensions,
-        }
+    pub const fn new(base_type: RosyBaseType, dimensions: usize) -> Self {
+        RosyType { base_type, dimensions }
     }
 
     #[allow(non_snake_case)]
-    pub fn RE() -> Self {
-        RosyType {
-            base_type: RosyBaseType::RE,
-            dimensions: 0,
-        }
-    }
+    pub const fn RE() -> Self { Self::new(RosyBaseType::RE, 0) }
     #[allow(non_snake_case)]
-    pub fn ST() -> Self {
-        RosyType {
-            base_type: RosyBaseType::ST,
-            dimensions: 0,
-        }
-    }
+    pub const fn ST() -> Self { Self::new(RosyBaseType::ST, 0) }
     #[allow(non_snake_case)]
-    pub fn LO() -> Self {
-        RosyType {
-            base_type: RosyBaseType::LO,
-            dimensions: 0,
-        }
-    }
+    pub const fn LO() -> Self { Self::new(RosyBaseType::LO, 0) }
     #[allow(non_snake_case)]
-    pub fn CM() -> Self {
-        RosyType {
-            base_type: RosyBaseType::CM,
-            dimensions: 0,
-        }
-    }
+    pub const fn CM() -> Self { Self::new(RosyBaseType::CM, 0) }
     #[allow(non_snake_case)]
-    pub fn VE() -> Self {
-        RosyType {
-            base_type: RosyBaseType::VE,
-            dimensions: 0,
-        }
-    }
+    pub const fn VE() -> Self { Self::new(RosyBaseType::VE, 0) }
     #[allow(non_snake_case)]
-    pub fn DA() -> Self {
-        RosyType {
-            base_type: RosyBaseType::DA,
-            dimensions: 0,
-        }
-    }
+    pub const fn DA() -> Self { Self::new(RosyBaseType::DA, 0) }
     #[allow(non_snake_case)]
-    pub fn CD() -> Self {
-        RosyType {
-            base_type: RosyBaseType::CD,
-            dimensions: 0,
-        }
-    }
+    pub const fn CD() -> Self { Self::new(RosyBaseType::CD, 0) }
 
     /// Returns true if this type implements Copy in Rust (cheap to duplicate).
     /// RE (f64), LO (bool), CM (Complex64) are Copy at dimension 0.

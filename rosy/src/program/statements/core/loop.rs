@@ -132,15 +132,15 @@ impl TranspileableStatement for LoopStatement {
         _resolver: &mut TypeResolver,
         _ctx: &mut ScopeContext,
         _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
+    ) -> Option<Result<()>> {
+        None
     }
     fn wire_inference_edges(
         &self,
         resolver: &mut TypeResolver,
         ctx: &mut ScopeContext,
         source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
+    ) -> Option<Result<()>> {
         let mut inner_ctx = ctx.clone();
         // Loop iterator is always RE
         let iter_slot = TypeSlot::Variable(ctx.scope_path.clone(), self.iterator.clone());
@@ -150,19 +150,17 @@ impl TranspileableStatement for LoopStatement {
             Some(source_location),
         );
         inner_ctx.variables.insert(self.iterator.clone(), iter_slot);
-        InferenceEdgeResult::HasEdges {
-            result: resolver.discover_slots(&self.body, &mut inner_ctx),
-        }
+        Some(resolver.discover_slots(&self.body, &mut inner_ctx),)
     }
     fn hydrate_resolved_types(
         &mut self,
         resolver: &TypeResolver,
         current_scope: &[String],
-    ) -> TypeHydrationResult {
+    ) -> Option<Result<()>> {
         if let Err(e) = resolver.apply_to_ast(&mut self.body, current_scope) {
-            return TypeHydrationResult::Hydrated { result: Err(e) };
+            return Some(Err(e));
         }
-        TypeHydrationResult::Hydrated { result: Ok(()) }
+        Some(Ok(()))
     }
 }
 impl Transpile for LoopStatement {

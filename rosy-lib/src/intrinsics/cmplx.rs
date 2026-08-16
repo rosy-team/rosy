@@ -1,37 +1,15 @@
-use std::collections::HashMap;
-
-use crate::{IntrinsicTypeRule, RosyType};
+use crate::RosyType;
 use crate::{RE, CM, DA, CD};
-
-/// Type registry for CMPLX intrinsic function (convert to complex).
-///
-/// According to COSY INFINITY manual, CMPLX supports:
-/// - RE -> CM
-/// - CM -> CM (identity)
-pub const CMPLX_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("RE", "CM", "1.5"),
-    IntrinsicTypeRule::new("CM", "CM", "CM(1.5&2.5)"),
-    IntrinsicTypeRule::new("DA", "CD", "DA(1)"),
-    IntrinsicTypeRule::new("CD", "CD", "CD(1)"),
-];
 
 /// Get the return type of CMPLX for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec![
-            (RosyType::RE(), RosyType::CM()),
-            (RosyType::CM(), RosyType::CM()),
-            (RosyType::DA(), RosyType::CD()),
-            (RosyType::CD(), RosyType::CD()),
-        ];
-        for (input_type, result_type) in all {
-            m.insert(input_type, result_type);
-        }
-        m
-    };
-
-    registry.get(input).copied()
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::CM()),
+        t if *t == RosyType::CM() => Some(RosyType::CM()),
+        t if *t == RosyType::DA() => Some(RosyType::CD()),
+        t if *t == RosyType::CD() => Some(RosyType::CD()),
+        _ => None,
+    }
 }
 
 /// Trait for converting Rosy data types to complex.

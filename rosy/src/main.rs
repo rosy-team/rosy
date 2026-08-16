@@ -275,7 +275,9 @@ fn compile_source(
         cmd.stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
     }
-    let output = cmd.output().context("Failed to spawn cargo build process")?;
+    let output = cmd
+        .output()
+        .context("Failed to spawn cargo build process")?;
     if !output.status.success() {
         if quiet {
             let stderr = String::from_utf8_lossy(&output.stderr);

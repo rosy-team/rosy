@@ -13,8 +13,8 @@ use crate::operators::{TypeRule, build_type_registry};
 
 /// Type compatibility registry for greater-than operator.
 pub const GT_REGISTRY: &[TypeRule] = &[
-    TypeRule::with_comment("RE", "RE", "LO", "2.0", "1.0", "Numeric greater-than"),
-    TypeRule::with_comment("ST", "ST", "LO", "'banana'", "'apple'", "Lexicographic ordering"),
+    TypeRule::new("RE", "RE", "LO"),
+    TypeRule::new("ST", "ST", "LO"),
 ];
 
 static GT_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();

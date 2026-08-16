@@ -158,7 +158,7 @@ impl TranspileableStatement for FunctionStatement {
         resolver: &mut TypeResolver,
         ctx: &mut ScopeContext,
         source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
+    ) -> Option<Result<()>> {
         // Return type slot
         let ret_slot = TypeSlot::FunctionReturn(ctx.scope_path.clone(), self.name.clone());
         resolver.insert_slot(
@@ -217,7 +217,7 @@ impl TranspileableStatement for FunctionStatement {
             .insert(self.name.clone(), inner_ret_var_slot.clone());
 
         if let Err(e) = resolver.discover_slots(&self.body, &mut inner_ctx) {
-            return TypeslotDeclarationResult::VarFuncOrProcedureDecl { result: Err(e) };
+            return Some(Err(e));
         }
 
         // If the return type is NOT explicit, it depends on the inner return var
@@ -235,21 +235,21 @@ impl TranspileableStatement for FunctionStatement {
                 node.depends_on.insert(inner_ret_var_slot);
         }
 
-        TypeslotDeclarationResult::VarFuncOrProcedureDecl { result: Ok(()) }
+        Some(Ok(()))
     }
     fn wire_inference_edges(
         &self,
         _resolver: &mut TypeResolver,
         _ctx: &mut ScopeContext,
         _source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
-        InferenceEdgeResult::NoEdges
+    ) -> Option<Result<()>> {
+        None
     }
     fn hydrate_resolved_types(
         &mut self,
         resolver: &TypeResolver,
         current_scope: &[String],
-    ) -> TypeHydrationResult {
+    ) -> Option<Result<()>> {
         // Return type
         if self.return_type.is_none() {
             let slot = TypeSlot::FunctionReturn(current_scope.to_vec(), self.name.clone());
@@ -277,10 +277,10 @@ impl TranspileableStatement for FunctionStatement {
         let mut inner_scope = current_scope.to_vec();
         inner_scope.push(self.name.clone());
         if let Err(e) = resolver.apply_to_ast(&mut self.body, &inner_scope) {
-            return TypeHydrationResult::Hydrated { result: Err(e) };
+            return Some(Err(e));
         }
 
-        TypeHydrationResult::Hydrated { result: Ok(()) }
+        Some(Ok(()))
     }
 }
 impl Transpile for FunctionStatement {

@@ -179,15 +179,15 @@ impl TranspileableStatement for PLoopStatement {
         _resolver: &mut TypeResolver,
         _ctx: &mut ScopeContext,
         _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
+    ) -> Option<Result<()>> {
+        None
     }
     fn wire_inference_edges(
         &self,
         resolver: &mut TypeResolver,
         ctx: &mut ScopeContext,
         source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
+    ) -> Option<Result<()>> {
         let mut inner_ctx = ctx.clone();
         let iter_slot = TypeSlot::Variable(ctx.scope_path.clone(), self.iterator.clone());
         resolver.insert_slot(
@@ -195,19 +195,17 @@ impl TranspileableStatement for PLoopStatement {
             Some(&RosyType::RE()),
             Some(source_location),
         );
-        InferenceEdgeResult::HasEdges {
-            result: resolver.discover_slots(&self.body, &mut inner_ctx),
-        }
+        Some(resolver.discover_slots(&self.body, &mut inner_ctx),)
     }
     fn hydrate_resolved_types(
         &mut self,
         resolver: &TypeResolver,
         current_scope: &[String],
-    ) -> TypeHydrationResult {
+    ) -> Option<Result<()>> {
         if let Err(e) = resolver.apply_to_ast(&mut self.body, current_scope) {
-            return TypeHydrationResult::Hydrated { result: Err(e) };
+            return Some(Err(e));
         }
-        TypeHydrationResult::Hydrated { result: Ok(()) }
+        Some(Ok(()))
     }
 }
 impl Transpile for PLoopStatement {

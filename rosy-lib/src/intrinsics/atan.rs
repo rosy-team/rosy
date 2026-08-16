@@ -1,38 +1,14 @@
-use std::collections::HashMap;
-
-use crate::{IntrinsicTypeRule, RosyType};
+use crate::RosyType;
 use crate::{RE, VE, DA};
-
-/// Type registry for ATAN intrinsic function.
-///
-/// According to COSY INFINITY manual, ATAN supports:
-/// - RE -> RE
-/// - VE -> VE (elementwise)
-/// - DA -> DA (Taylor composition)
-///
-/// Note: CM is NOT supported for ATAN in COSY.
-pub const ATAN_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("RE", "RE", "1.5"),
-    IntrinsicTypeRule::new("VE", "VE", "1.5&2.5&3.5"),
-    IntrinsicTypeRule::new("DA", "DA", "DA(1)"),
-];
 
 /// Get the return type of ATAN for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec![
-            (RosyType::RE(), RosyType::RE()),
-            (RosyType::VE(), RosyType::VE()),
-            (RosyType::DA(), RosyType::DA()),
-        ];
-        for (input_type, result_type) in all {
-            m.insert(input_type, result_type);
-        }
-        m
-    };
-
-    registry.get(input).copied()
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::RE()),
+        t if *t == RosyType::VE() => Some(RosyType::VE()),
+        t if *t == RosyType::DA() => Some(RosyType::DA()),
+        _ => None,
+    }
 }
 
 /// Trait for computing arctangent of Rosy data types.
@@ -73,7 +49,7 @@ impl RosyATAN for DA {
 /// Differentiating n times: (1+x²)*f^(n+1) + 2*n*x*f^(n) + n*(n-1)*f^(n-1) = 0
 /// => f^(n+1) = -[2*n*x*f^(n) + n*(n-1)*f^(n-1)] / (1+x²)
 fn da_atan(da: &DA) -> anyhow::Result<DA> {
-    use crate::taylor::DACoefficient;
+    
 
     let rt = crate::taylor::get_runtime()?;
     let nocut = rt.config.max_order as usize;

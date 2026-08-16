@@ -33,21 +33,21 @@ use crate::operators::{TypeRule, build_type_registry};
 /// See manual.md Section A.2 "& (Concatenation)" for the authoritative list.
 /// GR (Graphics) type is not yet implemented in Rosy.
 pub const CONCAT_REGISTRY: &[TypeRule] = &[
-    TypeRule::with_comment("RE", "RE", "VE", "1", "1", "Concatenate two Reals to a Vector"),
-    TypeRule::with_comment("RE", "VE", "VE", "1", "1&2&3", "Prepend a Real to the left of a Vector"),
-    TypeRule::with_comment("ST", "ST", "ST", "'He'", "'ya!'", "Concatenate two Strings"),
-    TypeRule::with_comment("VE", "RE", "VE", "1&2", "3", "Append a Real to the right of a Vector"),
-    TypeRule::with_comment("VE", "VE", "VE", "1&2", "3&4", "Concatenate two Vectors"),
+    TypeRule::new("RE", "RE", "VE"),
+    TypeRule::new("RE", "VE", "VE"),
+    TypeRule::new("ST", "ST", "ST"),
+    TypeRule::new("VE", "RE", "VE"),
+    TypeRule::new("VE", "VE", "VE"),
     // DA concatenation — builds vectors of Taylor series (phase-space maps)
-    TypeRule::with_comment("DA", "DA", "DA1", "DA(1)", "DA(2)", "Concatenate two DAs to a DA vector"),
-    TypeRule::with_comment("DA", "DA1", "DA1", "DA(1)", "DA(1)&DA(2)", "Prepend a DA to the left of a DA vector"),
-    TypeRule::with_comment("DA1", "DA", "DA1", "DA(1)&DA(2)", "DA(3)", "Append a DA to the right of a DA vector"),
-    TypeRule::with_comment("DA1", "DA1", "DA1", "DA(1)&DA(2)", "DA(3)&DA(4)", "Concatenate two DA vectors"),
+    TypeRule::new("DA", "DA", "DA1"),
+    TypeRule::new("DA", "DA1", "DA1"),
+    TypeRule::new("DA1", "DA", "DA1"),
+    TypeRule::new("DA1", "DA1", "DA1"),
     // CD concatenation — builds vectors of complex Taylor series
-    TypeRule::with_comment("CD", "CD", "CD1", "CD(1)", "CD(2)", "Concatenate two CDs to a CD vector"),
-    TypeRule::with_comment("CD", "CD1", "CD1", "CD(1)", "CD(1)&CD(2)", "Prepend a CD to the left of a CD vector"),
-    TypeRule::with_comment("CD1", "CD", "CD1", "CD(1)&CD(2)", "CD(3)", "Append a CD to the right of a CD vector"),
-    TypeRule::with_comment("CD1", "CD1", "CD1", "CD(1)&CD(2)", "CD(3)&CD(4)", "Concatenate two CD vectors"),
+    TypeRule::new("CD", "CD", "CD1"),
+    TypeRule::new("CD", "CD1", "CD1"),
+    TypeRule::new("CD1", "CD", "CD1"),
+    TypeRule::new("CD1", "CD1", "CD1"),
     // GR & GR => GR is in COSY but GR type not implemented in Rosy yet
 ];
 

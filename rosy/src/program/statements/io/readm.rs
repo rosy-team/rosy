@@ -34,16 +34,8 @@ use std::collections::BTreeSet;
 
 use crate::{
     ast::*,
-    program::{
-        expressions::{Expr, core::variable_identifier::VariableIdentifier},
-        statements::SourceLocation,
-    },
-    resolve::{ScopeContext, TypeResolver},
-    transpile::{
-        InferenceEdgeResult, TranspilationInputContext, TranspilationOutput, Transpile,
-        TranspileableExpr, TranspileableStatement, TypeHydrationResult, TypeslotDeclarationResult,
-        ValueKind, add_context_to_all,
-    },
+    program::expressions::{Expr, core::variable_identifier::VariableIdentifier},
+    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, TranspileableStatement, ValueKind, add_context_to_all},
 };
 
 /// AST node for `READM output_var var_info length dp_array int_array da_params;`.
@@ -126,31 +118,6 @@ impl FromRule for ReadmStatement {
     }
 }
 
-impl TranspileableStatement for ReadmStatement {
-    fn register_typeslot_declaration(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
-    }
-    fn wire_inference_edges(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
-        InferenceEdgeResult::NoEdges
-    }
-    fn hydrate_resolved_types(
-        &mut self,
-        _resolver: &TypeResolver,
-        _current_scope: &[String],
-    ) -> TypeHydrationResult {
-        TypeHydrationResult::NothingToHydrate
-    }
-}
 
 impl Transpile for ReadmStatement {
     fn transpile(
@@ -285,3 +252,5 @@ impl Transpile for ReadmStatement {
         })
     }
 }
+
+impl TranspileableStatement for ReadmStatement {}

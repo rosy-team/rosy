@@ -12,7 +12,7 @@
 //! This matches COSY's MTREE output format so programs ported from COSY
 //! that use MTREE for fast map evaluation will work correctly.
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use crate::taylor::{self, DA};
 
 /// Build the tree representation of a DA vector.

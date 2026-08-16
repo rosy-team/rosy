@@ -24,10 +24,7 @@
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
 use rosy_lib::BinaryOp;
-use crate::transpile::{
-    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
-    TranspileableExpr, ValueKind,
-};
+use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind};
 use anyhow::{Context as AnyhowContext, Error, Result};
 use rosy_lib::RosyType;
 use std::collections::{BTreeSet, HashSet};
@@ -87,13 +84,11 @@ impl TranspileableExpr for DeriveExpr {
         &self,
         resolver: &mut TypeResolver,
         ctx: &ScopeContext,
-    ) -> ExprFunctionCallResult {
+    ) -> Option<Result<()>> {
         if let Err(e) = resolver.discover_expr_function_calls(&self.object, ctx) {
-            return ExprFunctionCallResult::HasFunctionCalls { result: Err(e) };
+            return Some(Err(e));
         }
-        ExprFunctionCallResult::HasFunctionCalls {
-            result: resolver.discover_expr_function_calls(&self.index, ctx),
-        }
+        Some(resolver.discover_expr_function_calls(&self.index, ctx),)
     }
     fn build_expr_recipe(
         &self,

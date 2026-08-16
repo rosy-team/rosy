@@ -18,16 +18,8 @@ use std::collections::BTreeSet;
 
 use crate::{
     ast::*,
-    program::{
-        expressions::{Expr, core::variable_identifier::VariableIdentifier},
-        statements::SourceLocation,
-    },
-    resolve::{ScopeContext, TypeResolver},
-    transpile::{
-        InferenceEdgeResult, TranspilationInputContext, TranspilationOutput, Transpile,
-        TranspileableExpr, TranspileableStatement, TypeHydrationResult, TypeslotDeclarationResult,
-        add_context_to_all,
-    },
+    program::expressions::{Expr, core::variable_identifier::VariableIdentifier},
+    transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, TranspileableStatement, add_context_to_all},
 };
 
 /// AST node for `READB unit variable;`.
@@ -63,31 +55,6 @@ impl FromRule for ReadbStatement {
         .ok_or_else(|| anyhow::anyhow!("Expected variable identifier for READB statement"))?;
 
         Ok(Some(ReadbStatement { unit, identifier }))
-    }
-}
-impl TranspileableStatement for ReadbStatement {
-    fn register_typeslot_declaration(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
-    }
-    fn wire_inference_edges(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
-        InferenceEdgeResult::NoEdges
-    }
-    fn hydrate_resolved_types(
-        &mut self,
-        _resolver: &TypeResolver,
-        _current_scope: &[String],
-    ) -> TypeHydrationResult {
-        TypeHydrationResult::NothingToHydrate
     }
 }
 impl Transpile for ReadbStatement {
@@ -156,3 +123,5 @@ impl Transpile for ReadbStatement {
         }
     }
 }
+
+impl TranspileableStatement for ReadbStatement {}

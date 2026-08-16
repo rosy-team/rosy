@@ -1,39 +1,15 @@
-use std::collections::HashMap;
-
-use crate::{IntrinsicTypeRule, RosyType};
+use crate::RosyType;
 use crate::{RE, CM, VE, DA};
-
-/// Type registry for COSH intrinsic function.
-///
-/// According to COSY INFINITY manual, COSH supports:
-/// - RE -> RE
-/// - CM -> CM (complex hyperbolic cosine)
-/// - VE -> VE (elementwise)
-/// - DA -> DA (Taylor composition)
-pub const COSH_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("RE", "RE", "1.5"),
-    IntrinsicTypeRule::new("CM", "CM", "CM(1.5&2.5)"),
-    IntrinsicTypeRule::new("VE", "VE", "1.5&2.5&3.5"),
-    IntrinsicTypeRule::new("DA", "DA", "DA(1)"),
-];
 
 /// Get the return type of COSH for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec![
-            (RosyType::RE(), RosyType::RE()),
-            (RosyType::CM(), RosyType::CM()),
-            (RosyType::VE(), RosyType::VE()),
-            (RosyType::DA(), RosyType::DA()),
-        ];
-        for (input_type, result_type) in all {
-            m.insert(input_type, result_type);
-        }
-        m
-    };
-
-    registry.get(input).copied()
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::RE()),
+        t if *t == RosyType::CM() => Some(RosyType::CM()),
+        t if *t == RosyType::VE() => Some(RosyType::VE()),
+        t if *t == RosyType::DA() => Some(RosyType::DA()),
+        _ => None,
+    }
 }
 
 /// Trait for computing hyperbolic cosine of Rosy data types.

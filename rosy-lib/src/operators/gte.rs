@@ -15,8 +15,8 @@ use crate::operators::{TypeRule, build_type_registry};
 
 /// Type compatibility registry for greater-than-or-equal operator.
 pub const GTE_REGISTRY: &[TypeRule] = &[
-    TypeRule::with_comment("RE", "RE", "LO", "2.0", "2.0", "Numeric greater-than-or-equal"),
-    TypeRule::with_comment("ST", "ST", "LO", "'banana'", "'banana'", "Lexicographic ordering"),
+    TypeRule::new("RE", "RE", "LO"),
+    TypeRule::new("ST", "ST", "LO"),
 ];
 
 static GTE_MAP: OnceLock<HashMap<(RosyType, RosyType), RosyType>> = OnceLock::new();

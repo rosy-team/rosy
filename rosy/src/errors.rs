@@ -17,14 +17,12 @@ pub struct RosyError {
     /// Where in the source the error occurred.
     pub location: Option<SourceLocation>,
     /// The severity of the error.
-    pub severity: RosyErrorSeverity,
-}
+    pub severity: RosyErrorSeverity}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RosyErrorSeverity {
     Error,
-    Warning,
-}
+    Warning}
 
 impl RosyError {
     /// Create an error at a known source location.
@@ -32,8 +30,7 @@ impl RosyError {
         RosyError {
             message: message.into(),
             location: Some(location),
-            severity: RosyErrorSeverity::Error,
-        }
+            severity: RosyErrorSeverity::Error}
     }
 
     /// Create an error without a known location.
@@ -41,8 +38,7 @@ impl RosyError {
         RosyError {
             message: message.into(),
             location: None,
-            severity: RosyErrorSeverity::Error,
-        }
+            severity: RosyErrorSeverity::Error}
     }
 
     /// Create a warning at a known source location.
@@ -50,8 +46,7 @@ impl RosyError {
         RosyError {
             message: message.into(),
             location: Some(location),
-            severity: RosyErrorSeverity::Warning,
-        }
+            severity: RosyErrorSeverity::Warning}
     }
 }
 

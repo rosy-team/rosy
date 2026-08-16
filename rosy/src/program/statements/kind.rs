@@ -1,10 +1,7 @@
 //! Closed statement AST. Replaces `Box<dyn TranspileableStatement>`.
 
 use super::*;
-use crate::transpile::{
-    InferenceEdgeResult, TranspilationInputContext, TranspilationOutput, Transpile,
-    TranspileableStatement, TypeHydrationResult, TypeslotDeclarationResult,
-};
+use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement};
 use crate::resolve::{ScopeContext, TypeResolver};
 use crate::program::statements::SourceLocation;
 use anyhow::{Error, Result};
@@ -32,7 +29,7 @@ macro_rules! stmt_kind {
                 resolver: &mut TypeResolver,
                 ctx: &mut ScopeContext,
                 source_location: SourceLocation,
-            ) -> TypeslotDeclarationResult {
+            ) -> Option<Result<()>> {
                 match self {
                     $(Self::$var(s) => s.register_typeslot_declaration(resolver, ctx, source_location),)+
                 }
@@ -42,7 +39,7 @@ macro_rules! stmt_kind {
                 resolver: &mut TypeResolver,
                 ctx: &mut ScopeContext,
                 source_location: SourceLocation,
-            ) -> InferenceEdgeResult {
+            ) -> Option<Result<()>> {
                 match self {
                     $(Self::$var(s) => s.wire_inference_edges(resolver, ctx, source_location),)+
                 }
@@ -51,7 +48,7 @@ macro_rules! stmt_kind {
                 &mut self,
                 resolver: &TypeResolver,
                 current_scope: &[String],
-            ) -> TypeHydrationResult {
+            ) -> Option<Result<()>> {
                 match self {
                     $(Self::$var(s) => s.hydrate_resolved_types(resolver, current_scope),)+
                 }

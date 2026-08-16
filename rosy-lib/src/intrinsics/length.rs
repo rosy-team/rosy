@@ -1,50 +1,18 @@
-use std::collections::HashMap;
-
-use crate::{IntrinsicTypeRule, RosyType};
+use crate::RosyType;
 use crate::{RE, ST, LO, CM, VE, DA, CD};
-
-/// Type registry for LENGTH intrinsic function.
-/// 
-/// According to COSY INFINITY manual, LENGTH returns RE for all types:
-/// - RE -> RE
-/// - ST -> RE  
-/// - LO -> RE
-/// - CM -> RE
-/// - VE -> RE
-/// - DA -> RE
-/// - CD -> RE
-/// - GR -> RE (not implemented yet)
-pub const LENGTH_REGISTRY: &[IntrinsicTypeRule] = &[
-    IntrinsicTypeRule::new("RE", "RE", "1.5"),
-    IntrinsicTypeRule::new("ST", "RE", "\"Hello\""),
-    IntrinsicTypeRule::new("LO", "RE", "TRUE"),
-    IntrinsicTypeRule::new("CM", "RE", "1.5&2.5"),
-    IntrinsicTypeRule::new("VE", "RE", "1.5&2.5&3.5"),
-    IntrinsicTypeRule::new("DA", "RE", "1.5+DA(1)"),
-    IntrinsicTypeRule::new("CD", "RE", "CM(1.5&2.5)+CD(1)"),
-];
-
 
 /// Get the return type of LENGTH for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    let registry: HashMap<RosyType, RosyType> = {
-        let mut m = HashMap::new();
-        let all = vec![
-            (RosyType::RE(), RosyType::RE()),
-            (RosyType::ST(), RosyType::RE()),
-            (RosyType::LO(), RosyType::RE()),
-            (RosyType::CM(), RosyType::RE()),
-            (RosyType::VE(), RosyType::RE()),
-            (RosyType::DA(), RosyType::RE()),
-            (RosyType::CD(), RosyType::RE()),
-        ];
-        for (input_type, result_type) in all {
-            m.insert(input_type, result_type);
-        }
-        m
-    };
-
-    registry.get(input).copied()
+    match input {
+        t if *t == RosyType::RE() => Some(RosyType::RE()),
+        t if *t == RosyType::ST() => Some(RosyType::RE()),
+        t if *t == RosyType::LO() => Some(RosyType::RE()),
+        t if *t == RosyType::CM() => Some(RosyType::RE()),
+        t if *t == RosyType::VE() => Some(RosyType::RE()),
+        t if *t == RosyType::DA() => Some(RosyType::RE()),
+        t if *t == RosyType::CD() => Some(RosyType::RE()),
+        _ => None,
+    }
 }
 
 /// Trait for getting the LENGTH (memory size in 8-byte blocks) of Rosy data types.

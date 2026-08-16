@@ -22,7 +22,7 @@ use crate::{
         expressions::{Expr, core::var_expr::function_call_transpile_helper},
         statements::SourceLocation,
     },
-    resolve::*,
+    resolve::{ScopeContext, TypeResolver},
     transpile::*,
 };
 
@@ -64,38 +64,22 @@ impl FromRule for FunctionCallStatement {
         Ok(Some(FunctionCallStatement { name, args }))
     }
 }
-impl TranspileableStatement for FunctionCallStatement {
-    fn register_typeslot_declaration(
-        &self,
-        _resolver: &mut TypeResolver,
-        _ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> TypeslotDeclarationResult {
-        TypeslotDeclarationResult::NotAVarFuncOrProcedureDecl
-    }
-    fn wire_inference_edges(
-        &self,
-        resolver: &mut TypeResolver,
-        ctx: &mut ScopeContext,
-        _source_location: SourceLocation,
-    ) -> InferenceEdgeResult {
-        InferenceEdgeResult::HasEdges {
-            result: resolver.discover_call_site_deps(&self.name, &self.args, true, ctx),
-        }
-    }
-    fn hydrate_resolved_types(
-        &mut self,
-        _resolver: &TypeResolver,
-        _current_scope: &[String],
-    ) -> TypeHydrationResult {
-        TypeHydrationResult::NothingToHydrate
-    }
-}
 impl Transpile for FunctionCallStatement {
     fn transpile(
         &self,
         context: &mut TranspilationInputContext,
     ) -> Result<TranspilationOutput, Vec<Error>> {
         function_call_transpile_helper(&self.name, &self.args, context)
+    }
+}
+
+impl TranspileableStatement for FunctionCallStatement {
+    fn wire_inference_edges(
+        &self,
+        resolver: &mut TypeResolver,
+        ctx: &mut ScopeContext,
+        _source_location: SourceLocation,
+    ) -> Option<Result<()>> {
+        Some(resolver.discover_call_site_deps(&self.name, &self.args, true, ctx))
     }
 }

@@ -26,10 +26,7 @@
 use crate::ast::{FromRule, Rule};
 use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
-use crate::transpile::{
-    ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
-    TranspileableExpr, ValueKind, VariableScope,
-};
+use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind, VariableScope};
 use anyhow::{Context, Error, Result};
 use rosy_lib::{RosyBaseType, RosyType};
 use std::collections::BTreeSet;
@@ -72,14 +69,14 @@ impl TranspileableExpr for ConcatExpr {
         &self,
         resolver: &mut TypeResolver,
         ctx: &ScopeContext,
-    ) -> ExprFunctionCallResult {
+    ) -> Option<Result<()>> {
         if let Err(e) = resolver.discover_expr_function_calls(&self.left, ctx) {
-            return ExprFunctionCallResult::HasFunctionCalls { result: Err(e) };
+            return Some(Err(e));
         }
         if let Err(e) = resolver.discover_expr_function_calls(&self.right, ctx) {
-            return ExprFunctionCallResult::HasFunctionCalls { result: Err(e) };
+            return Some(Err(e));
         }
-        ExprFunctionCallResult::HasFunctionCalls { result: Ok(()) }
+        Some(Ok(()))
     }
     fn build_expr_recipe(
         &self,
