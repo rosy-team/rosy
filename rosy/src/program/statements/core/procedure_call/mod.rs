@@ -64,7 +64,7 @@ impl FromRule for ProcedureCallStatement {
 
         let mut args = Vec::new();
         // Collect all remaining arguments (expressions)
-        while let Some(arg_pair) = inner.next() {
+        for arg_pair in inner {
             if arg_pair.as_rule() == Rule::semicolon {
                 break;
             }
@@ -155,8 +155,8 @@ impl Transpile for ProcedureCallStatement {
             )])?;
 
             let serialized_arg = match var_data.scope {
-                VariableScope::Higher => format!("{}", var),
-                VariableScope::Arg => format!("{}", var),
+                VariableScope::Higher => var.to_string(),
+                VariableScope::Arg => var.to_string(),
                 VariableScope::Local => format!("&mut {}", var),
             };
             serialized_args.push(serialized_arg);
@@ -222,8 +222,7 @@ impl Transpile for ProcedureCallStatement {
                             proc_context.args.len(),
                             self.args.len()
                         )])?
-                        .r#type
-                        .clone();
+                        .r#type;
                     if provided_type != expected_type {
                         errors.push(anyhow!(
                             "procedure '{}' expects argument {} ('{}') to be of type '{}', but type '{}' was provided!",

@@ -114,13 +114,13 @@ fn extract_location_from_anyhow(error: &anyhow::Error) -> Option<Position> {
     // with a source location. Inner errors are more precise than outer wrappers.
     let mut best = None;
     for cause in error.chain() {
-        if let Some(rosy_err) = cause.downcast_ref::<RosyError>() {
-            if let Some(loc) = &rosy_err.location {
-                best = Some(Position::new(
-                    loc.line.saturating_sub(1) as u32,
-                    loc.col.saturating_sub(1) as u32,
-                ));
-            }
+        if let Some(rosy_err) = cause.downcast_ref::<RosyError>()
+            && let Some(loc) = &rosy_err.location
+        {
+            best = Some(Position::new(
+                loc.line.saturating_sub(1) as u32,
+                loc.col.saturating_sub(1) as u32,
+            ));
         }
     }
     best
@@ -131,11 +131,10 @@ fn extract_location_from_anyhow(error: &anyhow::Error) -> Option<Position> {
 /// `source_path` is used to resolve INCLUDE directives. Pass `None` for
 /// unsaved buffers (INCLUDEs with relative paths will produce diagnostics).
 pub fn analyze(source: &str, source_path: Option<&std::path::Path>) -> AnalysisResult {
-    let mut result = AnalysisResult::default();
-
-    // Semantic tokens are produced by scanning the source text directly,
-    // so they work even when the parse fails (partial highlighting).
-    result.semantic_tokens = tokenize_source(source);
+    let mut result = AnalysisResult {
+        semantic_tokens: tokenize_source(source),
+        ..Default::default()
+    };
 
     // Step 1: Parse
     let pairs = match CosyParser::parse(Rule::program, source) {
@@ -230,7 +229,7 @@ pub fn analyze(source: &str, source_path: Option<&std::path::Path>) -> AnalysisR
 
     // Step 4: Extract resolved types for inlay hints from the resolver's graph nodes.
     if let Some(resolver) = resolver {
-        for (_slot, node) in &resolver.nodes {
+        for node in resolver.nodes.values() {
             extract_inlay_hint(node, &mut result.variable_types);
         }
     }

@@ -87,7 +87,7 @@ impl FromRule for IfStatement {
             .ok_or_else(|| anyhow::anyhow!("Expected expression for IF condition"))?;
 
             let mut then_body = Vec::new();
-            while let Some(stmt_pair) = if_clause_inner.next() {
+            for stmt_pair in if_clause_inner {
                 if stmt_pair.as_rule() == Rule::semicolon {
                     continue;
                 }
@@ -106,7 +106,7 @@ impl FromRule for IfStatement {
         // Parse ELSEIF clauses
         let mut elseif_clauses = Vec::new();
         let mut else_body = None;
-        while let Some(element) = inner.next() {
+        for element in inner {
             match element.as_rule() {
                 Rule::elseif_clause => {
                     let mut elseif_inner = element.into_inner();
@@ -120,7 +120,7 @@ impl FromRule for IfStatement {
                     .ok_or_else(|| anyhow::anyhow!("Expected expression for ELSEIF condition"))?;
 
                     let mut body = Vec::new();
-                    while let Some(stmt_pair) = elseif_inner.next() {
+                    for stmt_pair in elseif_inner {
                         if stmt_pair.as_rule() == Rule::semicolon {
                             continue;
                         }
@@ -139,9 +139,9 @@ impl FromRule for IfStatement {
                     elseif_clauses.push(ElseIfClause { condition, body });
                 }
                 Rule::else_clause => {
-                    let mut else_inner = element.into_inner();
+                    let else_inner = element.into_inner();
                     let mut body = Vec::new();
-                    while let Some(stmt_pair) = else_inner.next() {
+                    for stmt_pair in else_inner {
                         if stmt_pair.as_rule() == Rule::semicolon {
                             continue;
                         }
@@ -202,10 +202,10 @@ impl TranspileableStatement for IfStatement {
                 return InferenceEdgeResult::HasEdges { result: Err(e) };
             }
         }
-        if let Some(else_body) = &self.else_body {
-            if let Err(e) = resolver.discover_slots(else_body, &mut ctx.clone()) {
+        if let Some(else_body) = &self.else_body
+            && let Err(e) = resolver.discover_slots(else_body, &mut ctx.clone())
+        {
                 return InferenceEdgeResult::HasEdges { result: Err(e) };
-            }
         }
         InferenceEdgeResult::HasEdges { result: Ok(()) }
     }
@@ -222,10 +222,10 @@ impl TranspileableStatement for IfStatement {
                 return TypeHydrationResult::Hydrated { result: Err(e) };
             }
         }
-        if let Some(else_body) = &mut self.else_body {
-            if let Err(e) = resolver.apply_to_ast(else_body, current_scope) {
+        if let Some(else_body) = &mut self.else_body
+            && let Err(e) = resolver.apply_to_ast(else_body, current_scope)
+        {
                 return TypeHydrationResult::Hydrated { result: Err(e) };
-            }
         }
         TypeHydrationResult::Hydrated { result: Ok(()) }
     }

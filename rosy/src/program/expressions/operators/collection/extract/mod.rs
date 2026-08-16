@@ -72,7 +72,8 @@ impl TranspileableExpr for ExtractExpr {
             e.context("...while determining type of index expression for extraction")
         })?;
 
-        let result_type = rosy_lib::operators::extract::get_return_type(&object_type, &index_type)
+        let result_type = rosy_lib::BinaryOp::Extract
+            .return_type(&object_type, &index_type)
             .ok_or_else(|| {
                 anyhow::anyhow!(
                     "Cannot extract from type '{}' using index of type '{}'!",

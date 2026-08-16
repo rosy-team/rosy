@@ -133,13 +133,13 @@ impl TranspileableStatement for AssignStatement {
         let recipe = resolver.build_expr_recipe(value, ctx, &mut deps);
 
         if let Some(node) = resolver.nodes.get(&var_slot) {
-            if node.resolved.is_some() {
+            if let Some(&resolved) = node.resolved.as_ref() {
                 // Already has an explicit type — check that the new
                 // assignment is compatible (if evaluable now).
                 // Account for indexing on the LHS: X[I, J] := expr
                 // means we're assigning to a sub-element, so reduce
                 // the declared dimensions by the number of indices.
-                let mut explicit_type = node.resolved.as_ref().unwrap().clone();
+                let mut explicit_type = resolved;
                 let num_indices = self.identifier.num_index_dimensions();
                 if num_indices > 0
                     && explicit_type.base_type == RosyBaseType::VE
@@ -149,8 +149,9 @@ impl TranspileableStatement for AssignStatement {
                 } else {
                     explicit_type.dimensions = explicit_type.dimensions.saturating_sub(num_indices);
                 }
-                if let Ok(new_type) = resolver.evaluate_recipe(&recipe) {
-                    if new_type != explicit_type {
+                if let Ok(new_type) = resolver.evaluate_recipe(&recipe)
+                    && new_type != explicit_type
+                {
                         let scope_str = if ctx.scope_path.is_empty() {
                             "global scope".to_string()
                         } else {
@@ -235,7 +236,6 @@ impl TranspileableStatement for AssignStatement {
                         return InferenceEdgeResult::HasEdges {
                             result: Err(RosyError::at(source_location.clone(), msg).into()),
                         };
-                    }
                 }
                 return InferenceEdgeResult::HasEdges { result: Ok(()) }; // already has explicit type, no inference needed
             }
@@ -301,18 +301,15 @@ impl TranspileableStatement for AssignStatement {
                         if *dep_slot == var_slot {
                             continue;
                         }
-                        if let Some(dep_node) = resolver.nodes.get(dep_slot) {
-                            if dep_node.resolved.is_none() && dep_node.depends_on.is_empty() {
-                                if let ResolutionRule::InferredFrom { recipe: ref r, .. } =
-                                    dep_node.rule
-                                {
-                                    if let Ok(t) = resolver.evaluate_recipe(r) {
-                                        temp_leaf_slots.push(dep_slot.clone());
-                                        resolver.nodes.get_mut(dep_slot).unwrap().resolved =
-                                            Some(t);
-                                    }
-                                }
-                            }
+                        if let Some(dep_node) = resolver.nodes.get(dep_slot)
+                            && dep_node.resolved.is_none()
+                            && dep_node.depends_on.is_empty()
+                            && let ResolutionRule::InferredFrom { recipe: ref r, .. } =
+                                dep_node.rule
+                            && let Ok(t) = resolver.evaluate_recipe(r)
+                        {
+                            temp_leaf_slots.push(dep_slot.clone());
+                            resolver.nodes.get_mut(dep_slot).unwrap().resolved = Some(t);
                         }
                     }
 
@@ -325,18 +322,18 @@ impl TranspileableStatement for AssignStatement {
                 // If the new recipe failed but old succeeded, try again
                 // with a temporary assumption that the variable has the
                 // old type (handles self-referential patterns like Y:=Y&I)
-                if new_type_result.is_err() {
-                    if let Ok(ref old_type) = old_type_result {
+                if new_type_result.is_err()
+                    && let Ok(ref old_type) = old_type_result
+                {
                         // Temporarily mark this slot as resolved
                         if let Some(node) = resolver.nodes.get_mut(&var_slot) {
-                            node.resolved = Some(old_type.clone());
+                            node.resolved = Some(*old_type);
                         }
                         new_type_result = resolver.evaluate_recipe(&dimensioned_recipe);
                         // Undo the temporary resolution
                         if let Some(node) = resolver.nodes.get_mut(&var_slot) {
                             node.resolved = None;
                         }
-                    }
                 }
 
                 // Undo temporary leaf resolutions
@@ -346,8 +343,9 @@ impl TranspileableStatement for AssignStatement {
                     }
                 }
 
-                if let (Ok(old_type), Ok(new_type)) = (old_type_result, new_type_result) {
-                    if old_type != new_type {
+                if let (Ok(old_type), Ok(new_type)) = (old_type_result, new_type_result)
+                    && old_type != new_type
+                {
                         let scope_str = if ctx.scope_path.is_empty() {
                             "global scope".to_string()
                         } else {
@@ -419,7 +417,6 @@ impl TranspileableStatement for AssignStatement {
                         return InferenceEdgeResult::HasEdges {
                             result: Err(RosyError::at(source_location.clone(), msg).into()),
                         };
-                    }
                 }
             }
 
@@ -553,13 +550,12 @@ impl Transpile for AssignStatement {
         }
 
         // Optimization: detect `X := X & expr` and generate in-place append
-        if self.identifier.num_index_dimensions() == 0 {
-            if let Some(result) = value
+        if self.identifier.num_index_dimensions() == 0
+            && let Some(result) = value
                 .inner
                 .try_inplace_append(&self.identifier.name, context)
-            {
-                return result;
-            }
+        {
+            return result;
         }
 
         let mut requested_variables = BTreeSet::new();

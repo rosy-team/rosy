@@ -83,14 +83,14 @@ impl TranspileableStatement for ReranStatement {
             Some(s) => s,
             None => return InferenceEdgeResult::NoEdges,
         };
-        if let Some(node) = resolver.nodes.get_mut(slot) {
-            if node.resolved.is_none() {
+        if let Some(node) = resolver.nodes.get_mut(slot)
+            && node.resolved.is_none()
+        {
                 node.rule = ResolutionRule::InferredFrom {
                     recipe: ExprRecipe::Literal(RosyType::RE()),
                     reason: format!("inferred from RERAN at {}", source_location),
                 };
                 node.assigned_at = Some(source_location);
-            }
         }
         InferenceEdgeResult::HasEdges { result: Ok(()) }
     }

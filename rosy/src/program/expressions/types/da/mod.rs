@@ -48,11 +48,16 @@ pub struct DAExpr {
 impl FromRule for DAExpr {
     fn from_rule(pair: pest::iterators::Pair<Rule>) -> anyhow::Result<Option<Self>> {
         anyhow::ensure!(
-            pair.as_rule() == Rule::da,
-            "Expected da rule, got {:?}",
+            pair.as_rule() == Rule::builtin_function,
+            "Expected builtin_function (DA), got {:?}",
             pair.as_rule()
         );
         let mut inner = pair.into_inner();
+        let name = inner
+            .next()
+            .map(|p| p.as_str().trim().to_ascii_uppercase())
+            .unwrap_or_default();
+        anyhow::ensure!(name == "DA", "Expected DA constructor, got `{name}`");
         let expr_pair = inner.next().context("Missing inner expression for `DA`!")?;
         let index = Box::new(
             Expr::from_rule(expr_pair)

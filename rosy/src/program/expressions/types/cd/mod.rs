@@ -48,11 +48,16 @@ pub struct CDExpr {
 impl FromRule for CDExpr {
     fn from_rule(pair: pest::iterators::Pair<Rule>) -> anyhow::Result<Option<Self>> {
         anyhow::ensure!(
-            pair.as_rule() == Rule::cd_intrinsic,
-            "Expected cd_intrinsic rule, got {:?}",
+            pair.as_rule() == Rule::builtin_function,
+            "Expected builtin_function (CD), got {:?}",
             pair.as_rule()
         );
         let mut inner = pair.into_inner();
+        let name = inner
+            .next()
+            .map(|p| p.as_str().trim().to_ascii_uppercase())
+            .unwrap_or_default();
+        anyhow::ensure!(name == "CD", "Expected CD constructor, got `{name}`");
         let expr_pair = inner.next().context("Missing inner expression for `CD`!")?;
         let index = Box::new(
             Expr::from_rule(expr_pair)

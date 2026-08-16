@@ -61,13 +61,15 @@ impl TranspileableExpr for EqExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
         let left_type = self.left.type_of(context)?;
         let right_type = self.right.type_of(context)?;
-        rosy_lib::operators::eq::get_return_type(&left_type, &right_type).ok_or_else(|| {
-            anyhow::anyhow!(
-                "Cannot compare types '{}' and '{}' for equality!",
-                left_type,
-                right_type
-            )
-        })
+        rosy_lib::BinaryOp::Eq
+            .return_type(&left_type, &right_type)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Cannot compare types '{}' and '{}' for equality!",
+                    left_type,
+                    right_type
+                )
+            })
     }
     fn discover_expr_function_calls(
         &self,
@@ -98,7 +100,10 @@ impl Transpile for EqExpr {
         // First, ensure the types are compatible
         let left_type = self.left.type_of(context).map_err(|e| vec![e])?;
         let right_type = self.right.type_of(context).map_err(|e| vec![e])?;
-        if rosy_lib::operators::eq::get_return_type(&left_type, &right_type).is_none() {
+        if rosy_lib::BinaryOp::Eq
+            .return_type(&left_type, &right_type)
+            .is_none()
+        {
             return Err(vec![anyhow!(
                 "Cannot compare types '{}' and '{}' for equality!",
                 left_type,

@@ -61,13 +61,14 @@ impl TranspileableExpr for NegExpr {
         // Negation has the same type as its operand (validated via subtraction from 0)
         let operand_type = self.operand.type_of(context)?;
         // Use the sub registry to check: RE - operand_type should work
-        let zero_type = RosyType::RE();
-        rosy_lib::operators::sub::get_return_type(&zero_type, &operand_type).ok_or_else(|| {
-            anyhow!(
-                "Cannot negate type '{}' (no subtraction from RE defined)",
-                operand_type
-            )
-        })
+        rosy_lib::UnaryOp::Neg
+            .return_type(&operand_type)
+            .ok_or_else(|| {
+                anyhow!(
+                    "Cannot negate type '{}' (no subtraction from RE defined)",
+                    operand_type
+                )
+            })
     }
     fn discover_expr_function_calls(
         &self,

@@ -534,6 +534,39 @@ impl Program {
         Ok(path)
     }
 }
+
+impl Transpile for Program {
+    fn transpile(
+        &self,
+        context: &mut TranspilationInputContext,
+    ) -> Result<TranspilationOutput, Vec<Error>> {
+        let mut serialization = Vec::new();
+        let mut errors = Vec::new();
+        for statement in &self.statements {
+            match statement.transpile(context) {
+                Ok(output) => {
+                    serialization.push(output.serialization);
+                }
+                Err(stmt_errors) => {
+                    for e in stmt_errors {
+                        errors.push(e.context("...while transpiling a top-level statement"));
+                    }
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(TranspilationOutput {
+                serialization: serialization.join("\n"),
+                requested_variables: BTreeSet::new(),
+                ..Default::default()
+            })
+        } else {
+            Err(errors)
+        }
+    }
+}
+
 #[cfg(test)]
 mod include_resolution_tests {
     use super::*;
@@ -712,37 +745,5 @@ mod include_resolution_tests {
             joined.contains("Circular INCLUDE"),
             "error chain should report circular INCLUDE: {joined}"
         );
-    }
-}
-
-impl Transpile for Program {
-    fn transpile(
-        &self,
-        context: &mut TranspilationInputContext,
-    ) -> Result<TranspilationOutput, Vec<Error>> {
-        let mut serialization = Vec::new();
-        let mut errors = Vec::new();
-        for statement in &self.statements {
-            match statement.transpile(context) {
-                Ok(output) => {
-                    serialization.push(output.serialization);
-                }
-                Err(stmt_errors) => {
-                    for e in stmt_errors {
-                        errors.push(e.context("...while transpiling a top-level statement"));
-                    }
-                }
-            }
-        }
-
-        if errors.is_empty() {
-            Ok(TranspilationOutput {
-                serialization: serialization.join("\n"),
-                requested_variables: BTreeSet::new(),
-                ..Default::default()
-            })
-        } else {
-            Err(errors)
-        }
     }
 }

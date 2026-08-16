@@ -227,7 +227,7 @@ impl TranspileableExpr for VarExpr {
                             )
                         )
                     })?;
-                Ok(func_ctx.return_type.clone())
+                Ok(func_ctx.return_type)
             }
             VarExprKind::Variable => self.identifier.type_of(context).context(format!(
                 "...while determining type of variable identifier '{}'",
@@ -418,7 +418,7 @@ impl Transpile for VarExpr {
                             self.identifier.name,
                             context.variable_hint(&self.identifier.name)
                         )])?;
-                let var_type = var_data.data.r#type.clone();
+                let var_type = var_data.data.r#type;
 
                 // For indexed access, rosy_get() already returns &T — no
                 // extra reference sigil needed regardless of scope or Copy-ness.
@@ -450,7 +450,7 @@ impl Transpile for VarExpr {
 
 pub fn function_call_transpile_helper(
     name: &String,
-    args: &Vec<Expr>,
+    args: &[Expr],
     context: &mut TranspilationInputContext,
 ) -> Result<TranspilationOutput, Vec<Error>> {
     // Start by checking that the function exists
@@ -488,8 +488,8 @@ pub fn function_call_transpile_helper(
         )])?;
 
         let serialized_arg = match var_data.scope {
-            VariableScope::Higher => format!("{}", var),
-            VariableScope::Arg => format!("{}", var),
+            VariableScope::Higher => var.to_string(),
+            VariableScope::Arg => var.to_string(),
             VariableScope::Local => format!("&mut {}", var),
         };
         serialized_args.push(serialized_arg);
@@ -566,8 +566,7 @@ pub fn function_call_transpile_helper(
                         func_context.args.len(),
                         args.len()
                     )])?
-                    .r#type
-                    .clone();
+                    .r#type;
                 if provided_type != expected_type {
                     errors.push(anyhow!(
                         "Function '{}' expects argument {} ('{}') to be of type '{}', but type '{}' was provided!",

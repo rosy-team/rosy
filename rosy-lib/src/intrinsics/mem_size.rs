@@ -1,4 +1,9 @@
-use crate::{RE, VE};
+use crate::{RE, VE, RosyType};
+
+/// COSY memory-size estimators always return RE.
+pub fn always_re(_input: &RosyType) -> Option<RosyType> {
+    Some(RosyType::RE())
+}
 
 /// LST(n) - String memory allocation estimator (COSY compatibility).
 /// In COSY, LST(n) returns n (the size in 8-byte words for a string of length n).

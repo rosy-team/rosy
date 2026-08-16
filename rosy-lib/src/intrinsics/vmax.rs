@@ -1,4 +1,13 @@
-use crate::{RE, VE};
+use crate::{RE, RosyType, VE};
+
+/// VMAX: VE → RE
+pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
+    if *input == RosyType::VE() {
+        Some(RosyType::RE())
+    } else {
+        None
+    }
+}
 
 /// Trait for computing the maximum element of Rosy vector types.
 pub trait RosyVMAX {
