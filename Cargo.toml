@@ -10,9 +10,6 @@ exclude = [ ".rosy_output", ".rosy_test_cache" ]
 anyhow = "1.0"
 pest = "2.7"
 pest_derive = "2.7"
-impls = "1.0"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = [ "env-filter" ] }
 serial_test = "3.2"
 num-complex = "0.4"
 rand = "0.9"

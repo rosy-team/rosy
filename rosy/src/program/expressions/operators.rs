@@ -8,7 +8,7 @@
 //! - **[`unary`]** — `-x` (negation), `NOT x`
 //! - **[`collection`]** — `&` (concatenate), `|` (extract), `%` (DA derivative)
 //!
-//! The `^` (power) operator is in [`super::functions::math::exponential::pow`].
+//! The `^` (power) operator is in [`super::pow`].
 //!
 //! Each operator uses a registry-driven type system defined in
 //! [`rosy_lib::operators`] that serves as the

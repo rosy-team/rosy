@@ -17,7 +17,8 @@ use crate::program::Program;
 use crate::program::expressions::*;
 use crate::program::statements::*;
 use crate::transpile::{
-    ExprFunctionCallResult, InferenceEdgeResult, TypeHydrationResult, TypeslotDeclarationResult,
+    ExprFunctionCallResult, InferenceEdgeResult, TranspileableExpr, TranspileableStatement,
+    TypeHydrationResult, TypeslotDeclarationResult,
 };
 use anyhow::{Result, anyhow};
 use rosy_lib::RosyType;
@@ -113,7 +114,7 @@ pub enum ExprRecipe {
     IndexedVariable(TypeSlot, usize),
     /// A binary operator applied to two sub-recipes.
     BinaryOp {
-        op: BinaryOpKind,
+        op: rosy_lib::BinaryOp,
         left: Box<ExprRecipe>,
         right: Box<ExprRecipe>,
     },
@@ -142,33 +143,9 @@ impl ExprRecipe {
             ExprRecipe::BinaryOp { left, right, .. } | ExprRecipe::Concat(left, right) => {
                 left.references_slot(target) || right.references_slot(target)
             }
-            ExprRecipe::UnaryIntrinsic { inner, .. }
-            | ExprRecipe::WithDimensions(inner, _) => inner.references_slot(target),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum BinaryOpKind {
-    Add,
-    Sub,
-    Mult,
-    Div,
-    Extract,
-    Derive,
-    Pow,
-}
-
-impl From<BinaryOpKind> for rosy_lib::BinaryOp {
-    fn from(op: BinaryOpKind) -> Self {
-        match op {
-            BinaryOpKind::Add => Self::Add,
-            BinaryOpKind::Sub => Self::Sub,
-            BinaryOpKind::Mult => Self::Mult,
-            BinaryOpKind::Div => Self::Div,
-            BinaryOpKind::Extract => Self::Extract,
-            BinaryOpKind::Derive => Self::Derive,
-            BinaryOpKind::Pow => Self::Pow,
+            ExprRecipe::UnaryIntrinsic { inner, .. } | ExprRecipe::WithDimensions(inner, _) => {
+                inner.references_slot(target)
+            }
         }
     }
 }
@@ -434,7 +411,6 @@ impl TypeResolver {
             }
         }
 
-        let mut resolved_count: usize = 0;
         let warnings: Vec<RosyError> = Vec::new();
         let mut warned_slots: HashSet<TypeSlot> = HashSet::new();
         while let Some(slot) = queue.pop_front() {
@@ -466,8 +442,6 @@ impl TypeResolver {
                     self.resolve_node(&slot)?;
                 }
             }
-            resolved_count += 1;
-
             // Decrement in-degree for all dependents
             if let Some(deps) = dependents.get(&slot) {
                 for dep_slot in deps {
@@ -490,11 +464,6 @@ impl TypeResolver {
             .collect();
 
         if unresolved.is_empty() {
-            tracing::debug!(
-                "Type resolution complete: resolved {} slot{} successfully",
-                resolved_count,
-                if resolved_count == 1 { "" } else { "s" }
-            );
             return Ok(warnings);
         }
 
@@ -767,7 +736,7 @@ impl TypeResolver {
             ExprRecipe::BinaryOp { op, left, right } => {
                 let left_type = self.evaluate_recipe(left)?;
                 let right_type = self.evaluate_recipe(right)?;
-                let result = rosy_lib::BinaryOp::from(*op).return_type(&left_type, &right_type);
+                let result = op.return_type(&left_type, &right_type);
                 result.ok_or_else(|| {
                     anyhow!(
                         "No operator rule for {:?}({}, {})",
@@ -786,9 +755,8 @@ impl TypeResolver {
             }
             ExprRecipe::UnaryIntrinsic { name, inner } => {
                 let input_type = self.evaluate_recipe(inner)?;
-                rosy_lib::unary_return_type(name, &input_type).ok_or_else(|| {
-                    anyhow!("No {name} rule for {}", input_type)
-                })
+                rosy_lib::unary_return_type(name, &input_type)
+                    .ok_or_else(|| anyhow!("No {name} rule for {}", input_type))
             }
             ExprRecipe::Unknown(reason) => {
                 let detail = reason

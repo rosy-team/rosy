@@ -23,7 +23,7 @@ use crate::{
     ast::*,
     program::{
         expressions::{
-            Expr, functions::conversion::string_convert::string_convert_transpile_helper,
+            Expr, string_convert::string_convert_transpile_helper,
         },
         statements::SourceLocation,
     },

@@ -13,7 +13,7 @@
 //! | Use `AND`, `OR` | **[`operators::logical`]** |
 //! | Use `NOT` or unary `-` | **[`operators::unary`]** |
 //! | Call `SIN`, `ST`, … (named intrinsics) | [`core::intrinsic_call`] — types in `rosy_lib::registry` |
-//! | Raise to a power (`^`) | **[`functions::math::exponential::pow`]** |
+//! | Raise to a power (`^`) | **[`pow`]** |
 //! | Write a literal number, string, or boolean | **[`types`]** |
 //! | Construct `DA(n)` or `CD(n)` | **[`types::da`]**, **[`types::cd`]** |
 //!
@@ -29,9 +29,13 @@
 //! ```
 
 pub mod core;
-pub mod functions;
+pub mod kind;
 pub mod operators;
+pub mod pow;
+pub mod string_convert;
 pub mod types;
+
+pub use kind::ExprKind;
 
 use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile};
 use crate::{
@@ -45,7 +49,7 @@ use std::collections::HashSet;
 use crate::program::expressions::core::intrinsic_call::IntrinsicCallExpr;
 use crate::program::expressions::core::var_expr::VarExpr;
 
-use crate::program::expressions::functions::math::exponential::pow::PowExpr;
+use crate::program::expressions::pow::PowExpr;
 
 use crate::program::expressions::operators::arithmetic::add::AddExpr;
 use crate::program::expressions::operators::arithmetic::div::DivExpr;
@@ -73,7 +77,7 @@ use crate::program::statements::SourceLocation;
 
 #[derive(Debug)]
 pub struct Expr {
-    pub inner: Box<dyn TranspileableExpr>,
+    pub inner: ExprKind,
     pub source_location: SourceLocation,
 }
 
@@ -98,18 +102,18 @@ fn dispatch_builtin_function(
         "DA" => {
             anyhow::ensure!(args.len() == 1, "`DA` expects 1 argument, got {}", args.len());
             Ok(Expr {
-                inner: Box::new(DAExpr {
+                inner: DAExpr {
                     index: Box::new(args.remove(0)),
-                }),
+                }.into(),
                 source_location: loc,
             })
         }
         "CD" => {
             anyhow::ensure!(args.len() == 1, "`CD` expects 1 argument, got {}", args.len());
             Ok(Expr {
-                inner: Box::new(CDExpr {
+                inner: CDExpr {
                     index: Box::new(args.remove(0)),
-                }),
+                }.into(),
                 source_location: loc,
             })
         }
@@ -118,7 +122,7 @@ fn dispatch_builtin_function(
                 bail!("Unknown intrinsic `{name}`");
             }
             Ok(Expr {
-                inner: Box::new(IntrinsicCallExpr { name, args }),
+                inner: IntrinsicCallExpr { name, args }.into(),
                 source_location: loc,
             })
         }
@@ -150,9 +154,9 @@ impl FromRule for Expr {
                             .context("Failed to parse negation operand")?
                             .ok_or_else(|| anyhow::anyhow!("Expected expression in negation"))?;
                         Ok(Expr {
-                            inner: Box::new(NegExpr {
+                            inner: NegExpr {
                                 operand: Box::new(operand),
-                            }),
+                            }.into(),
                             source_location: loc,
                         })
                     }
@@ -172,7 +176,7 @@ impl FromRule for Expr {
                                 let b = bool::from_rule(operand_pair)?
                                     .ok_or_else(|| anyhow::anyhow!("Expected boolean"))?;
                                 Expr {
-                                    inner: Box::new(b),
+                                    inner: b.into(),
                                     source_location: op_loc,
                                 }
                             }
@@ -181,7 +185,7 @@ impl FromRule for Expr {
                                 let var_expr = VarExpr::from_rule(operand_pair)?
                                     .ok_or_else(|| anyhow::anyhow!("Expected VarExpr"))?;
                                 Expr {
-                                    inner: Box::new(var_expr),
+                                    inner: var_expr.into(),
                                     source_location: op_loc,
                                 }
                             }
@@ -197,39 +201,39 @@ impl FromRule for Expr {
                         };
 
                         Ok(Expr {
-                            inner: Box::new(NotExpr {
+                            inner: NotExpr {
                                 operand: Box::new(operand),
-                            }),
+                            }.into(),
                             source_location: not_loc,
                         })
                     }
                     Rule::variable_identifier => {
                         let var_expr = VarExpr::from_rule(primary)?;
                         Ok(Expr {
-                            inner: Box::new(
-                                var_expr.ok_or_else(|| anyhow::anyhow!("Expected VarExpr"))?,
-                            ),
+                            inner: var_expr
+                                .ok_or_else(|| anyhow::anyhow!("Expected VarExpr"))?
+                                .into(),
                             source_location: loc.clone(),
                         })
                     }
                     Rule::number => {
                         let n = f64::from_rule(primary)?;
                         Ok(Expr {
-                            inner: Box::new(n.ok_or_else(|| anyhow::anyhow!("Expected number"))?),
+                            inner: n.ok_or_else(|| anyhow::anyhow!("Expected number"))?.into(),
                             source_location: loc.clone(),
                         })
                     }
                     Rule::boolean => {
                         let b = bool::from_rule(primary)?;
                         Ok(Expr {
-                            inner: Box::new(b.ok_or_else(|| anyhow::anyhow!("Expected boolean"))?),
+                            inner: b.ok_or_else(|| anyhow::anyhow!("Expected boolean"))?.into(),
                             source_location: loc.clone(),
                         })
                     }
                     Rule::string => {
                         let s = String::from_rule(primary)?;
                         Ok(Expr {
-                            inner: Box::new(s.ok_or_else(|| anyhow::anyhow!("Expected string"))?),
+                            inner: s.ok_or_else(|| anyhow::anyhow!("Expected string"))?.into(),
                             source_location: loc.clone(),
                         })
                     }
@@ -254,10 +258,10 @@ impl FromRule for Expr {
                         let right = right
                             .context("...while transpiling right-hand side of `add` expression")?;
                         Ok(Expr {
-                            inner: Box::new(AddExpr {
+                            inner: AddExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -267,10 +271,10 @@ impl FromRule for Expr {
                         let right = right
                             .context("...while transpiling right-hand side of `sub` expression")?;
                         Ok(Expr {
-                            inner: Box::new(SubExpr {
+                            inner: SubExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -280,10 +284,10 @@ impl FromRule for Expr {
                         let right = right
                             .context("...while transpiling right-hand side of `mult` expression")?;
                         Ok(Expr {
-                            inner: Box::new(MultExpr {
+                            inner: MultExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -293,10 +297,10 @@ impl FromRule for Expr {
                         let right = right
                             .context("...while transpiling right-hand side of `div` expression")?;
                         Ok(Expr {
-                            inner: Box::new(DivExpr {
+                            inner: DivExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -305,10 +309,10 @@ impl FromRule for Expr {
                         let right =
                             right.context("...while transpiling exponent of `pow` expression")?;
                         Ok(Expr {
-                            inner: Box::new(PowExpr {
+                            inner: PowExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -320,10 +324,10 @@ impl FromRule for Expr {
                             "...while transpiling right-hand side of `concat` expression",
                         )?;
                         Ok(Expr {
-                            inner: Box::new(ConcatExpr {
+                            inner: ConcatExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -333,10 +337,10 @@ impl FromRule for Expr {
                         let right =
                             right.context("...while transpiling index of `extract` expression")?;
                         Ok(Expr {
-                            inner: Box::new(ExtractExpr {
+                            inner: ExtractExpr {
                                 object: Box::new(left),
                                 index: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -346,10 +350,10 @@ impl FromRule for Expr {
                         let right = right
                             .context("...while transpiling index of `derive` (%) expression")?;
                         Ok(Expr {
-                            inner: Box::new(DeriveExpr {
+                            inner: DeriveExpr {
                                 object: Box::new(left),
                                 index: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -359,10 +363,10 @@ impl FromRule for Expr {
                         let right = right
                             .context("...while transpiling right-hand side of `eq` expression")?;
                         Ok(Expr {
-                            inner: Box::new(EqExpr {
+                            inner: EqExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -372,10 +376,10 @@ impl FromRule for Expr {
                         let right = right
                             .context("...while transpiling right-hand side of `neq` expression")?;
                         Ok(Expr {
-                            inner: Box::new(NeqExpr {
+                            inner: NeqExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -385,10 +389,10 @@ impl FromRule for Expr {
                         let right = right
                             .context("...while transpiling right-hand side of `lt` expression")?;
                         Ok(Expr {
-                            inner: Box::new(LtExpr {
+                            inner: LtExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -398,10 +402,10 @@ impl FromRule for Expr {
                         let right = right
                             .context("...while transpiling right-hand side of `gt` expression")?;
                         Ok(Expr {
-                            inner: Box::new(GtExpr {
+                            inner: GtExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -411,10 +415,10 @@ impl FromRule for Expr {
                         let right = right
                             .context("...while transpiling right-hand side of `lte` expression")?;
                         Ok(Expr {
-                            inner: Box::new(LteExpr {
+                            inner: LteExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -424,10 +428,10 @@ impl FromRule for Expr {
                         let right = right
                             .context("...while transpiling right-hand side of `gte` expression")?;
                         Ok(Expr {
-                            inner: Box::new(GteExpr {
+                            inner: GteExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -437,10 +441,10 @@ impl FromRule for Expr {
                         let right = right
                             .context("...while transpiling right-hand side of `AND` expression")?;
                         Ok(Expr {
-                            inner: Box::new(AndExpr {
+                            inner: AndExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
@@ -450,10 +454,10 @@ impl FromRule for Expr {
                         let right = right
                             .context("...while transpiling right-hand side of `OR` expression")?;
                         Ok(Expr {
-                            inner: Box::new(OrExpr {
+                            inner: OrExpr {
                                 left: Box::new(left),
                                 right: Box::new(right),
-                            }),
+                            }.into(),
                             source_location: op_loc.clone(),
                         })
                     }
