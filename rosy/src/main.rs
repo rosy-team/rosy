@@ -11,7 +11,6 @@ use std::{
     process::Command,
     time::Instant,
 };
-use tracing::info;
 
 // ANSI color helpers (stderr only)
 const BOLD: &str = "\x1b[1m";
@@ -76,10 +75,6 @@ enum Commands {
         /// Run tests in release mode
         #[arg(short, long)]
         release: bool,
-
-        /// Ignored: one incremental cargo target is faster than N isolated rustcs
-        #[arg(short, long, default_value = "1")]
-        parallel: usize,
 
         /// Rewrite `======= expect` in fixtures from this run
         #[arg(long)]
@@ -249,9 +244,6 @@ fn compile_source(
         })?;
 
     let uses_mpi = serialization.contains("rosy_mpi_context");
-    if uses_mpi {
-        info!("Program uses PLOOP — MPI support enabled in output");
-    }
 
     embedded::create_output_project(&rosy_output_path, uses_mpi, optimized)
         .context("Failed to create output project structure")?;
@@ -540,12 +532,7 @@ fn run_single_test(
     }
 }
 
-fn run_construct_tests(
-    filter: Option<&str>,
-    release: bool,
-    parallel: usize,
-    bless: bool,
-) -> Result<()> {
+fn run_construct_tests(filter: Option<&str>, release: bool, bless: bool) -> Result<()> {
     let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cases_dir = crate_root.join("tests/constructs");
     let mut all_tests = discover_case_files(&cases_dir);
@@ -572,11 +559,6 @@ fn run_construct_tests(
     );
     if release {
         eprintln!("        Mode: release");
-    }
-    if parallel > 1 {
-        eprintln!(
-            "    {DIM}--parallel {parallel} ignored (one incremental target){RESET}"
-        );
     }
     if bless {
         eprintln!("        Bless: rewriting expect sections");
@@ -852,15 +834,6 @@ fn install_zed_extension() -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .compact()
-        .with_file(true)
-        .with_line_number(true)
-        .with_thread_ids(true)
-        .with_target(false)
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-
     // Kick off a background version check (non-blocking)
     let update_handle = update_check::spawn_update_check();
 
@@ -884,12 +857,11 @@ fn main() -> Result<()> {
     if let Commands::Test {
         filter,
         release,
-        parallel,
         bless,
     } = &cli.command
     {
         update_handle.finish();
-        return run_construct_tests(filter.as_deref(), *release, *parallel, *bless);
+        return run_construct_tests(filter.as_deref(), *release, *bless);
     }
 
     // Extract common fields and transpile

@@ -22,7 +22,8 @@
 //! ```
 
 use crate::program::expressions::Expr;
-use crate::resolve::{BinaryOpKind, ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
+use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
+use rosy_lib::BinaryOp;
 use crate::transpile::{
     ExprFunctionCallResult, TranspilationInputContext, TranspilationOutput, Transpile,
     TranspileableExpr, ValueKind,
@@ -103,7 +104,7 @@ impl TranspileableExpr for DeriveExpr {
         let left = resolver.build_expr_recipe(&self.object, ctx, deps);
         let right = resolver.build_expr_recipe(&self.index, ctx, deps);
         ExprRecipe::BinaryOp {
-            op: BinaryOpKind::Derive,
+            op: BinaryOp::Derive,
             left: Box::new(left),
             right: Box::new(right),
         }

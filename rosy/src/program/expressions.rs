@@ -13,7 +13,7 @@
 //! | Use `AND`, `OR` | **[`operators::logical`]** |
 //! | Use `NOT` or unary `-` | **[`operators::unary`]** |
 //! | Call `SIN`, `ST`, … (named intrinsics) | [`core::intrinsic_call`] — types in `rosy_lib::registry` |
-//! | Raise to a power (`^`) | **[`functions::math::exponential::pow`]** |
+//! | Raise to a power (`^`) | **[`pow`]** |
 //! | Write a literal number, string, or boolean | **[`types`]** |
 //! | Construct `DA(n)` or `CD(n)` | **[`types::da`]**, **[`types::cd`]** |
 //!
@@ -29,8 +29,9 @@
 //! ```
 
 pub mod core;
-pub mod functions;
 pub mod operators;
+pub mod pow;
+pub mod string_convert;
 pub mod types;
 
 use crate::transpile::{TranspilationInputContext, TranspilationOutput, Transpile};
@@ -45,7 +46,7 @@ use std::collections::HashSet;
 use crate::program::expressions::core::intrinsic_call::IntrinsicCallExpr;
 use crate::program::expressions::core::var_expr::VarExpr;
 
-use crate::program::expressions::functions::math::exponential::pow::PowExpr;
+use crate::program::expressions::pow::PowExpr;
 
 use crate::program::expressions::operators::arithmetic::add::AddExpr;
 use crate::program::expressions::operators::arithmetic::div::DivExpr;

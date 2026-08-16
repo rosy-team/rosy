@@ -113,7 +113,7 @@ pub enum ExprRecipe {
     IndexedVariable(TypeSlot, usize),
     /// A binary operator applied to two sub-recipes.
     BinaryOp {
-        op: BinaryOpKind,
+        op: rosy_lib::BinaryOp,
         left: Box<ExprRecipe>,
         right: Box<ExprRecipe>,
     },
@@ -144,31 +144,6 @@ impl ExprRecipe {
             }
             ExprRecipe::UnaryIntrinsic { inner, .. }
             | ExprRecipe::WithDimensions(inner, _) => inner.references_slot(target),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum BinaryOpKind {
-    Add,
-    Sub,
-    Mult,
-    Div,
-    Extract,
-    Derive,
-    Pow,
-}
-
-impl From<BinaryOpKind> for rosy_lib::BinaryOp {
-    fn from(op: BinaryOpKind) -> Self {
-        match op {
-            BinaryOpKind::Add => Self::Add,
-            BinaryOpKind::Sub => Self::Sub,
-            BinaryOpKind::Mult => Self::Mult,
-            BinaryOpKind::Div => Self::Div,
-            BinaryOpKind::Extract => Self::Extract,
-            BinaryOpKind::Derive => Self::Derive,
-            BinaryOpKind::Pow => Self::Pow,
         }
     }
 }
@@ -434,7 +409,6 @@ impl TypeResolver {
             }
         }
 
-        let mut resolved_count: usize = 0;
         let warnings: Vec<RosyError> = Vec::new();
         let mut warned_slots: HashSet<TypeSlot> = HashSet::new();
         while let Some(slot) = queue.pop_front() {
@@ -466,8 +440,6 @@ impl TypeResolver {
                     self.resolve_node(&slot)?;
                 }
             }
-            resolved_count += 1;
-
             // Decrement in-degree for all dependents
             if let Some(deps) = dependents.get(&slot) {
                 for dep_slot in deps {
@@ -490,11 +462,6 @@ impl TypeResolver {
             .collect();
 
         if unresolved.is_empty() {
-            tracing::debug!(
-                "Type resolution complete: resolved {} slot{} successfully",
-                resolved_count,
-                if resolved_count == 1 { "" } else { "s" }
-            );
             return Ok(warnings);
         }
 
@@ -767,7 +734,7 @@ impl TypeResolver {
             ExprRecipe::BinaryOp { op, left, right } => {
                 let left_type = self.evaluate_recipe(left)?;
                 let right_type = self.evaluate_recipe(right)?;
-                let result = rosy_lib::BinaryOp::from(*op).return_type(&left_type, &right_type);
+                let result = op.return_type(&left_type, &right_type);
                 result.ok_or_else(|| {
                     anyhow!(
                         "No operator rule for {:?}({}, {})",

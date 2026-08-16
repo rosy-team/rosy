@@ -63,7 +63,6 @@ nightly-simd = []
 anyhow = "1.0"
 mpi = { version = "0.8", optional = true }
 bincode = { version = "2.0", optional = true }
-serial_test = "3.2"
 num-complex = "0.4"
 rustc-hash = "2"
 rand = "0.9"
