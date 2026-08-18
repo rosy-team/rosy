@@ -26,8 +26,8 @@ use crate::{
     ast::*,
     program::expressions::Expr,
     transpile::{
-        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
-        ValueKind, add_context_to_all,
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement, ValueKind, add_context_to_all,
     },
 };
 
@@ -116,9 +116,17 @@ impl Transpile for LdetStatement {
         let matrix_ref = matrix_output.as_ref();
         let n_val = n_output.as_value();
         let alloc_val = alloc_dim_output.as_value();
-        let rhs = format!(
+        let mut rhs = format!(
             "rosy_lib::core::ldet::rosy_ldet({matrix_ref}, rosy_as_usize(&({n_val})), rosy_as_usize(&({alloc_val})))?"
         );
+        if self
+            .result_expr
+            .type_of(context)
+            .map(|t| t.is_any())
+            .unwrap_or(false)
+        {
+            rhs = format!("RosyValue::from({rhs})");
+        }
         let result_assign = if result_output.value_kind == ValueKind::Owned {
             format!("{} = {rhs}", result_output.serialization)
         } else if let Some(bare) = result_output.serialization.strip_prefix('&') {

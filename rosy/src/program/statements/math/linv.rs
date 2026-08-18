@@ -136,10 +136,20 @@ impl Transpile for LinvStatement {
                 format!("*{ser} = {rhs}")
             }
         }
+        let inv_rhs = if self
+            .inverse_expr
+            .type_of(context)
+            .map(|t| t.is_any())
+            .unwrap_or(false)
+        {
+            "RosyValue::from(rosy_linv_inv).expect_arr2()?"
+        } else {
+            "rosy_linv_inv"
+        };
         let inverse_assign = make_lvalue(
             &inverse_output.serialization,
             inverse_output.value_kind,
-            "rosy_linv_inv",
+            inv_rhs,
         );
         let err_rhs = if self
             .error_flag_expr

@@ -135,18 +135,42 @@ impl Transpile for RkcoStatement {
             }
         }
 
-        let c_assign = make_lvalue(&c_output.serialization, c_output.value_kind, "rosy_rkco_c");
-        let b_assign = make_lvalue(&b_output.serialization, b_output.value_kind, "rosy_rkco_b");
-        let e_assign = make_lvalue(&e_output.serialization, e_output.value_kind, "rosy_rkco_e");
+        let wrap = |name: &str, ident: &crate::program::expressions::core::variable_identifier::VariableIdentifier| {
+            let any = context
+                .variables
+                .get(&ident.name)
+                .map(|v| v.data.r#type.is_any())
+                .unwrap_or(false);
+            if any {
+                format!("RosyValue::from({name})")
+            } else {
+                name.to_string()
+            }
+        };
+        let c_assign = make_lvalue(
+            &c_output.serialization,
+            c_output.value_kind,
+            &wrap("rosy_rkco_c", &self.c_var),
+        );
+        let b_assign = make_lvalue(
+            &b_output.serialization,
+            b_output.value_kind,
+            &wrap("rosy_rkco_b", &self.b_var),
+        );
+        let e_assign = make_lvalue(
+            &e_output.serialization,
+            e_output.value_kind,
+            &wrap("rosy_rkco_e", &self.e_var),
+        );
         let a1_assign = make_lvalue(
             &a1_output.serialization,
             a1_output.value_kind,
-            "rosy_rkco_a1",
+            &wrap("rosy_rkco_a1", &self.a1_var),
         );
         let a2_assign = make_lvalue(
             &a2_output.serialization,
             a2_output.value_kind,
-            "rosy_rkco_a2",
+            &wrap("rosy_rkco_a2", &self.a2_var),
         );
 
         let serialization = format!(

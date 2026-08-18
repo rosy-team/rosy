@@ -468,6 +468,52 @@ impl AsCdDst for f64 {
     }
     fn store_cd_vec(&mut self, _v: Vec<CD>) {}
 }
+impl AsCdDst for Vec<f64> {
+    fn load_cd_vec(&self) -> Vec<CD> {
+        Vec::new()
+    }
+    fn store_cd_vec(&mut self, _v: Vec<CD>) {}
+}
+
+pub fn rosy_veunit(v: &impl PolvalReSrc) -> Vec<f64> {
+    let src = v.to_re_vec();
+    let norm = src.iter().map(|x| x * x).sum::<f64>().sqrt();
+    if norm == 0.0 {
+        src
+    } else {
+        src.iter().map(|x| x / norm).collect()
+    }
+}
+
+pub trait AsReMat {
+    fn to_re_mat(&self) -> Vec<Vec<f64>>;
+}
+impl AsReMat for Vec<Vec<f64>> {
+    fn to_re_mat(&self) -> Vec<Vec<f64>> {
+        self.clone()
+    }
+}
+impl AsReMat for Vec<Vec<RosyValue>> {
+    fn to_re_mat(&self) -> Vec<Vec<f64>> {
+        self.iter()
+            .map(|row| row.iter().map(|x| x.as_f64()).collect())
+            .collect()
+    }
+}
+impl AsReMat for RosyValue {
+    fn to_re_mat(&self) -> Vec<Vec<f64>> {
+        match self {
+            RosyValue::Arr(rows) => rows
+                .iter()
+                .map(|row| match row {
+                    RosyValue::Arr(v) => v.iter().map(|x| x.as_f64()).collect(),
+                    other => vec![other.as_f64()],
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+}
 impl AsCdDst for Vec<RosyValue> {
     fn load_cd_vec(&self) -> Vec<CD> {
         self.as_cd_vec()

@@ -734,14 +734,21 @@ pub fn rosy_cdnf(
 /// Like CDNF but eigenvalues have |lambda| != 1. Uses separate moduli and arguments.
 /// denominator = prod_k(lambda_k^{e_k}) - lambda_coord
 pub fn rosy_cdnfda(
-    input: &Vec<CD>,
-    moduli: &Vec<f64>,
-    arguments: &Vec<f64>,
-    coord: usize,
-    total: usize,
-    epsilon: f64,
-    result: &mut Vec<CD>,
+    input: &impl crate::AsCdRef,
+    moduli: &impl crate::PolvalReSrc,
+    arguments: &impl crate::PolvalReSrc,
+    coord: impl crate::IntoF64,
+    total: impl crate::IntoF64,
+    epsilon: impl crate::AsF64,
+    result: &mut impl crate::AsCdDst,
 ) -> Result<()> {
+    let input = input.as_cd_vec();
+    let moduli = moduli.to_re_vec();
+    let arguments = arguments.to_re_vec();
+    let coord = crate::rosy_as_usize(&coord.into_f64());
+    let total = crate::rosy_as_usize(&total.into_f64());
+    let epsilon = epsilon.as_f64_val();
+    let mut out = result.load_cd_vec();
     let rt = get_runtime().context("CDNFDA requires DA to be initialized (call DAINI first)")?;
     let num_vars = rt.config.num_vars;
 
@@ -762,8 +769,11 @@ pub fn rosy_cdnfda(
         Complex64::new(1.0, 0.0)
     };
 
+    while out.len() < input.len() {
+        out.push(CD::zero());
+    }
     for (idx, cd_in) in input.iter().enumerate() {
-        if idx >= result.len() {
+        if idx >= out.len() {
             break;
         }
         let mut cd_out = CD::zero();
@@ -791,8 +801,9 @@ pub fn rosy_cdnfda(
             cd_out.set_coeff(monomial, new_coeff);
         }
 
-        result[idx] = cd_out;
+        out[idx] = cd_out;
     }
+    result.store_cd_vec(out);
 
     Ok(())
 }
@@ -801,21 +812,31 @@ pub fn rosy_cdnfda(
 ///
 /// Like CDNFDA but the target eigenvalue is lambda_spin = exp(i * spin_argument).
 pub fn rosy_cdnfds(
-    input: &Vec<CD>,
-    moduli: &Vec<f64>,
-    arguments: &Vec<f64>,
-    spin_arg: f64,
-    total: usize,
-    epsilon: f64,
-    result: &mut Vec<CD>,
+    input: &impl crate::AsCdRef,
+    moduli: &impl crate::PolvalReSrc,
+    arguments: &impl crate::PolvalReSrc,
+    spin_arg: impl crate::AsF64,
+    total: impl crate::IntoF64,
+    epsilon: impl crate::AsF64,
+    result: &mut impl crate::AsCdDst,
 ) -> Result<()> {
+    let input = input.as_cd_vec();
+    let moduli = moduli.to_re_vec();
+    let arguments = arguments.to_re_vec();
+    let spin_arg = spin_arg.as_f64_val();
+    let total = crate::rosy_as_usize(&total.into_f64());
+    let epsilon = epsilon.as_f64_val();
+    let mut out = result.load_cd_vec();
     let rt = get_runtime().context("CDNFDS requires DA to be initialized (call DAINI first)")?;
     let num_vars = rt.config.num_vars;
 
     let lambda_spin = Complex64::new(spin_arg.cos(), spin_arg.sin());
 
+    while out.len() < input.len() {
+        out.push(CD::zero());
+    }
     for (idx, cd_in) in input.iter().enumerate() {
-        if idx >= result.len() {
+        if idx >= out.len() {
             break;
         }
         let mut cd_out = CD::zero();
@@ -842,8 +863,9 @@ pub fn rosy_cdnfds(
             cd_out.set_coeff(monomial, new_coeff);
         }
 
-        result[idx] = cd_out;
+        out[idx] = cd_out;
     }
+    result.store_cd_vec(out);
 
     Ok(())
 }

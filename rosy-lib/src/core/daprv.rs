@@ -114,12 +114,18 @@ fn format_daprv(
 /// - `current_vars`: current number of main variables  
 /// - `unit`: input unit number
 pub fn rosy_darev(
-    array: &mut Vec<DA>,
-    num_components: usize,
-    _max_vars: usize,
-    current_vars: usize,
-    unit: u64,
+    array: &mut impl crate::AsDaDst,
+    num_components: impl crate::IntoF64,
+    _max_vars: impl crate::IntoF64,
+    current_vars: impl crate::IntoF64,
+    unit: impl crate::AsF64,
 ) -> Result<()> {
+    let num_components = crate::rosy_as_usize(&num_components.into_f64());
+    let _max_vars = crate::rosy_as_usize(&_max_vars.into_f64());
+    let current_vars = crate::rosy_as_usize(&current_vars.into_f64());
+    let unit = crate::rosy_as_u64(&unit);
+    let dest = array;
+    let mut array = dest.load_da_vec();
     // Ensure array is big enough and zeroed
     while array.len() < num_components {
         array.push(DA::zero());
@@ -163,6 +169,7 @@ pub fn rosy_darev(
             }
         }
     }
+    dest.store_da_vec(array);
 
     Ok(())
 }

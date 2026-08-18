@@ -17,10 +17,13 @@ use anyhow::Result;
 ///
 /// Returns `(inverse, error_flag)` where `error_flag` is `0.0` on success or `132.0` if singular.
 pub fn rosy_linv(
-    matrix: &Vec<Vec<f64>>,
-    n: usize,
-    alloc_dim: usize,
+    matrix: &impl crate::AsReMat,
+    n: impl crate::IntoF64,
+    alloc_dim: impl crate::IntoF64,
 ) -> Result<(Vec<Vec<f64>>, f64)> {
+    let matrix = matrix.to_re_mat();
+    let n = crate::rosy_as_usize(&n.into_f64());
+    let alloc_dim = crate::rosy_as_usize(&alloc_dim.into_f64());
     // Build augmented matrix [A | I] of size n x 2n
     let mut aug: Vec<Vec<f64>> = (0..n)
         .map(|i| {

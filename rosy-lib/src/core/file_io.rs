@@ -169,7 +169,8 @@ pub fn rosy_rewf(unit: f64) -> Result<()> {
 /// Seeks the BufReader back to the start of the previous line.
 /// All seeks go through the BufReader (not get_mut()) so its internal
 /// buffer is flushed and the logical position stays consistent.
-pub fn rosy_backf(unit: f64) -> Result<()> {
+pub fn rosy_backf(unit: impl crate::IntoF64) -> Result<()> {
+    let unit = unit.into_f64();
     ensure_registry();
     let unit_num = unit as u64;
 
