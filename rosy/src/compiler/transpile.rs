@@ -238,20 +238,30 @@ impl TranspilationOutput {
         }
     }
 
-    /// Get this expression as a plain value (for Copy-type arithmetic, conditions).
+    /// Get this expression as a plain value (for arithmetic, conditions, casts).
+    /// Refs clone so `ANY` / `RosyValue` args do not move out of `&mut`.
     /// - Owned → expr
-    /// - Ref(&X) → X (strip & to deref)
-    /// - Ref(X) → (*X) (deref &mut T)
+    /// - Ref(&X) → X.clone()
+    /// - Ref(X) → (*X).clone()
     pub fn as_value(&self) -> String {
         match self.value_kind {
             ValueKind::Owned => self.serialization.clone(),
             ValueKind::Ref => {
                 if let Some(inner) = self.serialization.strip_prefix('&') {
-                    inner.to_string()
+                    format!("{inner}.clone()")
                 } else {
-                    format!("(*{})", self.serialization)
+                    format!("(*{}).clone()", self.serialization)
                 }
             }
+        }
+    }
+
+    /// Numeric context: `f64`, unwrapping `RosyValue` when `ty` is ANY.
+    pub fn as_re(&self, ty: &RosyType) -> String {
+        if ty.is_any() {
+            format!("rosy_as_f64(&({}))", self.as_value())
+        } else {
+            self.as_value()
         }
     }
 }

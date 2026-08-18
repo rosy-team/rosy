@@ -623,32 +623,24 @@ pub fn function_call_transpile_helper(
     // Uses the `__fn_` prefix to match the generated Rust function name
     // (the prefix avoids shadowing by the implicit return variable).
     let rust_fn_name = format!("__fn_{}", name);
-    let serialization = if prelude_decls.is_empty() && writeback_decls.is_empty() {
-        format!(
-            "({}({})? as {})",
-            rust_fn_name,
-            serialized_args.join(", "),
-            func_context.return_type.as_rust_type()
-        )
-    } else if writeback_decls.is_empty() {
-        // Wrap in a block so the temp locals don't leak into the surrounding scope.
-        format!(
-            "{{ {} ({}({})? as {}) }}",
-            prelude_decls.join(" "),
-            rust_fn_name,
-            serialized_args.join(", "),
-            func_context.return_type.as_rust_type()
-        )
+    let raw_call = format!(
+        "{}({})?",
+        rust_fn_name,
+        serialized_args.join(", ")
+    );
+    let call = if func_context.return_type.is_any() {
+        format!("RosyValue::from({raw_call})")
     } else {
-        // Capture the return value, run writebacks, then yield the value.
-        // The trailing expression (no semicolon) makes the block evaluate to
-        // __rosy_fn_ret, preserving the function-call-as-expression semantics.
+        raw_call
+    };
+    let serialization = if prelude_decls.is_empty() && writeback_decls.is_empty() {
+        format!("({call})")
+    } else if writeback_decls.is_empty() {
+        format!("{{ {} {call} }}", prelude_decls.join(" "))
+    } else {
         format!(
-            "{{ {} let __rosy_fn_ret = ({}({})? as {}); {} __rosy_fn_ret }}",
+            "{{ {} let __rosy_fn_ret = {call}; {} __rosy_fn_ret }}",
             prelude_decls.join(" "),
-            rust_fn_name,
-            serialized_args.join(", "),
-            func_context.return_type.as_rust_type(),
             writeback_decls.join(" "),
         )
     };
