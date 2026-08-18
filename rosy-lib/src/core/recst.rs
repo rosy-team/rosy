@@ -8,7 +8,9 @@
 /// - `A`     — string (pass-through for the number as default string)
 ///
 /// The format string may be enclosed in parentheses, e.g. `"(F10.3)"`.
-pub fn rosy_recst(value: f64, format: &str) -> String {
+pub fn rosy_recst(value: impl crate::IntoF64, format: impl crate::RecstFmt) -> String {
+    let value = value.into_f64();
+    let format = format.recst_fmt();
     let fmt = format.trim();
     // Strip optional outer parentheses
     let fmt = if fmt.starts_with('(') && fmt.ends_with(')') {

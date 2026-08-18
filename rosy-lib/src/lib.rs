@@ -79,6 +79,21 @@ impl IntoF64 for f64 {
         self
     }
 }
+impl IntoF64 for usize {
+    fn into_f64(self) -> f64 {
+        self as f64
+    }
+}
+impl IntoF64 for u64 {
+    fn into_f64(self) -> f64 {
+        self as f64
+    }
+}
+impl IntoF64 for u32 {
+    fn into_f64(self) -> f64 {
+        self as f64
+    }
+}
 impl IntoF64 for &f64 {
     fn into_f64(self) -> f64 {
         *self
@@ -108,9 +123,29 @@ impl AsF64 for f64 {
         *self
     }
 }
+impl AsF64 for usize {
+    fn as_f64_val(&self) -> f64 {
+        *self as f64
+    }
+}
+impl AsF64 for u64 {
+    fn as_f64_val(&self) -> f64 {
+        *self as f64
+    }
+}
+impl AsF64 for String {
+    fn as_f64_val(&self) -> f64 {
+        self.trim().parse().unwrap_or(0.0)
+    }
+}
 impl AsF64 for RosyValue {
     fn as_f64_val(&self) -> f64 {
         self.as_f64()
+    }
+}
+impl AsF64 for DA {
+    fn as_f64_val(&self) -> f64 {
+        self.constant_part()
     }
 }
 impl<T: AsF64 + ?Sized> AsF64 for &T {
@@ -138,6 +173,172 @@ pub fn rosy_as_i64(v: &impl AsF64) -> i64 {
 #[inline]
 pub fn rosy_as_f64(v: &impl AsF64) -> f64 {
     v.as_f64_val()
+}
+
+/// Write a real into either `f64` or an `ANY` cell.
+pub trait SetF64 {
+    fn set_f64(&mut self, v: f64);
+}
+impl SetF64 for f64 {
+    fn set_f64(&mut self, v: f64) {
+        *self = v;
+    }
+}
+impl SetF64 for RosyValue {
+    fn set_f64(&mut self, v: f64) {
+        *self = RosyValue::RE(v);
+    }
+}
+
+pub trait RecstFmt {
+    fn recst_fmt(&self) -> String;
+}
+impl RecstFmt for str {
+    fn recst_fmt(&self) -> String {
+        self.to_string()
+    }
+}
+impl RecstFmt for String {
+    fn recst_fmt(&self) -> String {
+        self.clone()
+    }
+}
+impl RecstFmt for &str {
+    fn recst_fmt(&self) -> String {
+        (*self).to_string()
+    }
+}
+impl RecstFmt for RosyValue {
+    fn recst_fmt(&self) -> String {
+        match self {
+            RosyValue::ST(s) => s.clone(),
+            other => format!("{other:?}"),
+        }
+    }
+}
+
+pub trait PolvalDaSrc {
+    fn to_da_vec(&self) -> Vec<DA>;
+}
+impl PolvalDaSrc for Vec<f64> {
+    fn to_da_vec(&self) -> Vec<DA> {
+        Vec::new()
+    }
+}
+impl PolvalDaSrc for Vec<DA> {
+    fn to_da_vec(&self) -> Vec<DA> {
+        self.clone()
+    }
+}
+impl PolvalDaSrc for [DA] {
+    fn to_da_vec(&self) -> Vec<DA> {
+        self.to_vec()
+    }
+}
+impl PolvalDaSrc for Vec<RosyValue> {
+    fn to_da_vec(&self) -> Vec<DA> {
+        self.iter()
+            .map(|v| v.clone().expect_da().unwrap_or_else(|_| DA::zero()))
+            .collect()
+    }
+}
+impl PolvalDaSrc for RosyValue {
+    fn to_da_vec(&self) -> Vec<DA> {
+        match self {
+            RosyValue::DA(d) => vec![d.clone()],
+            _ => Vec::new(),
+        }
+    }
+}
+
+pub trait PolvalReSrc {
+    fn to_re_vec(&self) -> Vec<f64>;
+}
+impl PolvalReSrc for Vec<f64> {
+    fn to_re_vec(&self) -> Vec<f64> {
+        self.clone()
+    }
+}
+impl PolvalReSrc for [f64] {
+    fn to_re_vec(&self) -> Vec<f64> {
+        self.to_vec()
+    }
+}
+impl PolvalReSrc for Vec<RosyValue> {
+    fn to_re_vec(&self) -> Vec<f64> {
+        self.iter().map(|v| v.as_f64()).collect()
+    }
+}
+impl PolvalReSrc for RosyValue {
+    fn to_re_vec(&self) -> Vec<f64> {
+        match self {
+            RosyValue::VE(v) => v.clone(),
+            other => vec![other.as_f64()],
+        }
+    }
+}
+
+pub trait PolvalReDst {
+    fn load_re_vec(&self) -> Vec<f64>;
+    fn store_re_vec(&mut self, v: Vec<f64>);
+}
+impl PolvalReDst for Vec<f64> {
+    fn load_re_vec(&self) -> Vec<f64> {
+        self.clone()
+    }
+    fn store_re_vec(&mut self, v: Vec<f64>) {
+        *self = v;
+    }
+}
+impl PolvalReDst for Vec<RosyValue> {
+    fn load_re_vec(&self) -> Vec<f64> {
+        self.iter().map(|x| x.as_f64()).collect()
+    }
+    fn store_re_vec(&mut self, v: Vec<f64>) {
+        *self = v.into_iter().map(RosyValue::RE).collect();
+    }
+}
+impl PolvalReDst for RosyValue {
+    fn load_re_vec(&self) -> Vec<f64> {
+        self.to_re_vec()
+    }
+    fn store_re_vec(&mut self, v: Vec<f64>) {
+        *self = RosyValue::VE(v);
+    }
+}
+
+pub trait AsDaRef {
+    fn as_da_vec(&self) -> Vec<DA>;
+}
+impl AsDaRef for Vec<DA> {
+    fn as_da_vec(&self) -> Vec<DA> {
+        self.clone()
+    }
+}
+impl AsDaRef for DA {
+    fn as_da_vec(&self) -> Vec<DA> {
+        vec![self.clone()]
+    }
+}
+impl AsDaRef for f64 {
+    fn as_da_vec(&self) -> Vec<DA> {
+        Vec::new()
+    }
+}
+impl AsDaRef for RosyValue {
+    fn as_da_vec(&self) -> Vec<DA> {
+        match self {
+            RosyValue::DA(d) => vec![d.clone()],
+            _ => Vec::new(),
+        }
+    }
+}
+impl AsDaRef for Vec<RosyValue> {
+    fn as_da_vec(&self) -> Vec<DA> {
+        self.iter()
+            .map(|v| v.clone().expect_da().unwrap_or_else(|_| DA::zero()))
+            .collect()
+    }
 }
 
 pub trait RosyIndexable {

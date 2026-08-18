@@ -179,7 +179,7 @@ pub(crate) fn compile_source(
         eprintln!();
         eprintln!("  This is a bug in the Rosy transpiler, not in your code.");
         eprintln!("  Please report it at: {BOLD}https://github.com/rosy-team/rosy/issues{RESET}");
-        eprintln!("  Include your {BOLD}.rosy{RESET} file and the error output above.");
+        eprintln!("  Include your {BOLD}source{RESET} files and the error output above.");
         anyhow::bail!(
             "Internal transpiler error: generated code failed to compile (exit code {:?})",
             output.status.code()

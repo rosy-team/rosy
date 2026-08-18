@@ -192,14 +192,16 @@ pub fn rosy_dapew(unit: u64, da: &Vec<DA>, var_i: usize, order_n: u32) -> Result
 /// - `da`: DA array — operates on element 0
 /// - `id`: TRANSPORT notation integer
 /// - `result`: written with the extracted coefficient
-pub fn rosy_dapee(da: &Vec<DA>, id: u64, result: &mut f64) -> Result<()> {
+pub fn rosy_dapee(da: &impl crate::AsDaRef, id: impl crate::AsF64, result: &mut impl crate::SetF64) -> Result<()> {
+    let da = da.as_da_vec();
+    let id = crate::rosy_as_u64(&id);
     if da.is_empty() {
-        *result = 0.0;
+        result.set_f64(0.0);
         return Ok(());
     }
     let exponents = decode_transport_id(id);
     let monomial = Monomial::new(exponents);
-    *result = da[0].get_coeff(&monomial);
+    result.set_f64(da[0].get_coeff(&monomial));
     Ok(())
 }
 

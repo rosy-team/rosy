@@ -65,7 +65,7 @@ impl Transpile for IntrinsicCallExpr {
                 format!("{}({}){q}", spec.rust_call, refs.join(", "))
             }
         };
-        if result_ty.is_any() && arg_types.iter().all(|t| !t.is_any()) {
+        if result_ty.is_any() {
             serialization = format!("RosyValue::from({serialization})");
         } else if !result_ty.is_any()
             && arg_types.iter().any(|t| t.is_any())

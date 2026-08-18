@@ -30,29 +30,35 @@ const LANES: usize = 4;
 /// * `r_array`  - output vector, must be large enough to hold NR results
 /// * `nr`       - number of results to write
 pub fn rosy_polval_re(
-    _l: f64,
-    p_array: &[DA],
-    np: usize,
-    a_array: &[f64],
-    na: usize,
-    r_array: &mut Vec<f64>,
-    nr: usize,
+    _l: impl crate::IntoF64,
+    p_array: &impl crate::PolvalDaSrc,
+    np: impl crate::IntoF64,
+    a_array: &impl crate::PolvalReSrc,
+    na: impl crate::IntoF64,
+    r_array: &mut impl crate::PolvalReDst,
+    nr: impl crate::IntoF64,
 ) -> Result<()> {
+    let p_array = p_array.to_da_vec();
+    let a_array = a_array.to_re_vec();
+    let np = crate::rosy_as_usize(&np.into_f64());
+    let na = crate::rosy_as_usize(&na.into_f64());
+    let nr = crate::rosy_as_usize(&nr.into_f64());
     if np < nr {
         bail!("POLVAL: NP ({}) must be >= NR ({})", np, nr);
     }
 
-    // Ensure result vector is large enough
-    while r_array.len() < nr {
-        r_array.push(0.0);
+    let mut out = r_array.load_re_vec();
+    while out.len() < nr {
+        out.push(0.0);
     }
 
     for i in 0..nr {
         if i >= p_array.len() {
             bail!("POLVAL: polynomial array too short at index {}", i);
         }
-        r_array[i] = evaluate_da_at_re(&p_array[i], a_array, na)?;
+        out[i] = evaluate_da_at_re(&p_array[i], &a_array, na)?;
     }
+    r_array.store_re_vec(out);
 
     Ok(())
 }

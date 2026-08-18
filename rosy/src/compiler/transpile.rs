@@ -281,6 +281,12 @@ pub fn emit_as_rosy_value_ref(out: &TranspilationOutput, ty: &RosyType) -> Strin
 
 /// Unwrap a `RosyValue` expression to a concrete rust type.
 pub fn emit_unwrap_rosy_value(expr: String, ty: &RosyType) -> String {
+    if ty.dimensions > 0 && ty.base_type == RosyBaseType::RE {
+        return format!("({expr}).expect_ve()?");
+    }
+    if ty.dimensions > 1 && ty.base_type == RosyBaseType::RE {
+        return format!("({expr}).expect_ve()?");
+    }
     match ty.base_type {
         RosyBaseType::ANY => expr,
         RosyBaseType::RE => format!("({expr}).expect_re()?"),

@@ -546,17 +546,20 @@ pub fn rosy_cdflo(rhs: &Vec<CD>, ic: &Vec<CD>, result: &mut Vec<CD>, dim: usize)
 ///
 /// For each monomial of order k with coefficient c, computes |c| * weight^k.
 /// Returns the maximum over all monomials.
-pub fn rosy_danow(da: &DA, weight: f64, result: &mut f64) -> Result<()> {
-    *result = 0.0;
-
-    for (monomial, coeff) in da.coeffs_iter() {
-        let order = monomial.total_order as f64;
-        let weighted = coeff.abs() * weight.powf(order);
-        if weighted > *result {
-            *result = weighted;
+pub fn rosy_danow(da: &impl crate::AsDaRef, weight: impl crate::AsF64, result: &mut impl crate::SetF64) -> Result<()> {
+    let da = da.as_da_vec();
+    let weight = weight.as_f64_val();
+    let mut best = 0.0;
+    if let Some(da) = da.first() {
+        for (monomial, coeff) in da.coeffs_iter() {
+            let order = monomial.total_order as f64;
+            let weighted = coeff.abs() * weight.powf(order);
+            if weighted > best {
+                best = weighted;
+            }
         }
     }
-
+    result.set_f64(best);
     Ok(())
 }
 

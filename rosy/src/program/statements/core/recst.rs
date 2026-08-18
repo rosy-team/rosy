@@ -93,17 +93,13 @@ impl Transpile for RecstStatement {
         })?;
         requested_variables.extend(output_id_output.requested_variables.clone());
 
-        let dereference = match context
-            .variables
-            .get(&self.output_var.name)
-            .ok_or_else(|| {
-                vec![anyhow::anyhow!(
-                    "Variable '{}' is not defined in this scope!",
-                    self.output_var.name
-                )]
-            })?
-            .scope
-        {
+        let dest_var = context.variables.get(&self.output_var.name).ok_or_else(|| {
+            vec![anyhow::anyhow!(
+                "Variable '{}' is not defined in this scope!",
+                self.output_var.name
+            )]
+        })?;
+        let dereference = match dest_var.scope {
             VariableScope::Local => "",
             VariableScope::Arg => "*",
             VariableScope::Higher => {
@@ -111,15 +107,21 @@ impl Transpile for RecstStatement {
                 "*"
             }
         };
-
-        // Parse common Fortran format specifiers and convert to Rust format
-        // Supports: F (fixed), E (scientific), G (general), I (integer), A (string)
+        let rhs = format!(
+            "rosy_lib::core::recst::rosy_recst({}, {})",
+            value_output.as_value(),
+            format_output.as_value(),
+        );
+        let rhs = if dest_var.data.r#type.is_any() {
+            format!("RosyValue::from({rhs})")
+        } else {
+            rhs
+        };
         let serialization = format!(
-            "{deref}{dest} = rosy_lib::core::recst::rosy_recst({val}, &{fmt});",
+            "{deref}{dest} = {rhs};",
             deref = dereference,
             dest = output_id_output.serialization,
-            val = value_output.as_value(),
-            fmt = format_output.as_value(),
+            rhs = rhs,
         );
 
         Ok(TranspilationOutput {
