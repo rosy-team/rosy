@@ -95,7 +95,7 @@ impl Transpile for DadiuStatement {
         requested_variables.extend(result_output.requested_variables.clone());
 
         let serialization = format!(
-            "rosy_lib::core::daprv::rosy_dadiu({} as usize, {}, {})?;",
+            "rosy_lib::core::daprv::rosy_dadiu(rosy_as_usize(&({})), {}, {})?;",
             var_idx_output.as_value(),
             da_in_output.as_ref(),
             result_output.as_mut_ref(),

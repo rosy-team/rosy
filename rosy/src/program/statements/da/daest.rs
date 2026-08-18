@@ -105,7 +105,7 @@ impl Transpile for DaestStatement {
         requested_variables.extend(result_output.requested_variables.iter().cloned());
 
         let serialization = format!(
-            "rosy_lib::core::dapew::rosy_daest({}, {} as usize, {} as u32, {})?;",
+            "rosy_lib::core::dapew::rosy_daest({}, rosy_as_usize(&({})), rosy_as_u32(&({})), {})?;",
             da_var_output.as_ref(),
             i_output.as_value(),
             j_output.as_value(),

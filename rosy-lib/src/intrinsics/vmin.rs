@@ -3,7 +3,7 @@ use crate::RosyType;
 
 /// Get the return type of VMIN for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
-    if *input == RosyType::VE() {
+    if *input == RosyType::VE() || *input == RosyType::RE() {
         Some(RosyType::RE())
     } else {
         None
@@ -16,6 +16,12 @@ pub trait RosyVMIN {
 }
 
 /// VMIN for vectors - returns the minimum element
+impl RosyVMIN for RE {
+    fn rosy_vmin(&self) -> anyhow::Result<RE> {
+        Ok(*self)
+    }
+}
+
 impl RosyVMIN for VE {
     fn rosy_vmin(&self) -> anyhow::Result<RE> {
         if self.is_empty() {

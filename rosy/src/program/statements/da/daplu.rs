@@ -120,7 +120,7 @@ impl Transpile for DapluStatement {
         };
 
         let serialization = format!(
-            "rosy_lib::core::daprv::rosy_daplu({}, {} as usize, {} as f64, {})?;",
+            "rosy_lib::core::daprv::rosy_daplu({}, rosy_as_usize(&({})), {} as f64, {})?;",
             da_in_arg,
             var_idx_output.as_value(),
             c_output.as_value(),

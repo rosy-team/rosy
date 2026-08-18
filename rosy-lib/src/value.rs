@@ -31,10 +31,10 @@ impl RosyValue {
         }
     }
 
-    pub fn expect_re(self) -> Result<RE> {
+    pub fn expect_re(&self) -> Result<RE> {
         match self {
-            Self::RE(v) => Ok(v),
-            other => bail!("expected RE, held {}", other.kind_name()),
+            Self::RE(v) => Ok(*v),
+            other => Ok(other.as_f64()),
         }
     }
     pub fn expect_st(self) -> Result<ST> {
@@ -72,6 +72,12 @@ impl RosyValue {
             Self::CD(v) => Ok(v),
             other => bail!("expected CD, held {}", other.kind_name()),
         }
+    }
+}
+
+impl From<&RosyValue> for RosyValue {
+    fn from(v: &RosyValue) -> Self {
+        v.clone()
     }
 }
 
@@ -230,6 +236,250 @@ impl RosyTYPE for RosyValue {
     }
 }
 
+impl Default for RosyValue {
+    fn default() -> Self {
+        Self::RE(0.0)
+    }
+}
+
+impl From<Vec<Vec<f64>>> for RosyValue {
+    fn from(v: Vec<Vec<f64>>) -> Self {
+        Self::VE(v.into_iter().flatten().collect())
+    }
+}
+
+impl AsRef<[f64]> for RosyValue {
+    fn as_ref(&self) -> &[f64] {
+        match self {
+            Self::VE(v) => v.as_slice(),
+            other => panic!("cannot index {} as a vector", other.kind_name()),
+        }
+    }
+}
+
+impl RosyValue {
+    pub fn as_f64(&self) -> f64 {
+        match self {
+            Self::RE(v) => *v,
+            Self::LO(b) => {
+                if *b {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Self::CM(c) => c.re,
+            Self::VE(v) => v.first().copied().unwrap_or(0.0),
+            Self::DA(d) => d.constant_part(),
+            Self::CD(d) => d.constant_part().re,
+            Self::ST(s) => s.trim().parse().unwrap_or(0.0),
+        }
+    }
+
+    pub fn round(&self) -> f64 {
+        self.as_f64().round()
+    }
+
+    pub fn abs(&self) -> f64 {
+        self.as_f64().abs()
+    }
+
+    pub fn powi(&self, n: i32) -> f64 {
+        self.as_f64().powi(n)
+    }
+
+    pub fn sqrt(&self) -> f64 {
+        self.as_f64().sqrt()
+    }
+
+    pub fn atan(&self) -> f64 {
+        self.as_f64().atan()
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Self::VE(v) => v.len(),
+            Self::ST(s) => s.len(),
+            _ => 1,
+        }
+    }
+
+    pub fn trim(&self) -> String {
+        match self {
+            Self::ST(s) => s.trim().to_string(),
+            other => other.as_f64().to_string(),
+        }
+    }
+
+    pub fn iter(&self) -> std::vec::IntoIter<f64> {
+        match self {
+            Self::VE(v) => v.clone().into_iter(),
+            Self::RE(v) => vec![*v].into_iter(),
+            _ => Vec::new().into_iter(),
+        }
+    }
+}
+
+impl std::ops::Neg for RosyValue {
+    type Output = RosyValue;
+    fn neg(self) -> Self {
+        rosy_dyn_binary(BinaryOp::Sub, &RosyValue::RE(0.0), &self).unwrap_or(RosyValue::RE(0.0))
+    }
+}
+
+impl std::ops::Neg for &RosyValue {
+    type Output = RosyValue;
+    fn neg(self) -> RosyValue {
+        rosy_dyn_binary(BinaryOp::Sub, &RosyValue::RE(0.0), self).unwrap_or(RosyValue::RE(0.0))
+    }
+}
+
+impl std::ops::Add for RosyValue {
+    type Output = RosyValue;
+    fn add(self, rhs: Self) -> Self {
+        rosy_dyn_binary(BinaryOp::Add, &self, &rhs).unwrap_or(RosyValue::RE(0.0))
+    }
+}
+impl std::ops::Sub for RosyValue {
+    type Output = RosyValue;
+    fn sub(self, rhs: Self) -> Self {
+        rosy_dyn_binary(BinaryOp::Sub, &self, &rhs).unwrap_or(RosyValue::RE(0.0))
+    }
+}
+impl std::ops::Mul for RosyValue {
+    type Output = RosyValue;
+    fn mul(self, rhs: Self) -> Self {
+        rosy_dyn_binary(BinaryOp::Mult, &self, &rhs).unwrap_or(RosyValue::RE(0.0))
+    }
+}
+impl std::ops::Div for RosyValue {
+    type Output = RosyValue;
+    fn div(self, rhs: Self) -> Self {
+        rosy_dyn_binary(BinaryOp::Div, &self, &rhs).unwrap_or(RosyValue::RE(0.0))
+    }
+}
+
+macro_rules! rosy_value_arith_f64 {
+    ($trait:ident, $method:ident, $op:ident) => {
+        impl std::ops::$trait<f64> for RosyValue {
+            type Output = RosyValue;
+            fn $method(self, rhs: f64) -> Self {
+                rosy_dyn_binary(BinaryOp::$op, &self, &RosyValue::RE(rhs))
+                    .unwrap_or(RosyValue::RE(0.0))
+            }
+        }
+        impl std::ops::$trait<RosyValue> for f64 {
+            type Output = RosyValue;
+            fn $method(self, rhs: RosyValue) -> Self::Output {
+                rosy_dyn_binary(BinaryOp::$op, &RosyValue::RE(self), &rhs)
+                    .unwrap_or(RosyValue::RE(0.0))
+            }
+        }
+    };
+}
+rosy_value_arith_f64!(Add, add, Add);
+rosy_value_arith_f64!(Sub, sub, Sub);
+rosy_value_arith_f64!(Mul, mul, Mult);
+rosy_value_arith_f64!(Div, div, Div);
+
+impl PartialEq for RosyValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::ST(a), Self::ST(b)) => a == b,
+            (Self::LO(a), Self::LO(b)) => a == b,
+            _ => self.as_f64() == other.as_f64(),
+        }
+    }
+}
+impl PartialEq<f64> for RosyValue {
+    fn eq(&self, other: &f64) -> bool {
+        self.as_f64() == *other
+    }
+}
+impl PartialEq<RosyValue> for f64 {
+    fn eq(&self, other: &RosyValue) -> bool {
+        *self == other.as_f64()
+    }
+}
+impl PartialOrd for RosyValue {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.as_f64().partial_cmp(&other.as_f64())
+    }
+}
+impl PartialOrd<f64> for RosyValue {
+    fn partial_cmp(&self, other: &f64) -> Option<std::cmp::Ordering> {
+        self.as_f64().partial_cmp(other)
+    }
+}
+impl PartialOrd<RosyValue> for f64 {
+    fn partial_cmp(&self, other: &RosyValue) -> Option<std::cmp::Ordering> {
+        self.partial_cmp(&other.as_f64())
+    }
+}
+
+macro_rules! rosy_value_unary {
+    ($trait:ident, $method:ident, $($var:ident),+) => {
+        impl $trait for RosyValue {
+            type Output = RosyValue;
+            fn $method(&self) -> Result<Self::Output> {
+                match self {
+                    $(Self::$var(v) => Ok(RosyValue::from(v.$method()?)),)+
+                    other => bail!(
+                        concat!(stringify!($method), " not defined for {}"),
+                        other.kind_name()
+                    ),
+                }
+            }
+        }
+    };
+}
+
+rosy_value_unary!(RosyCONS, rosy_cons, RE, CM, VE, DA, CD);
+rosy_value_unary!(RosyABS, rosy_abs, RE, CM, VE, DA, CD);
+rosy_value_unary!(RosySQRT, rosy_sqrt, RE, CM, VE, DA);
+rosy_value_unary!(RosySIN, rosy_sin, RE, CM, VE, DA, CD);
+rosy_value_unary!(RosyCOS, rosy_cos, RE, CM, VE, DA, CD);
+rosy_value_unary!(RosyEXP, rosy_exp, RE, CM, VE, DA, CD);
+rosy_value_unary!(RosyLOG, rosy_log, RE, CM, VE, DA);
+rosy_value_unary!(RosyTAN, rosy_tan, RE, VE, DA);
+rosy_value_unary!(RosyATAN, rosy_atan, RE, VE, DA);
+rosy_value_unary!(RosyCOSH, rosy_cosh, RE, CM, VE, DA);
+rosy_value_unary!(RosySINH, rosy_sinh, RE, CM, VE, DA);
+rosy_value_unary!(RosyTANH, rosy_tanh, RE, VE, DA);
+rosy_value_unary!(RosyACOS, rosy_acos, RE, VE, DA);
+rosy_value_unary!(RosyASIN, rosy_asin, RE, VE, DA);
+rosy_value_unary!(RosyISRT, rosy_isrt, RE, VE, DA);
+rosy_value_unary!(RosyINT, rosy_int, RE, VE);
+rosy_value_unary!(RosyNINT, rosy_nint, RE, VE);
+rosy_value_unary!(RosyREAL, rosy_real, RE, CM, DA, CD);
+rosy_value_unary!(RosyIMAG, rosy_imag, RE, CM, DA, CD);
+
+impl RosyVMAX for RosyValue {
+    fn rosy_vmax(&self) -> Result<RE> {
+        match self {
+            Self::RE(v) => v.rosy_vmax(),
+            Self::VE(v) => v.rosy_vmax(),
+            other => bail!("VMAX not defined for {}", other.kind_name()),
+        }
+    }
+}
+
+impl RosyVMIN for RosyValue {
+    fn rosy_vmin(&self) -> Result<RE> {
+        match self {
+            Self::RE(v) => v.rosy_vmin(),
+            Self::VE(v) => v.rosy_vmin(),
+            other => bail!("VMIN not defined for {}", other.kind_name()),
+        }
+    }
+}
+
+impl RosyREConvert for RosyValue {
+    fn rosy_re_convert(&self) -> Result<RE> {
+        Ok(self.as_f64())
+    }
+}
+
 macro_rules! dyn_pairs {
     ($lhs:expr, $rhs:expr, $method:ident, $($L:ident, $R:ident);+ $(;)?) => {
         match ($lhs, $rhs) {
@@ -244,7 +494,35 @@ macro_rules! dyn_pairs {
     };
 }
 
-pub fn rosy_dyn_binary(op: BinaryOp, lhs: &RosyValue, rhs: &RosyValue) -> Result<RosyValue> {
+pub trait ToRosy {
+    fn to_rosy(&self) -> RosyValue;
+}
+impl ToRosy for RosyValue {
+    fn to_rosy(&self) -> RosyValue {
+        self.clone()
+    }
+}
+impl ToRosy for f64 {
+    fn to_rosy(&self) -> RosyValue {
+        RosyValue::RE(*self)
+    }
+}
+impl ToRosy for String {
+    fn to_rosy(&self) -> RosyValue {
+        RosyValue::ST(self.clone())
+    }
+}
+impl ToRosy for bool {
+    fn to_rosy(&self) -> RosyValue {
+        RosyValue::LO(*self)
+    }
+}
+
+pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Result<RosyValue> {
+    let lhs = lhs.to_rosy();
+    let rhs = rhs.to_rosy();
+    let lhs = &lhs;
+    let rhs = &rhs;
     match op {
         BinaryOp::Add => dyn_pairs!(
             lhs, rhs, rosy_add,

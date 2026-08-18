@@ -105,7 +105,7 @@ impl Transpile for DapeaStatement {
         requested_variables.extend(result_output.requested_variables.iter().cloned());
 
         let serialization = format!(
-            "rosy_lib::core::dapew::rosy_dapea({}, {}, {} as usize, {})?;",
+            "rosy_lib::core::dapew::rosy_dapea({}, {}, rosy_as_usize(&({})), {})?;",
             da_var_output.as_ref(),
             exps_array_output.as_ref(),
             size_output.as_value(),

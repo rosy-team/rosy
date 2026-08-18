@@ -50,8 +50,8 @@ pub struct FitStatement {
     pub max_iter: Expr,
     /// Algorithm number (1=Simplex, 3=SA, 4=LMDIF)
     pub algorithm: Expr,
-    /// Objective variable name(s) to minimize
-    pub objectives: Vec<String>,
+    /// Objective expression(s) to minimize
+    pub objectives: Vec<Expr>,
 }
 impl FromRule for FitStatement {
     fn from_rule(pair: pest::iterators::Pair<Rule>) -> Result<Option<Self>> {
@@ -133,13 +133,17 @@ impl FromRule for FitStatement {
 
             let mut objectives = Vec::new();
             for pair in end_fit_inner {
-                if pair.as_rule() == Rule::variable_name {
-                    objectives.push(pair.as_str().to_string());
+                if pair.as_rule() == Rule::semicolon {
+                    continue;
                 }
+                let obj = Expr::from_rule(pair)
+                    .context("Failed to build objective expression in ENDFIT!")?
+                    .ok_or_else(|| anyhow::anyhow!("Expected objective expression in ENDFIT"))?;
+                objectives.push(obj);
             }
 
             if objectives.is_empty() {
-                anyhow::bail!("ENDFIT requires at least one objective variable!");
+                anyhow::bail!("ENDFIT requires at least one objective!");
             }
 
             (eps, max_iter, algorithm, objectives)
@@ -195,7 +199,9 @@ impl Transpile for FitStatement {
         for var_name in &self.fit_variables {
             match context.variables.get(var_name) {
                 Some(scoped_var) => {
-                    if scoped_var.data.r#type != RosyType::RE() {
+                    if scoped_var.data.r#type != RosyType::RE()
+                        && !scoped_var.data.r#type.is_any()
+                    {
                         errors.push(anyhow!(
                             "FIT variable '{}' must be of type (RE), found '{}'",
                             var_name,
@@ -212,24 +218,11 @@ impl Transpile for FitStatement {
             }
         }
 
-        // Verify all objective variables exist and are RE type
-        for obj_name in &self.objectives {
-            match context.variables.get(obj_name) {
-                Some(scoped_var) => {
-                    if scoped_var.data.r#type != RosyType::RE() {
-                        errors.push(anyhow!(
-                            "ENDFIT objective '{}' must be of type (RE), found '{}'",
-                            obj_name,
-                            scoped_var.data.r#type
-                        ));
-                    }
-                }
-                None => {
-                    errors.push(anyhow!(
-                        "ENDFIT objective '{}' is not declared in this scope!",
-                        obj_name
-                    ));
-                }
+        for obj in &self.objectives {
+            match obj.type_of(context) {
+                Ok(t) if t == RosyType::RE() || t.is_any() => {}
+                Ok(t) => errors.push(anyhow!("ENDFIT objective must be (RE), found '{t}'")),
+                Err(e) => errors.push(e),
             }
         }
 
@@ -239,7 +232,7 @@ impl Transpile for FitStatement {
 
         // Verify eps, max, and algorithm are RE type
         let eps_type = self.eps.type_of(context).map_err(|e| vec![e])?;
-        if eps_type != RosyType::RE() {
+        if eps_type != RosyType::RE() && !eps_type.is_any() {
             return Err(vec![anyhow!(
                 "ENDFIT `eps` must be of type (RE), found '{}'",
                 eps_type
@@ -341,7 +334,29 @@ impl Transpile for FitStatement {
 
         // Build inside closure: collect objectives into vec
         // Objective variables are always RE (Copy), so we can use them directly.
-        let objs_collect = self.objectives.to_vec().join(", ");
+        let mut obj_bits = Vec::new();
+        for obj in &self.objectives {
+            match obj.transpile(context) {
+                Ok(out) => {
+                    requested_variables.extend(out.requested_variables.iter().cloned());
+                    let bit = if obj.type_of(context).map(|t| t.is_any()).unwrap_or(false) {
+                        format!("({}).expect_re()?", out.as_owned(&RosyType::ANY()))
+                    } else {
+                        out.as_value()
+                    };
+                    obj_bits.push(bit);
+                }
+                Err(vec_err) => {
+                    for e in vec_err {
+                        errors.push(e.context("...while transpiling ENDFIT objective"));
+                    }
+                }
+            }
+        }
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        let objs_collect = obj_bits.join(", ");
 
         // Build after optimizer: assign back from optimized vec
         let vars_writeback = self
@@ -360,8 +375,8 @@ impl Transpile for FitStatement {
             \trosy_lib::optimizer::run_fit(\n\
             \t\t&mut __rosy_fit_vars,\n\
             \t\t{eps_val},\n\
-            \t\t{max_val} as usize,\n\
-            \t\t{algo_val} as usize,\n\
+            \t\trosy_as_usize(&({max_val})),\n\
+            \t\trosy_as_usize(&({algo_val})),\n\
             \t\t{num_objs},\n\
             \t\t|__rosy_fit_vars: &mut [f64]| -> anyhow::Result<Vec<f64>> {{\n\
             {assign}\n\

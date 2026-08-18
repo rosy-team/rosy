@@ -200,9 +200,8 @@ impl std::fmt::Display for SourceLocation {
 impl SourceLocation {
     /// Build from a pest pair's span, before the pair is consumed.
     pub fn from_pair(pair: &pest::iterators::Pair<Rule>) -> Self {
-        let span = pair.as_span();
-        let (line, col) = span.start_pos().line_col();
-        let text = span.as_str();
+        let (line, col) = pair.line_col();
+        let text = pair.as_str();
         // Take first line, truncate to 60 chars
         let first_line = text.lines().next().unwrap_or("");
         let snippet = if first_line.len() > 60 {

@@ -90,7 +90,7 @@ impl Transpile for VariableDeclarationData {
                 // ensure the type compiles down to a RE
                 if let Err(e) = dim.type_of(context).and_then(|t| {
                     let expected_type = RosyType::RE();
-                    if t == expected_type {
+                    if t == expected_type || t.is_any() {
                         Ok(())
                     } else {
                         Err(anyhow::anyhow!(
@@ -105,7 +105,12 @@ impl Transpile for VariableDeclarationData {
                 // transpile each dimension expression
                 match dim.transpile(context) {
                     Ok(output) => {
-                        result = format!("vec![{}; {} as usize]", result, output.as_value());
+                        let dim_rs = if dim.type_of(context).map(|t| t.is_any()).unwrap_or(false) {
+                            format!("({}).expect_re()?", output.as_owned(&RosyType::ANY()))
+                        } else {
+                            output.as_value()
+                        };
+                        result = format!("vec![{}; rosy_as_usize(&({}))]", result, dim_rs);
                         requested_variables.extend(output.requested_variables);
                     }
                     Err(dim_errors) => {
@@ -194,7 +199,7 @@ impl FromRule for VarDeclStatement {
                 anyhow::bail!(
                     "COSY syntax mode requires a memory size in VARIABLE declarations.\n\
                      Expected: VARIABLE {name} <memory_size> ;\n\
-                     Hint: If you intended to use Rosy syntax, remove the `--cosy-syntax` flag."
+                     Hint: Rosy files (`.rosy`) omit the memory size."
                 );
             }
             // First memory_size is allocation hint (discarded), rest are array dimensions
@@ -226,6 +231,17 @@ impl FromRule for VarDeclStatement {
                 }
             }
         }
+
+        // Cosy 0-d cells stay untyped (inference + ANY). Extra memsize
+        // numbers after the first are array dims, typed as RE.
+        let r#type = if syntax_config::is_cosy_syntax()
+            && r#type.is_none()
+            && !dimension_exprs.is_empty()
+        {
+            Some(RosyType::new(RosyBaseType::RE, dimension_exprs.len()))
+        } else {
+            r#type
+        };
 
         let data = VariableDeclarationData {
             name,
@@ -267,17 +283,15 @@ impl TranspileableStatement for VarDeclStatement {
         resolver: &TypeResolver,
         current_scope: &[String],
     ) -> Option<Result<()>> {
-        if self.data.r#type.is_none() {
-            let slot = TypeSlot::Variable(current_scope.to_vec(), self.data.name.clone());
-            if let Some(node) = resolver.nodes.get(&slot)
-                && let Some(t) = &node.resolved
-            {
-                let mut resolved = *t;
-                if !self.data.dimension_exprs.is_empty() {
-                    resolved.dimensions = self.data.dimension_exprs.len();
-                }
-                self.data.r#type = Some(resolved);
+        let slot = TypeSlot::Variable(current_scope.to_vec(), self.data.name.clone());
+        if let Some(node) = resolver.nodes.get(&slot)
+            && let Some(t) = &node.resolved
+        {
+            let mut resolved = *t;
+            if !self.data.dimension_exprs.is_empty() {
+                resolved.dimensions = self.data.dimension_exprs.len();
             }
+            self.data.r#type = Some(resolved);
         }
         Some(Ok(()))
     }
@@ -316,6 +330,7 @@ impl Transpile for VarDeclStatement {
         );
         if let Some(prev) = previous
             && prev.scope != VariableScope::Higher
+            && !syntax_config::is_cosy_syntax()
         {
             return Err(vec![anyhow!(
                 "Variable '{}' is already defined in this scope!",

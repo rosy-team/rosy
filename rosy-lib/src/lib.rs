@@ -51,48 +51,236 @@ pub use registry::{
 };
 
 pub use taylor::{CD, DA};
-/// Immutable 1-based index. Returns `&T`.
-/// Rounds the float index to nearest integer (matching COSY INFINITY's NINT),
-/// then validates bounds with a 1-based error message.
-#[inline(always)]
-pub fn rosy_get<'a, T, C: AsRef<[T]>>(container: &'a C, one_based: f64, var_name: &str) -> &'a T {
-    let slice = container.as_ref();
-    let idx = one_based.round() as usize;
-    slice.get(idx.wrapping_sub(1)).unwrap_or_else(|| {
-        panic!(
-            "Index {} into '{}' is out of bounds (1-{})",
-            idx,
-            var_name,
-            slice.len()
-        )
-    })
+
+pub trait ExpectReExt {
+    fn expect_re(&self) -> anyhow::Result<f64>;
+}
+impl ExpectReExt for f64 {
+    fn expect_re(&self) -> anyhow::Result<f64> {
+        Ok(*self)
+    }
 }
 
-/// Mutable 1-based index for assignment. Returns `&mut T`.
-///
-/// Unlike the read-side [`rosy_get`], this auto-grows the vector to fit
-/// the requested 1-based index, padding new slots with `T::default()`.
-/// This matches COSY semantics where `VARIABLE FOO ;` followed by
-/// `FOO(1) := X` allocates slot 1 lazily.
-///
-/// Indices ≤ 0 still panic — those are programmer errors, not omissions.
+pub trait LenExt {
+    fn len(&self) -> usize;
+}
+impl LenExt for f64 {
+    fn len(&self) -> usize {
+        1
+    }
+}
+
+/// Anything the generated code might use as a real / index / cast source.
+pub trait IntoF64 {
+    fn into_f64(self) -> f64;
+}
+impl IntoF64 for f64 {
+    fn into_f64(self) -> f64 {
+        self
+    }
+}
+impl IntoF64 for &f64 {
+    fn into_f64(self) -> f64 {
+        *self
+    }
+}
+impl IntoF64 for RosyValue {
+    fn into_f64(self) -> f64 {
+        self.as_f64()
+    }
+}
+impl IntoF64 for &RosyValue {
+    fn into_f64(self) -> f64 {
+        self.as_f64()
+    }
+}
+impl IntoF64 for &mut RosyValue {
+    fn into_f64(self) -> f64 {
+        self.as_f64()
+    }
+}
+
+pub trait AsF64 {
+    fn as_f64_val(&self) -> f64;
+}
+impl AsF64 for f64 {
+    fn as_f64_val(&self) -> f64 {
+        *self
+    }
+}
+impl AsF64 for RosyValue {
+    fn as_f64_val(&self) -> f64 {
+        self.as_f64()
+    }
+}
+impl<T: AsF64 + ?Sized> AsF64 for &T {
+    fn as_f64_val(&self) -> f64 {
+        (**self).as_f64_val()
+    }
+}
+
+#[inline]
+pub fn rosy_as_usize(v: &impl AsF64) -> usize {
+    v.as_f64_val() as usize
+}
+#[inline]
+pub fn rosy_as_u32(v: &impl AsF64) -> u32 {
+    v.as_f64_val() as u32
+}
+#[inline]
+pub fn rosy_as_u64(v: &impl AsF64) -> u64 {
+    v.as_f64_val() as u64
+}
+#[inline]
+pub fn rosy_as_i64(v: &impl AsF64) -> i64 {
+    v.as_f64_val() as i64
+}
+#[inline]
+pub fn rosy_as_f64(v: &impl AsF64) -> f64 {
+    v.as_f64_val()
+}
+
+pub trait RosyIndexable {
+    type Out;
+    fn rosy_index(&self, idx: usize, name: &str) -> &Self::Out;
+}
+
+impl<T> RosyIndexable for Vec<T> {
+    type Out = T;
+    fn rosy_index(&self, idx: usize, name: &str) -> &T {
+        self.get(idx.wrapping_sub(1)).unwrap_or_else(|| {
+            panic!(
+                "Index {} into '{}' is out of bounds (1-{})",
+                idx,
+                name,
+                self.len()
+            )
+        })
+    }
+}
+
+impl<T> RosyIndexable for [T] {
+    type Out = T;
+    fn rosy_index(&self, idx: usize, name: &str) -> &T {
+        self.get(idx.wrapping_sub(1)).unwrap_or_else(|| {
+            panic!(
+                "Index {} into '{}' is out of bounds (1-{})",
+                idx,
+                name,
+                self.len()
+            )
+        })
+    }
+}
+
+impl RosyIndexable for f64 {
+    type Out = f64;
+    fn rosy_index(&self, idx: usize, name: &str) -> &f64 {
+        if idx != 1 {
+            panic!("Index {idx} into scalar '{name}'");
+        }
+        self
+    }
+}
+
+impl<T: RosyIndexable + ?Sized> RosyIndexable for &T {
+    type Out = T::Out;
+    fn rosy_index(&self, idx: usize, name: &str) -> &T::Out {
+        (**self).rosy_index(idx, name)
+    }
+}
+
+impl<T: RosyIndexable + ?Sized> RosyIndexable for &mut T {
+    type Out = T::Out;
+    fn rosy_index(&self, idx: usize, name: &str) -> &T::Out {
+        (**self).rosy_index(idx, name)
+    }
+}
+
+impl RosyIndexable for RosyValue {
+    type Out = f64;
+    fn rosy_index(&self, idx: usize, name: &str) -> &f64 {
+        match self {
+            RosyValue::VE(v) => v.rosy_index(idx, name),
+            RosyValue::RE(v) if idx == 1 => v,
+            other => panic!(
+                "cannot index {} '{}' at {}",
+                other.kind_name(),
+                name,
+                idx
+            ),
+        }
+    }
+}
+
 #[inline(always)]
-pub fn rosy_get_mut<'a, T: Default>(
-    container: &'a mut Vec<T>,
-    one_based: f64,
+pub fn rosy_get<'a, C: RosyIndexable + ?Sized>(
+    container: &'a C,
+    one_based: impl IntoF64,
     var_name: &str,
-) -> &'a mut T {
-    let idx = one_based.round() as usize;
-    if idx == 0 {
-        panic!(
-            "Index 0 into '{}' is out of bounds — Rosy uses 1-based indexing",
-            var_name
-        );
+) -> &'a C::Out {
+    container.rosy_index(one_based.into_f64().round() as usize, var_name)
+}
+
+pub trait RosyMutIndexable {
+    type Out: Default;
+    fn rosy_index_mut(&mut self, idx: usize, name: &str) -> &mut Self::Out;
+}
+
+impl<T: Default> RosyMutIndexable for Vec<T> {
+    type Out = T;
+    fn rosy_index_mut(&mut self, idx: usize, name: &str) -> &mut T {
+        if idx == 0 {
+            panic!("Index 0 into '{name}' is out of bounds — Rosy uses 1-based indexing");
+        }
+        if idx > self.len() {
+            self.resize_with(idx, T::default);
+        }
+        &mut self[idx - 1]
     }
-    if idx > container.len() {
-        container.resize_with(idx, T::default);
+}
+
+impl RosyMutIndexable for f64 {
+    type Out = f64;
+    fn rosy_index_mut(&mut self, idx: usize, name: &str) -> &mut f64 {
+        if idx != 1 {
+            panic!("Index {idx} into scalar '{name}'");
+        }
+        self
     }
-    &mut container[idx - 1]
+}
+
+impl RosyMutIndexable for RosyValue {
+    type Out = f64;
+    fn rosy_index_mut(&mut self, idx: usize, name: &str) -> &mut f64 {
+        if idx == 0 {
+            panic!("Index 0 into '{name}' is out of bounds — Rosy uses 1-based indexing");
+        }
+        match self {
+            RosyValue::VE(v) => {
+                if idx > v.len() {
+                    v.resize(idx, 0.0);
+                }
+                &mut v[idx - 1]
+            }
+            RosyValue::RE(v) if idx == 1 => v,
+            RosyValue::RE(_) => panic!("Index {idx} into scalar '{name}'"),
+            RosyValue::ST(_) => panic!("cannot mutably index '{name}' (ST)"),
+            RosyValue::LO(_) => panic!("cannot mutably index '{name}' (LO)"),
+            RosyValue::CM(_) => panic!("cannot mutably index '{name}' (CM)"),
+            RosyValue::DA(_) => panic!("cannot mutably index '{name}' (DA)"),
+            RosyValue::CD(_) => panic!("cannot mutably index '{name}' (CD)"),
+        }
+    }
+}
+
+#[inline(always)]
+pub fn rosy_get_mut<'a, C: RosyMutIndexable + ?Sized>(
+    container: &'a mut C,
+    one_based: impl IntoF64,
+    var_name: &str,
+) -> &'a mut C::Out {
+    container.rosy_index_mut(one_based.into_f64().round() as usize, var_name)
 }
 
 pub type RE = f64;

@@ -4,13 +4,12 @@
 //! on a document and extracts diagnostics, resolved types, and symbol locations.
 
 use crate::{
-    ast::{CosyParser, Rule},
+    ast::Rule,
     errors::RosyError,
     program::Program,
     resolve::{GraphNode, TypeResolver, TypeSlot},
     transpile::{TranspilationInputContext, Transpile},
 };
-use pest::Parser;
 use tower_lsp::lsp_types::*;
 
 /// Result of analyzing a single Rosy document.
@@ -136,8 +135,9 @@ pub fn analyze(source: &str, source_path: Option<&std::path::Path>) -> AnalysisR
         ..Default::default()
     };
 
+    crate::syntax_config::apply_from_path(source_path);
     // Step 1: Parse
-    let pairs = match CosyParser::parse(Rule::program, source) {
+    let pairs = match crate::ast::parse_source(source) {
         Ok(pairs) => pairs,
         Err(e) => {
             result.diagnostics.push(pest_error_to_diagnostic(&e));

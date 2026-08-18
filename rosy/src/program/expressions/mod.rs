@@ -119,6 +119,45 @@ fn dispatch_builtin_function(
     }
 }
 
+fn flatten_atom_arg(pair: pest::iterators::Pair<Rule>) -> pest::iterators::Pair<Rule> {
+    let mut inner = pair.into_inner();
+    inner.next().expect("atom_arg missing child")
+}
+
+fn flatten_glued_op<'a>(
+    pair: pest::iterators::Pair<'a, Rule>,
+    out: &mut Vec<pest::iterators::Pair<'a, Rule>>,
+) {
+    for g in pair.into_inner() {
+        if g.as_rule() == Rule::atom_arg {
+            out.push(flatten_atom_arg(g));
+        } else {
+            out.push(g);
+        }
+    }
+}
+
+fn flatten_arg_pairs(pair: pest::iterators::Pair<Rule>) -> Vec<pest::iterators::Pair<Rule>> {
+    let mut out = Vec::new();
+    flatten_arg_node(pair, &mut out);
+    out
+}
+
+fn flatten_arg_node<'a>(
+    pair: pest::iterators::Pair<'a, Rule>,
+    out: &mut Vec<pest::iterators::Pair<'a, Rule>>,
+) {
+    match pair.as_rule() {
+        Rule::arg | Rule::bare_arg | Rule::atom_arg | Rule::glued_tail => {
+            for g in pair.into_inner() {
+                flatten_arg_node(g, out);
+            }
+        }
+        Rule::glued_op_arg => flatten_glued_op(pair, out),
+        _ => out.push(pair),
+    }
+}
+
 impl FromRule for Expr {
     fn from_rule(pair: pest::iterators::Pair<Rule>) -> Result<Option<Expr>> {
         // Accept either an `expr` pair (walk its children for primaries+
@@ -126,11 +165,21 @@ impl FromRule for Expr {
         // the `neg_expr = { "-" ~ term }` grammar fix). Collecting into a
         // Vec<Pair> lets us feed both shapes through the same PrattParser
         // call uniformly.
-        let pairs_iter: Vec<pest::iterators::Pair<Rule>> = if pair.as_rule() == Rule::expr {
-            pair.into_inner().collect()
-        } else {
-            vec![pair]
+        let src = pair.as_str().to_string();
+        let pairs_iter: Vec<pest::iterators::Pair<Rule>> = match pair.as_rule() {
+            Rule::expr => pair.into_inner().collect(),
+            Rule::arg => {
+                let flat = flatten_arg_pairs(pair);
+                if flat.is_empty() {
+                    anyhow::bail!("empty command arg `{src}`");
+                }
+                flat
+            }
+            _ => vec![pair],
         };
+        if pairs_iter.is_empty() {
+            anyhow::bail!("empty command arg `{src}`");
+        }
         let result = PRATT_PARSER
             .map_primary(|primary| {
                 let loc = SourceLocation::from_pair(&primary);

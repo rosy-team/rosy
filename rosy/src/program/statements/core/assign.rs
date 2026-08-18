@@ -138,10 +138,38 @@ impl TranspileableStatement for AssignStatement {
                 if explicit_type.is_any() {
                     return Some(Ok(()));
                 }
+                if crate::syntax_config::is_cosy_syntax() {
+                    let differs = resolver
+                        .evaluate_recipe(&recipe)
+                        .map(|t| t != explicit_type)
+                        .unwrap_or(true);
+                    if differs {
+                        if let Some(node) = resolver.nodes.get_mut(&var_slot) {
+                            node.rule = ResolutionRule::InferredFrom {
+                                recipe: ExprRecipe::Literal(RosyType::ANY()),
+                                reason: "reused as multiple types".to_string(),
+                            };
+                            node.resolved = Some(RosyType::ANY());
+                            node.depends_on.clear();
+                        }
+                        return Some(Ok(()));
+                    }
+                }
                 if let Ok(new_type) = resolver.evaluate_recipe(&recipe)
                     && new_type != explicit_type
                     && !new_type.is_any()
                 {
+                    if crate::syntax_config::is_cosy_syntax() {
+                        if let Some(node) = resolver.nodes.get_mut(&var_slot) {
+                            node.rule = ResolutionRule::InferredFrom {
+                                recipe: ExprRecipe::Literal(RosyType::ANY()),
+                                reason: "reused as multiple types".to_string(),
+                            };
+                            node.resolved = Some(RosyType::ANY());
+                            node.depends_on.clear();
+                        }
+                        return Some(Ok(()));
+                    }
                     let scope_str = if ctx.scope_path.is_empty() {
                         "global scope".to_string()
                     } else {
@@ -331,12 +359,16 @@ impl TranspileableStatement for AssignStatement {
                     }
                 }
 
-                if let (Ok(old_type), Ok(new_type)) = (old_type_result, new_type_result)
-                    && old_type != new_type
-                {
-                    if old_type.dimensions == 0
-                        && new_type.dimensions == 0
-                        && (old_type.is_any() || new_type.is_any() || old_type.base_type != new_type.base_type)
+                if let (Ok(old_type), Ok(new_type)) = (old_type_result, new_type_result) {
+                    if old_type != new_type {
+                    // Cosy cells are untyped. Rosy ANY only for 0-d base conflicts.
+                    let any_ok = crate::syntax_config::is_cosy_syntax()
+                        || (old_type.dimensions == 0 && new_type.dimensions == 0);
+                    if any_ok
+                        && (crate::syntax_config::is_cosy_syntax()
+                            || old_type.is_any()
+                            || new_type.is_any()
+                            || old_type.base_type != new_type.base_type)
                     {
                         if let Some(node) = resolver.nodes.get_mut(&var_slot) {
                             node.rule = ResolutionRule::InferredFrom {
@@ -417,6 +449,17 @@ impl TranspileableStatement for AssignStatement {
                         ve_hint,
                     );
                     return Some(Err(RosyError::at(source_location.clone(), msg).into()));
+                    }
+                } else if crate::syntax_config::is_cosy_syntax() {
+                    if let Some(node) = resolver.nodes.get_mut(&var_slot) {
+                        node.rule = ResolutionRule::InferredFrom {
+                            recipe: ExprRecipe::Literal(RosyType::ANY()),
+                            reason: "reused, later assignment not yet typed".to_string(),
+                        };
+                        node.resolved = Some(RosyType::ANY());
+                        node.depends_on.clear();
+                    }
+                    return Some(Ok(()));
                 }
             }
 
@@ -603,6 +646,10 @@ impl Transpile for AssignStatement {
                 value_output.as_owned(&value_type),
                 variable_type.base_type.to_string().to_lowercase()
             )
+        } else if variable_type == RosyType::RE() && value_type != RosyType::RE() {
+            format!("rosy_as_f64(&({}))", value_output.as_owned(&value_type))
+        } else if variable_type == RosyType::ST() && value_type != RosyType::ST() {
+            format!("RosyST::rosy_to_string(&{})", value_output.as_ref())
         } else {
             value_output.as_owned(&variable_type)
         };

@@ -80,7 +80,7 @@ impl Transpile for DanotwStatement {
         requested_variables.extend(size_output.requested_variables.iter().cloned());
 
         let serialization = format!(
-            "{{\n\t\t\tlet __danotw_weights = {weights};\n\t\t\tlet __danotw_size = {size} as usize;\n\t\t\tlet __danotw_vec: Vec<u32> = __danotw_weights.iter().take(__danotw_size).map(|&v| v as u32).collect();\n\t\t\ttaylor::set_weight_vector(__danotw_vec)?;\n\t\t}}",
+            "{{\n\t\t\tlet __danotw_weights = {weights};\n\t\t\tlet __danotw_size = rosy_as_usize(&({size}));\n\t\t\tlet __danotw_vec: Vec<u32> = __danotw_weights.iter().take(__danotw_size).map(|&v| v as u32).collect();\n\t\t\ttaylor::set_weight_vector(__danotw_vec)?;\n\t\t}}",
             weights = weights_output.as_value(),
             size = size_output.as_value(),
         );

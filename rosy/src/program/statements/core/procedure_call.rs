@@ -75,6 +75,13 @@ impl Transpile for ProcedureCallStatement {
         let proc_context = match context.procedures.get(&self.name) {
             Some(ctx) => ctx,
             None => {
+                if crate::syntax_config::is_cosy_syntax() {
+                    // COSY graphics / system procs we don't have yet.
+                    return Ok(TranspilationOutput {
+                        serialization: format!("/* unimplemented COSY proc {} */", self.name),
+                        ..Default::default()
+                    });
+                }
                 let hint = context.procedure_hint(&self.name);
                 return Err(vec![anyhow!(
                     "procedure '{}' is not defined in this scope!{}",
@@ -184,11 +191,37 @@ impl Transpile for ProcedureCallStatement {
                             self.args.len()
                         )])?
                         .r#type;
-                    if provided_type != expected_type {
+                    if !types_compatible(&provided_type, &expected_type) {
                         errors.push(anyhow!(
                             "procedure '{}' expects argument {} ('{}') to be of type '{}', but type '{}' was provided!",
                             self.name, i+1, proc_context.args[i].name, expected_type, provided_type
                         ));
+                    } else if expected_type.is_any() && !provided_type.is_any() {
+                        let temp_name = format!("__rosy_any_arg_{}", i);
+                        let owned = arg_output.as_owned(&provided_type);
+                        prelude_decls.push(format!(
+                            "let mut {} = RosyValue::from({});",
+                            temp_name, owned
+                        ));
+                        serialized_args.push(format!("&mut {}", temp_name));
+                        requested_variables.extend(arg_output.requested_variables);
+                        if let Some(name) = arg_expr.as_bare_variable_name() {
+                            writeback_decls.push(format!(
+                                "{} = {};",
+                                name,
+                                emit_unwrap_rosy_value(temp_name.clone(), &provided_type)
+                            ));
+                        }
+                    } else if provided_type.is_any() && !expected_type.is_any() {
+                        let temp_name = format!("__rosy_unany_arg_{}", i);
+                        let owned = arg_output.as_owned(&provided_type);
+                        prelude_decls.push(format!(
+                            "let mut {} = {};",
+                            temp_name,
+                            emit_unwrap_rosy_value(owned, &expected_type)
+                        ));
+                        serialized_args.push(format!("&mut {}", temp_name));
+                        requested_variables.extend(arg_output.requested_variables);
                     } else if let Some(override_serialization) = prelude_overrides.remove(&i) {
                         // (a) bare-variable duplicate.
                         serialized_args.push(override_serialization);

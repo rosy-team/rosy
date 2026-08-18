@@ -26,6 +26,7 @@ use crate::{
     resolve::{ScopeContext, TypeResolver, TypeSlot},
     transpile::*,
 };
+use rosy_lib::RosyType;
 
 /// AST node for a user-defined procedure declaration.
 #[derive(Debug)]
@@ -129,9 +130,13 @@ impl TranspileableStatement for ProcedureStatement {
         for arg in &self.args {
             let arg_slot =
                 TypeSlot::Argument(ctx.scope_path.clone(), self.name.clone(), arg.name.clone());
+            let fox_any = RosyType::ANY();
+            let ty = arg.r#type.as_ref().or_else(|| {
+                crate::syntax_config::is_cosy_syntax().then_some(&fox_any)
+            });
             resolver.insert_slot(
                 arg_slot.clone(),
-                arg.r#type.as_ref(),
+                ty,
                 Some(source_location.clone()),
             );
             arg_slots.push((arg.name.clone(), arg_slot));
@@ -236,10 +241,12 @@ impl Transpile for ProcedureStatement {
                 )
                 .is_some()
         {
-            return Err(vec![anyhow!(
-                "Procedure '{}' is already defined in this scope!",
-                self.name
-            )]);
+            if !crate::syntax_config::is_cosy_syntax() {
+                return Err(vec![anyhow!(
+                    "Procedure '{}' is already defined in this scope!",
+                    self.name
+                )]);
+            }
         }
 
         // Define and raise the level of any existing variables

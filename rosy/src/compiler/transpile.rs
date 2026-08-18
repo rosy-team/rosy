@@ -256,6 +256,10 @@ impl TranspilationOutput {
     }
 }
 
+pub fn types_compatible(provided: &RosyType, expected: &RosyType) -> bool {
+    provided == expected || provided.is_any() || expected.is_any()
+}
+
 /// `&RosyValue` for dyn dispatch, wrapping a concrete value when needed.
 pub fn emit_as_rosy_value_ref(out: &TranspilationOutput, ty: &RosyType) -> String {
     if ty.is_any() {

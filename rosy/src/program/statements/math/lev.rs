@@ -161,7 +161,7 @@ impl Transpile for LevStatement {
         );
 
         let serialization = format!(
-            "{{ let (rosy_lev_er, rosy_lev_ei, rosy_lev_v) = rosy_lib::core::lev::rosy_lev({matrix}, {n} as usize, {alloc_dim} as usize)?; {eig_real_assign}; {eig_imag_assign}; {eigvecs_assign}; }}",
+            "{{ let (rosy_lev_er, rosy_lev_ei, rosy_lev_v) = rosy_lib::core::lev::rosy_lev({matrix}, rosy_as_usize(&({n})), rosy_as_usize(&({alloc_dim})))?; {eig_real_assign}; {eig_imag_assign}; {eigvecs_assign}; }}",
             matrix = matrix_output.as_ref(),
             n = n_output.as_value(),
             alloc_dim = alloc_dim_output.as_value(),

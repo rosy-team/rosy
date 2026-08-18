@@ -28,7 +28,8 @@ use crate::{
     ast::*,
     program::expressions::Expr,
     transpile::{
-        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement,
         add_context_to_all,
     },
 };
@@ -38,6 +39,8 @@ use crate::{
 pub struct DaintStatement {
     pub da_expr: Expr,
     pub index_expr: Expr,
+    /// COSY `DAINT index input dest` writes dest. Rosy 2-arg is in-place.
+    pub dest_expr: Option<Expr>,
 }
 
 impl FromRule for DaintStatement {
@@ -50,21 +53,27 @@ impl FromRule for DaintStatement {
 
         let mut inner = pair.into_inner();
 
-        let da_pair = inner.next().context("Missing da_var parameter in DAINT!")?;
-        let da_expr = Expr::from_rule(da_pair)
-            .context("Failed to build da_var expression in DAINT")?
-            .ok_or_else(|| anyhow::anyhow!("Expected da_var expression in DAINT"))?;
-
-        let index_pair = inner
+        let a = Expr::from_rule(inner.next().context("Missing first DAINT arg")?)?
+            .ok_or_else(|| anyhow::anyhow!("Expected first DAINT arg"))?;
+        let b = Expr::from_rule(inner.next().context("Missing second DAINT arg")?)?
+            .ok_or_else(|| anyhow::anyhow!("Expected second DAINT arg"))?;
+        let third = inner
             .next()
-            .context("Missing var_index parameter in DAINT!")?;
-        let index_expr = Expr::from_rule(index_pair)
-            .context("Failed to build var_index expression in DAINT")?
-            .ok_or_else(|| anyhow::anyhow!("Expected var_index expression in DAINT"))?;
+            .filter(|p| p.as_rule() != Rule::semicolon)
+            .map(|p| Expr::from_rule(p))
+            .transpose()?
+            .flatten();
+
+        let (index_expr, da_expr, dest_expr) = if third.is_some() {
+            (a, b, third)
+        } else {
+            (b, a, None)
+        };
 
         Ok(Some(DaintStatement {
             da_expr,
             index_expr,
+            dest_expr,
         }))
     }
 }
@@ -76,6 +85,7 @@ impl Transpile for DaintStatement {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let mut requested_variables = BTreeSet::new();
 
+        let da_ty = self.da_expr.type_of(context).map_err(|e| vec![e])?;
         let da_output = self.da_expr.transpile(context).map_err(|e| {
             add_context_to_all(e, "...while transpiling da_var in DAINT".to_string())
         })?;
@@ -86,13 +96,24 @@ impl Transpile for DaintStatement {
         })?;
         requested_variables.extend(index_output.requested_variables.iter().cloned());
 
-        let da_mut = da_output.as_mut_ref();
-
-        let serialization = format!(
-            "rosy_lib::core::da_ops::rosy_daint({}, {} as usize)?;",
-            da_mut,
-            index_output.as_value(),
-        );
+        let serialization = if let Some(dest) = &self.dest_expr {
+            let dest_out = dest.transpile(context).map_err(|e| {
+                add_context_to_all(e, "...while transpiling dest in DAINT".to_string())
+            })?;
+            requested_variables.extend(dest_out.requested_variables.iter().cloned());
+            format!(
+                "{{ let mut __daint = {}.clone(); rosy_lib::core::da_ops::rosy_daint(&mut __daint, rosy_as_usize(&({})))?; {} = __daint; }}",
+                da_output.as_owned(&da_ty),
+                index_output.as_value(),
+                dest_out.as_value(),
+            )
+        } else {
+            format!(
+                "rosy_lib::core::da_ops::rosy_daint({}, rosy_as_usize(&({})))?;",
+                da_output.as_mut_ref(),
+                index_output.as_value(),
+            )
+        };
 
         Ok(TranspilationOutput {
             serialization,

@@ -441,8 +441,21 @@ impl TypeResolver {
             }
         }
 
-        // Any remaining unresolved nodes are cycles or truly unresolvable
-        // (exclude slots that were already warned about as unused variables)
+        // Leftovers are cycles (SPOS := SF; SF := SPOS+SLOC). Cosy cells
+        // default to RE so the loop can close.
+        if crate::syntax_config::is_cosy_syntax() {
+            for node in self.nodes.values_mut() {
+                if node.resolved.is_none() && !warned_slots.contains(&node.slot) {
+                    node.resolved = Some(RosyType::RE());
+                    node.rule = ResolutionRule::InferredFrom {
+                        recipe: ExprRecipe::Literal(RosyType::RE()),
+                        reason: "cycle defaulted to RE".to_string(),
+                    };
+                }
+            }
+            return Ok(warnings);
+        }
+
         let unresolved: Vec<&GraphNode> = self
             .nodes
             .values()
@@ -632,24 +645,29 @@ impl TypeResolver {
             ResolutionRule::Explicit(t) => t,
             ResolutionRule::InferredFrom { recipe, reason } => {
                 let self_referential = recipe.references_slot(slot);
-                self.evaluate_recipe(&recipe).map_err(|e| {
-                    let hint = if self_referential {
-                        "\n\n\thint: this variable's type depends on itself — use an explicit type cast (e.g. VE(8))"
-                    } else {
-                        ""
-                    };
-                    let msg = format!(
-                        "while resolving {}: {}\n\t({}){hint}",
-                        slot, e, reason
-                    );
-                    // Prefer assigned_at (the source of inference), fall back to declared_at
-                    let loc = assigned_at.clone().or_else(|| declared_at.clone());
-                    anyhow::Error::from(RosyError {
-                        message: msg,
-                        location: loc,
-                        severity: crate::errors::RosyErrorSeverity::Error,
-                    })
-                })?
+                match self.evaluate_recipe(&recipe) {
+                    Ok(t) => t,
+                    Err(_) if self_referential && crate::syntax_config::is_cosy_syntax() => {
+                        RosyType::RE()
+                    }
+                    Err(e) => {
+                        let hint = if self_referential {
+                            "\n\n\thint: this variable's type depends on itself — use an explicit type cast (e.g. VE(8))"
+                        } else {
+                            ""
+                        };
+                        let msg = format!(
+                            "while resolving {}: {}\n\t({}){hint}",
+                            slot, e, reason
+                        );
+                        let loc = assigned_at.clone().or_else(|| declared_at.clone());
+                        return Err(anyhow::Error::from(RosyError {
+                            message: msg,
+                            location: loc,
+                            severity: crate::errors::RosyErrorSeverity::Error,
+                        }));
+                    }
+                }
             }
             ResolutionRule::Mirror { source, .. } => self
                 .nodes
@@ -663,16 +681,20 @@ impl TypeResolver {
                     )
                 })?,
             ResolutionRule::Unresolved => {
-                let msg = format!(
-                    "No type could be determined for {}\n  💡 Add an explicit type annotation or assign a value with a known type.",
-                    slot
-                );
-                return Err(RosyError {
-                    message: msg,
-                    location: node.declared_at.clone(),
-                    severity: crate::errors::RosyErrorSeverity::Error,
+                if crate::syntax_config::is_cosy_syntax() {
+                    RosyType::RE()
+                } else {
+                    let msg = format!(
+                        "No type could be determined for {}\n  💡 Add an explicit type annotation or assign a value with a known type.",
+                        slot
+                    );
+                    return Err(RosyError {
+                        message: msg,
+                        location: node.declared_at.clone(),
+                        severity: crate::errors::RosyErrorSeverity::Error,
+                    }
+                    .into());
                 }
-                .into());
             }
         };
 
@@ -695,6 +717,9 @@ impl TypeResolver {
                     .get(slot)
                     .and_then(|n| n.resolved)
                     .ok_or_else(|| anyhow!("Variable slot {} not resolved", slot))?;
+                if base.is_any() {
+                    return Ok(RosyType::ANY());
+                }
                 // Cascade: peel min(indices, dimensions), then if remaining
                 // index applies to a (VE) (dim=0 VE base), it extracts to RE.
                 // Mirrors VariableIdentifier::type_of's cascade exactly.

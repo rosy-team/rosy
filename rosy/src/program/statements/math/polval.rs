@@ -186,7 +186,7 @@ impl Transpile for PolvalStatement {
         };
 
         let serialization = format!(
-            "rosy_lib::core::polval::{}({}, {}, {} as usize, {}, {} as usize, {}, {} as usize)?;",
+            "rosy_lib::core::polval::{}({}, {}, rosy_as_usize(&({})), {}, rosy_as_usize(&({})), {}, rosy_as_usize(&({})))?;",
             polval_fn,
             l_out.as_value(),
             p_arg,

@@ -145,8 +145,8 @@ impl Transpile for SubstrStatement {
         let serialization = format!(
             r#"{{
     let __substr_src = ({}).to_string();
-    let __substr_first = {} as usize;
-    let __substr_last = {} as usize;
+    let __substr_first = rosy_as_usize(&({}));
+    let __substr_last = rosy_as_usize(&({}));
     {}{} = __substr_src.get((__substr_first - 1)..__substr_last)
         .unwrap_or("")
         .to_string();

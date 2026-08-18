@@ -6,7 +6,7 @@ use std::{path::PathBuf, process::Command};
 
 use cli::setup::EditorTarget;
 use cli::{BOLD, CYAN, RESET};
-use rosy::syntax_config;
+
 
 /// Rosy Transpiler - Converts Rosy source code to executable Rust programs
 #[derive(ClapParser)]
@@ -36,10 +36,6 @@ enum Commands {
         /// Aggressive optimizations: LTO, single codegen unit, panic=abort, SIMD DA (slower builds, faster binaries; requires nightly Rust)
         #[arg(long)]
         optimized: bool,
-
-        /// Enforce COSY INFINITY syntax: memory sizes are required in VARIABLE declarations
-        #[arg(long)]
-        cosy_syntax: bool,
     },
 
     /// Run language feature tests (transpile, compile, execute each construct)
@@ -77,10 +73,6 @@ enum Commands {
         /// Aggressive optimizations: LTO, single codegen unit, panic=abort, SIMD DA (slower builds, faster binaries; requires nightly Rust)
         #[arg(long)]
         optimized: bool,
-
-        /// Enforce COSY INFINITY syntax: memory sizes are required in VARIABLE declarations
-        #[arg(long)]
-        cosy_syntax: bool,
     },
 
     /// Start the Language Server Protocol (LSP) server on stdin/stdout
@@ -123,19 +115,17 @@ fn main() -> Result<()> {
         return cli::test::run_construct_tests(filter.as_deref(), *release, *bless);
     }
 
-    let (source, output_dir, release, optimized, cosy_syntax, output_name) = match &cli.command {
+    let (source, output_dir, release, optimized, output_name) = match &cli.command {
         Commands::Run {
             source,
             output_dir,
             release,
             optimized,
-            cosy_syntax,
         } => (
             source.clone(),
             output_dir.clone(),
             *release || *optimized,
             *optimized,
-            *cosy_syntax,
             None,
         ),
         Commands::Build {
@@ -144,7 +134,6 @@ fn main() -> Result<()> {
             output_dir,
             release,
             optimized,
-            cosy_syntax,
         } => {
             let mut name = output.clone().unwrap_or_else(|| {
                 source
@@ -161,14 +150,12 @@ fn main() -> Result<()> {
                 output_dir.clone(),
                 *release || *optimized,
                 *optimized,
-                *cosy_syntax,
                 Some(name),
             )
         }
         Commands::Test { .. } | Commands::Lsp { .. } | Commands::Setup { .. } => unreachable!(),
     };
 
-    syntax_config::set_cosy_syntax(cosy_syntax);
     let binary_path = cli::compile::rosy(&source, output_dir, release, optimized)?;
 
     match cli.command {

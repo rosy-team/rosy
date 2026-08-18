@@ -180,7 +180,7 @@ impl Transpile for CpolvalStatement {
         };
 
         let serialization = format!(
-            "rosy_lib::core::polval::rosy_polval_cd({}, {}, {} as usize, {}, {} as usize, {}, {} as usize)?;",
+            "rosy_lib::core::polval::rosy_polval_cd({}, {}, rosy_as_usize(&({})), {}, rosy_as_usize(&({})), {}, rosy_as_usize(&({})))?;",
             l_out.as_value(),
             p_arg,
             np_out.as_value(),

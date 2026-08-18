@@ -117,7 +117,7 @@ impl Transpile for LdetStatement {
         let n_val = n_output.as_value();
         let alloc_val = alloc_dim_output.as_value();
         let rhs = format!(
-            "rosy_lib::core::ldet::rosy_ldet({matrix_ref}, {n_val} as usize, {alloc_val} as usize)?"
+            "rosy_lib::core::ldet::rosy_ldet({matrix_ref}, rosy_as_usize(&({n_val})), rosy_as_usize(&({alloc_val})))?"
         );
         let result_assign = if result_output.value_kind == ValueKind::Owned {
             format!("{} = {rhs}", result_output.serialization)

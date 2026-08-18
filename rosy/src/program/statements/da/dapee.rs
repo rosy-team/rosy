@@ -91,7 +91,7 @@ impl Transpile for DapeeStatement {
         requested_variables.extend(result_output.requested_variables.iter().cloned());
 
         let serialization = format!(
-            "rosy_lib::core::dapew::rosy_dapee({}, {} as u64, {})?;",
+            "rosy_lib::core::dapew::rosy_dapee({}, rosy_as_u64(&({})), {})?;",
             da_var_output.as_ref(),
             id_output.as_value(),
             result_output.as_mut_ref(),

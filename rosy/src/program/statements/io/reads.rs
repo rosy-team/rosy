@@ -131,7 +131,7 @@ impl Transpile for ReadsStatement {
         // Emit runtime dispatch: unit 5 = stdin, otherwise file unit
         let serialization = format!(
             "{deref}{dest} = {{\n\
-                let __unit = {unit} as u64;\n\
+                let __unit = rosy_as_u64(&({unit}));\n\
                 if __unit == 5 {{\n\
                     let mut __line = String::new();\n\
                     std::io::stdin().read_line(&mut __line).map_err(|e| anyhow::anyhow!(\"READS stdin error: {{}}\", e))?;\n\

@@ -122,8 +122,8 @@ impl Transpile for WriteStatement {
             .collect();
 
         let serialization = format!(
-            "{{ let __rosy_unit = ({}).round() as i64; {} }}",
-            unit_output.as_value(),
+            "{{ let __rosy_unit = rosy_as_i64(&({})); {} }}",
+            unit_output.as_ref(),
             individual_writes.join(" ")
         );
 

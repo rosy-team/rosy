@@ -148,7 +148,7 @@ impl Transpile for LinvStatement {
         );
 
         let serialization = format!(
-            "{{ let (rosy_linv_inv, rosy_linv_err) = rosy_lib::core::linv::rosy_linv({matrix}, {n} as usize, {alloc_dim} as usize)?; {inverse_assign}; {error_assign}; }}",
+            "{{ let (rosy_linv_inv, rosy_linv_err) = rosy_lib::core::linv::rosy_linv({matrix}, rosy_as_usize(&({n})), rosy_as_usize(&({alloc_dim})))?; {inverse_assign}; {error_assign}; }}",
             matrix = matrix_output.as_ref(),
             n = n_output.as_value(),
             alloc_dim = alloc_dim_output.as_value(),

@@ -36,6 +36,7 @@ use crate::program::expressions::Expr;
 use crate::transpile::TranspileableExpr;
 use crate::transpile::{
     TranspilationInputContext, TranspilationOutput, Transpile, ValueKind, VariableScope,
+    emit_unwrap_rosy_value, types_compatible,
 };
 use anyhow::{Context, Error, Result, anyhow};
 use rosy_lib::RosyType;
@@ -149,8 +150,10 @@ impl VarExpr {
                             // parentheses must be a function call (e.g. recursion where
                             // the function name doubles as the return variable).
                             let var_data = context.variables.get(&ident.name).unwrap();
-                            if var_data.data.r#type.dimensions > 0 {
-                                // Variable is an array — prefer indexing
+                            if var_data.data.r#type.dimensions > 0
+                                || var_data.data.r#type.is_any()
+                            {
+                                // Array or untyped COSY cell — prefer indexing
                                 Ok(VarExprKind::Variable)
                             } else {
                                 // Variable is a scalar — can't index, must be a function call
@@ -548,11 +551,37 @@ pub fn function_call_transpile_helper(
                         args.len()
                     )])?
                     .r#type;
-                if provided_type != expected_type {
+                if !types_compatible(&provided_type, &expected_type) {
                     errors.push(anyhow!(
                         "Function '{}' expects argument {} ('{}') to be of type '{}', but type '{}' was provided!",
                         name, i+1, func_context.args[i].name, expected_type, provided_type
                     ));
+                } else if expected_type.is_any() && !provided_type.is_any() {
+                    let temp_name = format!("__rosy_any_arg_{}", i);
+                    let owned = arg_output.as_owned(&provided_type);
+                    prelude_decls.push(format!(
+                        "let mut {} = RosyValue::from({});",
+                        temp_name, owned
+                    ));
+                    serialized_args.push(format!("&mut {}", temp_name));
+                    requested_variables.extend(arg_output.requested_variables);
+                    if let Some(vname) = arg_expr.as_bare_variable_name() {
+                        writeback_decls.push(format!(
+                            "{} = {};",
+                            vname,
+                            emit_unwrap_rosy_value(temp_name.clone(), &provided_type)
+                        ));
+                    }
+                } else if provided_type.is_any() && !expected_type.is_any() {
+                    let temp_name = format!("__rosy_unany_arg_{}", i);
+                    let owned = arg_output.as_owned(&provided_type);
+                    prelude_decls.push(format!(
+                        "let mut {} = {};",
+                        temp_name,
+                        emit_unwrap_rosy_value(owned, &expected_type)
+                    ));
+                    serialized_args.push(format!("&mut {}", temp_name));
+                    requested_variables.extend(arg_output.requested_variables);
                 } else if let Some(override_serialization) = prelude_overrides.remove(&i) {
                     // (a) bare-variable duplicate: use the pre-staged temp.
                     serialized_args.push(override_serialization);

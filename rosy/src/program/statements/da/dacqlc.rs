@@ -129,7 +129,7 @@ impl Transpile for DacqlcStatement {
         requested_variables.extend(constant_output.requested_variables.clone());
 
         let serialization = format!(
-            "rosy_lib::core::daprv::rosy_dacqlc({}, {} as usize, {}, {}, {})?;",
+            "rosy_lib::core::daprv::rosy_dacqlc({}, rosy_as_usize(&({})), {}, {}, {})?;",
             da_output.as_ref(),
             n_output.as_value(),
             hessian_output.as_mut_ref(),

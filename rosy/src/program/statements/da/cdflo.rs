@@ -103,7 +103,7 @@ impl Transpile for CdfloStatement {
         let result_ref = result_output.as_mut_ref();
 
         let serialization = format!(
-            "rosy_lib::core::da_ops::rosy_cdflo({}, {}, {result_ref}, {} as usize)?;",
+            "rosy_lib::core::da_ops::rosy_cdflo({}, {}, {result_ref}, rosy_as_usize(&({})))?;",
             rhs_output.as_ref(),
             ic_output.as_ref(),
             dim_output.as_value(),

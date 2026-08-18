@@ -124,7 +124,7 @@ impl Transpile for CdnfdsStatement {
         let result_ref = result_o.as_mut_ref();
 
         let serialization = format!(
-            "rosy_lib::core::da_ops::rosy_cdnfds({}, {}, {}, {}, {} as usize, {}, {})?;",
+            "rosy_lib::core::da_ops::rosy_cdnfds({}, {}, {}, {}, rosy_as_usize(&({})), {}, {})?;",
             input_o.as_ref(),
             mod_o.as_ref(),
             arg_o.as_ref(),

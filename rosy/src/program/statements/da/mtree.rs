@@ -190,7 +190,7 @@ impl Transpile for MtreeStatement {
         );
 
         let serialization = format!(
-            "{{ let (rosy_mtree_c, rosy_mtree_s1, rosy_mtree_s2, rosy_mtree_ne, rosy_mtree_tl) = rosy_lib::core::mtree::rosy_mtree({da_array}, {elements} as usize)?; {coeff_assign}; {steer1_assign}; {steer2_assign}; {elements2_assign}; {tree_length_assign}; }}",
+            "{{ let (rosy_mtree_c, rosy_mtree_s1, rosy_mtree_s2, rosy_mtree_ne, rosy_mtree_tl) = rosy_lib::core::mtree::rosy_mtree({da_array}, rosy_as_usize(&({elements})))?; {coeff_assign}; {steer1_assign}; {steer2_assign}; {elements2_assign}; {tree_length_assign}; }}",
             da_array = da_array_output.as_ref(),
             elements = elements_output.as_value(),
         );

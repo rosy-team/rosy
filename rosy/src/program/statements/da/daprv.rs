@@ -123,7 +123,7 @@ impl Transpile for DaprvStatement {
         requested_variables.extend(unit_output.requested_variables.iter().cloned());
 
         let serialization = format!(
-            "rosy_lib::core::daprv::rosy_daprv({}, {} as usize, {} as usize, {} as usize, {} as u64)?;",
+            "rosy_lib::core::daprv::rosy_daprv({}, rosy_as_usize(&({})), rosy_as_usize(&({})), rosy_as_usize(&({})), rosy_as_u64(&({})))?;",
             array_output.as_ref(),
             num_comp_output.as_value(),
             max_vars_output.as_value(),

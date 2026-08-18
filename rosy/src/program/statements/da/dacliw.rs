@@ -99,7 +99,7 @@ impl Transpile for DacliwStatement {
         requested_variables.extend(linear_output.requested_variables.clone());
 
         let serialization = format!(
-            "rosy_lib::core::daprv::rosy_dacliw({}, {} as usize, {})?;",
+            "rosy_lib::core::daprv::rosy_dacliw({}, rosy_as_usize(&({})), {})?;",
             da_output.as_ref(),
             n_output.as_value(),
             linear_output.as_mut_ref(),

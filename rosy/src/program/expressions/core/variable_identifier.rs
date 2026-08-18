@@ -131,6 +131,9 @@ impl TranspileableExpr for VariableIdentifier {
 
         let num_indices = self.num_index_dimensions();
         let mut var_type = var_data.data.r#type;
+        if var_type.is_any() {
+            return Ok(RosyType::ANY());
+        }
 
         // Apply indices in cascade: each index peels one declared dimension
         // first, then if any indices remain and the base type is VE with
@@ -225,7 +228,10 @@ impl Transpile for VariableIdentifier {
                 ))]
             })?;
             let expected_type = RosyType::RE();
-            if index_expr_type != expected_type {
+            if index_expr_type != expected_type
+                && !index_expr_type.is_any()
+                && index_expr_type != RosyType::ST()
+            {
                 return Err(vec![anyhow::anyhow!(
                     "Indexing expression {i} when indexing {name} was {index_expr_type}, when it should be {expected_type}!"
                 )]);
@@ -234,7 +240,17 @@ impl Transpile for VariableIdentifier {
             // Transpile it
             match index_expr.transpile(context) {
                 Ok(output) => {
-                    transpiled_indices.push(output.as_value());
+                    let idx = if index_expr_type.is_any() {
+                        format!("({}).expect_re()?", output.as_owned(&RosyType::ANY()))
+                    } else if index_expr_type == RosyType::ST() {
+                        format!(
+                            "<f64 as rosy_lib::intrinsics::from_st::RosyFromST>::rosy_from_st({})?",
+                            output.as_owned(&RosyType::ST())
+                        )
+                    } else {
+                        output.as_value()
+                    };
+                    transpiled_indices.push(idx);
                     requested_variables.extend(output.requested_variables);
                 }
                 Err(vec_err) => {

@@ -92,7 +92,7 @@ impl Transpile for DacodeStatement {
         let result_ref = result_output.as_mut_ref();
 
         let serialization = format!(
-            "rosy_lib::core::da_ops::rosy_dacode({}, {} as usize, {result_ref})?;",
+            "rosy_lib::core::da_ops::rosy_dacode({}, rosy_as_usize(&({})), {result_ref})?;",
             params_output.as_ref(),
             size_output.as_value(),
         );

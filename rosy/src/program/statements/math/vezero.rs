@@ -104,7 +104,7 @@ impl Transpile for VezeroStatement {
 
         let serialization = format!(
             "{{\n    \
-                let __rosy_vezero_n = {num} as usize;\n    \
+                let __rosy_vezero_n = rosy_as_usize(&({num}));\n    \
                 let __rosy_vezero_thresh = ({thresh} as f64).abs();\n    \
                 for __rosy_vezero_comp in {arr}[..__rosy_vezero_n].iter_mut() {{\n        \
                     if __rosy_vezero_comp.abs() > __rosy_vezero_thresh {{\n            \

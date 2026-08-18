@@ -148,7 +148,7 @@ impl Transpile for MblockStatement {
         );
 
         let serialization = format!(
-            "{{ let (rosy_mblock_t, rosy_mblock_ti) = rosy_lib::core::mblock::rosy_mblock({matrix}, {n} as usize, {alloc_dim} as usize)?; {transform_assign}; {inverse_assign}; }}",
+            "{{ let (rosy_mblock_t, rosy_mblock_ti) = rosy_lib::core::mblock::rosy_mblock({matrix}, rosy_as_usize(&({n})), rosy_as_usize(&({alloc_dim})))?; {transform_assign}; {inverse_assign}; }}",
             matrix = matrix_output.as_ref(),
             n = n_output.as_value(),
             alloc_dim = alloc_dim_output.as_value(),

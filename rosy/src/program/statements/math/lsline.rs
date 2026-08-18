@@ -153,7 +153,7 @@ impl Transpile for LslineStatement {
         );
 
         let serialization = format!(
-            "{{ let (rosy_lsline_a, rosy_lsline_b) = rosy_lib::core::lsline::rosy_lsline({x}, {y}, {n} as usize)?; {a_assign}; {b_assign}; }}",
+            "{{ let (rosy_lsline_a, rosy_lsline_b) = rosy_lib::core::lsline::rosy_lsline({x}, {y}, rosy_as_usize(&({n})))?; {a_assign}; {b_assign}; }}",
             x = x_output.as_ref(),
             y = y_output.as_ref(),
             n = n_output.as_value(),

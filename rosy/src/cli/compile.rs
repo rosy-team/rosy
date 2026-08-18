@@ -1,5 +1,4 @@
 use anyhow::{Context, Result, anyhow};
-use pest::Parser;
 use rosy::{ast, embedded, program::Program, resolve, transpile::*};
 use std::{
     fs::write,
@@ -75,7 +74,8 @@ pub(crate) fn compile_source(
         step(2, 6, "Parsing");
     }
     let t = Instant::now();
-    let program = ast::CosyParser::parse(ast::Rule::program, raw_script)
+    rosy::syntax_config::apply_from_path(script_path);
+    let program = ast::parse_source(raw_script)
         .context("Couldn't parse!")?
         .next()
         .context("Expected a program")?;

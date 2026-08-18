@@ -115,7 +115,7 @@ impl Transpile for WhileStatement {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         // Verify the condition is a logical expression
         let condition_type = self.condition.type_of(context).map_err(|e| vec![e])?;
-        if condition_type != RosyType::LO() {
+        if condition_type != RosyType::LO() && !condition_type.is_any() {
             return Err(vec![anyhow!(
                 "WHILE condition must be of type 'LO' (logical), found '{}'",
                 condition_type
@@ -157,9 +157,14 @@ impl Transpile for WhileStatement {
 
         // Generate Rust while loop
         // LO (bool) is Copy, so as_value() gives the plain bool or (*&X)
+        let cond_rs = if condition_type.is_any() {
+            format!("({}).expect_lo()?", cond_output.as_owned(&RosyType::ANY()))
+        } else {
+            cond_output.as_value()
+        };
         let serialization = format!(
             "while {} {{\n{}\n}}",
-            cond_output.as_value(),
+            cond_rs,
             indent(serialized_statements.join("\n"))
         );
 

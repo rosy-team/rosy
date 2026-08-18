@@ -229,7 +229,7 @@ impl Transpile for ElseIfClause {
             .type_of(context)
             .context("...while determining type of ELSEIF condition expression")
             .map_err(|e| vec![e])?;
-        if condition_type != RosyType::LO() {
+        if condition_type != RosyType::LO() && !condition_type.is_any() {
             return Err(vec![anyhow!(
                 "ELSEIF condition must be of type 'LO' (logical), found '{condition_type}'"
             )]);
@@ -272,9 +272,14 @@ impl Transpile for ElseIfClause {
             serialized_statements
         };
 
+        let cond_rs = if condition_type.is_any() {
+            format!("({}).expect_lo()?", cond_output.as_owned(&RosyType::ANY()))
+        } else {
+            cond_output.as_value()
+        };
         let serialization = format!(
             "else if {} {{\n{}\n}}",
-            cond_output.as_value(),
+            cond_rs,
             indent(serialized_statements.join("\n"))
         );
         if errors.is_empty() {
@@ -299,7 +304,7 @@ impl Transpile for IfStatement {
             .type_of(context)
             .context("...while determining type of IF condition expression")
             .map_err(|e| vec![e])?;
-        if condition_type != RosyType::LO() {
+        if condition_type != RosyType::LO() && !condition_type.is_any() {
             return Err(vec![anyhow!(
                 "IF condition must be of type 'LO' (logical), found '{condition_type}'"
             )]);
@@ -389,9 +394,14 @@ impl Transpile for IfStatement {
             String::new()
         };
 
+        let cond_rs = if condition_type.is_any() {
+            format!("({}).expect_lo()?", cond_output.as_owned(&RosyType::ANY()))
+        } else {
+            cond_output.as_value()
+        };
         let serialization = format!(
             "if {} {{\n{}\n}}{}{}",
-            cond_output.as_value(),
+            cond_rs,
             indent(serialized_if_statements.join("\n")),
             if serialized_elseif_clauses.is_empty() {
                 String::new()
