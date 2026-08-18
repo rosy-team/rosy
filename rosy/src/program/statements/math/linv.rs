@@ -26,8 +26,8 @@ use crate::{
     ast::*,
     program::expressions::Expr,
     transpile::{
-        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
-        ValueKind, add_context_to_all,
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement, ValueKind, add_context_to_all,
     },
 };
 
@@ -141,10 +141,20 @@ impl Transpile for LinvStatement {
             inverse_output.value_kind,
             "rosy_linv_inv",
         );
+        let err_rhs = if self
+            .error_flag_expr
+            .type_of(context)
+            .map(|t| t.is_any())
+            .unwrap_or(false)
+        {
+            "RosyValue::from(rosy_linv_err)"
+        } else {
+            "rosy_linv_err"
+        };
         let error_assign = make_lvalue(
             &error_flag_output.serialization,
             error_flag_output.value_kind,
-            "rosy_linv_err",
+            err_rhs,
         );
 
         let serialization = format!(

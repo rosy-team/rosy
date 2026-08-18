@@ -411,21 +411,28 @@ pub fn rosy_dadmu(var_i: usize, var_j: usize, da_in: &Vec<DA>, result: &mut Vec<
 /// - `da`:     source DA array (first component used)
 /// - `n`:      number of linear coefficients to extract
 /// - `linear`: output vector of size n
-pub fn rosy_dacliw(da: &Vec<DA>, n: usize, linear: &mut Vec<f64>) -> Result<()> {
+pub fn rosy_dacliw(
+    da: &impl crate::AsDaRef,
+    n: impl crate::IntoF64,
+    linear: &mut impl crate::PolvalReDst,
+) -> Result<()> {
     let config = get_config().context("DACLIW requires DA to be initialized (call OV first)")?;
-
+    let da = da.as_da_vec();
+    let n = crate::rosy_as_usize(&n.into_f64());
     let da_ref = da.first().context("DACLIW: DA vector is empty")?;
 
-    linear.resize(n, 0.0);
+    let mut out = linear.load_re_vec();
+    out.resize(n, 0.0);
 
     for i in 0..n {
         if i < config.num_vars {
             let mono = Monomial::variable(i);
-            linear[i] = da_ref.get_coeff(&mono);
+            out[i] = da_ref.get_coeff(&mono);
         } else {
-            linear[i] = 0.0;
+            out[i] = 0.0;
         }
     }
+    linear.store_re_vec(out);
 
     Ok(())
 }

@@ -412,6 +412,9 @@ impl Transpile for FunctionStatement {
         let serialized_args: Vec<String> = {
             let mut serialized_args = Vec::new();
             for var_name in requested_variables.iter() {
+                if resolved_arg_data.iter().any(|a| a.name == *var_name) {
+                    continue;
+                }
                 let Some(var_data) = inner_context.variables.get(var_name) else {
                     errors.push(
                         anyhow!(

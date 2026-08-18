@@ -331,6 +331,9 @@ impl Transpile for ProcedureStatement {
         let serialized_args: Vec<String> = {
             let mut serialized_args = Vec::new();
             for var_name in requested_variables.iter() {
+                if resolved_arg_data.iter().any(|a| a.name == *var_name) {
+                    continue;
+                }
                 // rosy_mpi_context is a transpiler-injected runtime singleton
                 // (used by PLOOP, see ploop/mod.rs). It threads through the
                 // procedure call chain as a typed reference so PLOOP works

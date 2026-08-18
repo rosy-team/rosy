@@ -465,6 +465,9 @@ pub fn function_call_transpile_helper(
     let mut serialized_args = Vec::new();
     // Serialize the requested variables from the function context
     for var in &func_context.requested_variables {
+        if func_context.args.iter().any(|a| a.name == *var) {
+            continue;
+        }
         let var_data = context.variables.get(var).ok_or(vec![anyhow!(
             "Could not find variable '{}' requested by function '{}'",
             var,
@@ -508,6 +511,10 @@ pub fn function_call_transpile_helper(
     // mutable args (`F(A, A)`) silently drops the mutation that would have
     // landed in the second occurrence.
     let mut writeback_decls: Vec<String> = Vec::new();
+
+    for var in &func_context.requested_variables {
+        first_occurrence.insert(var.clone(), usize::MAX);
+    }
 
     // Pass 1 — record (a) bare-variable duplicates.
     for (i, arg_expr) in args.iter().enumerate() {

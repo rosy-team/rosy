@@ -106,6 +106,9 @@ impl Transpile for ProcedureCallStatement {
         let mut serialized_args = Vec::new();
         // Serialize the requested variables from the procedure context
         for var in &proc_context.requested_variables {
+            if proc_context.args.iter().any(|a| a.name == *var) {
+                continue;
+            }
             // rosy_mpi_context is the same `&mut RosyMPIContext` shape at
             // top-level (via the template's indirection) and inside procedure
             // bodies (as a parameter). Pass the binding bare and let Rust
@@ -148,6 +151,12 @@ impl Transpile for ProcedureCallStatement {
         // outputs — e.g. `ANM N M O` called as `ANM A B B` writes the result
         // into B). Without this, dup-arg clones silently swallow the writes.
         let mut writeback_decls: Vec<String> = Vec::new();
+
+        // Captured globals already occupy a mut slot. An explicit arg
+        // with the same name is a duplicate (LINE(..., PLOC, ..., PLOC)).
+        for var in &proc_context.requested_variables {
+            first_occurrence.insert(var.clone(), usize::MAX);
+        }
 
         // Pass 1 — record (a) bare-variable duplicates.
         for (i, arg_expr) in self.args.iter().enumerate() {

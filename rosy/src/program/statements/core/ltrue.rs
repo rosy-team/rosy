@@ -77,7 +77,17 @@ impl Transpile for LtrueStatement {
             }
         };
 
-        let serialization = format!("{}{} = true;", dereference, output.serialization);
+        let dest_any = context
+            .variables
+            .get(&self.identifier.name)
+            .map(|v| v.data.r#type.is_any())
+            .unwrap_or(false);
+        let rhs = if dest_any {
+            "RosyValue::from(true)"
+        } else {
+            "true"
+        };
+        let serialization = format!("{}{} = {};", dereference, output.serialization, rhs);
 
         Ok(TranspilationOutput {
             serialization,

@@ -531,8 +531,19 @@ fn flow_impl<T: DACoefficient>(
 /// - `ic`: initial condition DA array (dim components)
 /// - `result`: output DA array (dim components)
 /// - `dim`: dimension of the system
-pub fn rosy_daflo(rhs: &Vec<DA>, ic: &Vec<DA>, result: &mut Vec<DA>, dim: usize) -> Result<()> {
-    flow_impl(rhs, ic, result, dim)
+pub fn rosy_daflo(
+    rhs: &impl crate::AsDaRef,
+    ic: &impl crate::AsDaRef,
+    result: &mut impl crate::AsDaDst,
+    dim: impl crate::IntoF64,
+) -> Result<()> {
+    let rhs = rhs.as_da_vec();
+    let ic = ic.as_da_vec();
+    let dim = crate::rosy_as_usize(&dim.into_f64());
+    let mut out = result.load_da_vec();
+    flow_impl(&rhs, &ic, &mut out, dim)?;
+    result.store_da_vec(out);
+    Ok(())
 }
 
 /// CDFLO: Compute the complex DA flow of x' = f(x) for time step 1.

@@ -523,6 +523,18 @@ impl RosyVMAX for RosyValue {
     }
 }
 
+impl crate::intrinsics::conj::RosyCONJ for RosyValue {
+    type Output = RosyValue;
+    fn rosy_conj(&self) -> Result<Self::Output> {
+        match self {
+            Self::CM(v) => Ok(RosyValue::from(v.rosy_conj()?)),
+            Self::CD(v) => Ok(RosyValue::from(v.rosy_conj()?)),
+            Self::RE(v) => Ok(RosyValue::RE(*v)),
+            other => bail!("CONJ not defined for {}", other.kind_name()),
+        }
+    }
+}
+
 impl RosyVMIN for RosyValue {
     fn rosy_vmin(&self) -> Result<RE> {
         match self {

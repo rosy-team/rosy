@@ -23,7 +23,8 @@ use crate::{
     program::expressions::Expr,
     syntax_config,
     transpile::{
-        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement, ValueKind,
     },
 };
 
@@ -170,7 +171,28 @@ impl Transpile for DAInitStatement {
                     .collect::<Vec<_>>()
             })?;
             requested_variables.extend(nm_o.requested_variables.iter().cloned());
-            serialization.push_str(&format!("\n\t\t{} = __daini_nm as f64;", nm_o.as_value()));
+            let dest = match nm_o.value_kind {
+                ValueKind::Owned => nm_o.serialization.clone(),
+                ValueKind::Ref => {
+                    if let Some(inner) = nm_o.serialization.strip_prefix('&') {
+                        inner.to_string()
+                    } else {
+                        format!("*{}", nm_o.serialization)
+                    }
+                }
+            };
+            let rhs = if self
+                .num_monomials_out
+                .as_ref()
+                .and_then(|e| e.type_of(context).ok())
+                .map(|t| t.is_any())
+                .unwrap_or(false)
+            {
+                "RosyValue::from(__daini_nm as f64)"
+            } else {
+                "__daini_nm as f64"
+            };
+            serialization.push_str(&format!("\n\t\t{dest} = {rhs};"));
         }
 
         Ok(TranspilationOutput {

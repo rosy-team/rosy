@@ -292,11 +292,11 @@ impl Transpile for LoopStatement {
         let start = re_val(&start_output, &start_type);
         let end = re_val(&end_output, &end_type);
         let body = indent(serialized_statements.join("\n"));
-        let serialization = if let Some(step) = &step_value {
+        let loop_core = if let Some(step) = &step_value {
             format!(
-                "let mut {iter}: RE = ({start}) as RE;\n\
-                 let __{iter}_end: RE = ({end}) as RE;\n\
-                 let __{iter}_step: RE = ({step}) as RE;\n\
+                "let mut {iter}: RE = rosy_as_f64(&({start}));\n\
+                 let __{iter}_end: RE = rosy_as_f64(&({end}));\n\
+                 let __{iter}_step: RE = rosy_as_f64(&({step}));\n\
                  while (__{iter}_step > 0.0_f64 && {iter} <= __{iter}_end) || (__{iter}_step <= 0.0_f64 && {iter} >= __{iter}_end) {{\n\
                  {body}\n\
                  \t{iter} += __{iter}_step;\n\
@@ -304,14 +304,16 @@ impl Transpile for LoopStatement {
             )
         } else {
             format!(
-                "let mut {iter}: RE = ({start}) as RE;\n\
-                 let __{iter}_end: RE = ({end}) as RE;\n\
+                "let mut {iter}: RE = rosy_as_f64(&({start}));\n\
+                 let __{iter}_end: RE = rosy_as_f64(&({end}));\n\
                  while {iter} <= __{iter}_end {{\n\
                  {body}\n\
                  \t{iter} += 1.0_f64;\n\
                  }}"
             )
         };
+        // Always brace so `let mut I: RE` cannot shadow a later I in this block.
+        let serialization = format!("{{ {loop_core} }}");
         if errors.is_empty() {
             Ok(TranspilationOutput {
                 serialization,

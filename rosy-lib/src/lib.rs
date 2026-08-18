@@ -242,6 +242,13 @@ impl PolvalDaSrc for Vec<RosyValue> {
             .collect()
     }
 }
+impl PolvalDaSrc for [RosyValue] {
+    fn to_da_vec(&self) -> Vec<DA> {
+        self.iter()
+            .map(|v| v.clone().expect_da().unwrap_or_else(|_| DA::zero()))
+            .collect()
+    }
+}
 impl PolvalDaSrc for RosyValue {
     fn to_da_vec(&self) -> Vec<DA> {
         match self {
@@ -269,6 +276,11 @@ impl PolvalReSrc for [f64] {
     }
 }
 impl PolvalReSrc for Vec<RosyValue> {
+    fn to_re_vec(&self) -> Vec<f64> {
+        self.iter().map(|v| v.as_f64()).collect()
+    }
+}
+impl PolvalReSrc for [RosyValue] {
     fn to_re_vec(&self) -> Vec<f64> {
         self.iter().map(|v| v.as_f64()).collect()
     }
@@ -312,6 +324,45 @@ impl PolvalReDst for RosyValue {
     }
 }
 
+pub trait AsDaDst {
+    fn load_da_vec(&self) -> Vec<DA>;
+    fn store_da_vec(&mut self, v: Vec<DA>);
+}
+impl AsDaDst for Vec<DA> {
+    fn load_da_vec(&self) -> Vec<DA> {
+        self.clone()
+    }
+    fn store_da_vec(&mut self, v: Vec<DA>) {
+        *self = v;
+    }
+}
+impl AsDaDst for Vec<RosyValue> {
+    fn load_da_vec(&self) -> Vec<DA> {
+        self.as_da_vec()
+    }
+    fn store_da_vec(&mut self, v: Vec<DA>) {
+        *self = v.into_iter().map(RosyValue::DA).collect();
+    }
+}
+impl AsDaDst for f64 {
+    fn load_da_vec(&self) -> Vec<DA> {
+        Vec::new()
+    }
+    fn store_da_vec(&mut self, _v: Vec<DA>) {}
+}
+impl AsDaDst for RosyValue {
+    fn load_da_vec(&self) -> Vec<DA> {
+        self.as_da_vec()
+    }
+    fn store_da_vec(&mut self, v: Vec<DA>) {
+        if v.len() == 1 {
+            *self = RosyValue::DA(v.into_iter().next().unwrap());
+        } else {
+            *self = RosyValue::Arr(v.into_iter().map(RosyValue::DA).collect());
+        }
+    }
+}
+
 pub trait AsDaRef {
     fn as_da_vec(&self) -> Vec<DA>;
 }
@@ -343,6 +394,13 @@ impl AsDaRef for RosyValue {
     }
 }
 impl AsDaRef for Vec<RosyValue> {
+    fn as_da_vec(&self) -> Vec<DA> {
+        self.iter()
+            .map(|v| v.clone().expect_da().unwrap_or_else(|_| DA::zero()))
+            .collect()
+    }
+}
+impl AsDaRef for [RosyValue] {
     fn as_da_vec(&self) -> Vec<DA> {
         self.iter()
             .map(|v| v.clone().expect_da().unwrap_or_else(|_| DA::zero()))

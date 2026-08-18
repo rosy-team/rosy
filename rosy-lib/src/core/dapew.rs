@@ -250,14 +250,23 @@ pub fn rosy_dapea(da: &Vec<DA>, exps: &Vec<f64>, size: usize, result: &mut f64) 
 /// - `id`: TRANSPORT notation id for the first `m` variables
 /// - `m`: number of main variables to match
 /// - `result`: DA array written with the extracted component (element 0)
-pub fn rosy_dapep(da: &Vec<DA>, id: u64, m: usize, result: &mut Vec<DA>) -> Result<()> {
-    // Ensure result has at least one element
-    while result.is_empty() {
-        result.push(DA::zero());
+pub fn rosy_dapep(
+    da: &impl crate::AsDaRef,
+    id: impl crate::AsF64,
+    m: impl crate::IntoF64,
+    result: &mut impl crate::AsDaDst,
+) -> Result<()> {
+    let da = da.as_da_vec();
+    let id = crate::rosy_as_u64(&id);
+    let m = crate::rosy_as_usize(&m.into_f64());
+    let mut out = result.load_da_vec();
+    while out.is_empty() {
+        out.push(DA::zero());
     }
-    result[0] = DA::zero();
+    out[0] = DA::zero();
 
     if da.is_empty() {
+        result.store_da_vec(out);
         return Ok(());
     }
 
@@ -280,10 +289,11 @@ pub fn rosy_dapep(da: &Vec<DA>, id: u64, m: usize, result: &mut Vec<DA>) -> Resu
                 new_exps[i] = 0;
             }
             let new_monomial = Monomial::new(new_exps);
-            let existing = result[0].get_coeff(&new_monomial);
-            result[0].set_coeff(new_monomial, existing + coeff);
+            let existing = out[0].get_coeff(&new_monomial);
+            out[0].set_coeff(new_monomial, existing + coeff);
         }
     }
+    result.store_da_vec(out);
 
     Ok(())
 }
