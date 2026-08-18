@@ -30,6 +30,7 @@
 //! | [`optimizer`] | FIT loop optimization algorithms |
 
 pub mod core;
+pub mod value;
 pub mod intrinsics;
 #[cfg(feature = "mpi")]
 pub mod mpi;
@@ -39,6 +40,7 @@ pub mod registry;
 pub mod taylor;
 
 pub use core::*;
+pub use value::{RosyValue, rosy_dyn_binary};
 pub use intrinsics::*;
 #[cfg(feature = "mpi")]
 pub use mpi::*;
@@ -114,6 +116,7 @@ pub enum RosyBaseType {
     VE,
     DA,
     CD,
+    ANY,
 }
 impl std::fmt::Display for RosyBaseType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -125,6 +128,7 @@ impl std::fmt::Display for RosyBaseType {
             RosyBaseType::VE => write!(f, "VE"),
             RosyBaseType::DA => write!(f, "DA"),
             RosyBaseType::CD => write!(f, "CD"),
+            RosyBaseType::ANY => write!(f, "ANY"),
         }
     }
 }
@@ -156,6 +160,12 @@ impl RosyType {
     pub const fn DA() -> Self { Self::new(RosyBaseType::DA, 0) }
     #[allow(non_snake_case)]
     pub const fn CD() -> Self { Self::new(RosyBaseType::CD, 0) }
+    #[allow(non_snake_case)]
+    pub const fn ANY() -> Self { Self::new(RosyBaseType::ANY, 0) }
+
+    pub fn is_any(&self) -> bool {
+        self.base_type == RosyBaseType::ANY
+    }
 
     /// Returns true if this type implements Copy in Rust (cheap to duplicate).
     /// RE (f64), LO (bool), CM (Complex64) are Copy at dimension 0.
@@ -179,6 +189,7 @@ impl RosyType {
             RosyBaseType::VE => "Vec<f64>",
             RosyBaseType::DA => "DA",
             RosyBaseType::CD => "CD",
+            RosyBaseType::ANY => "RosyValue",
         }
         .to_string();
 

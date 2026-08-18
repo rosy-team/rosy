@@ -4,7 +4,7 @@ use crate::program::expressions::Expr;
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
 use crate::transpile::{
     TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind,
-    VariableScope,
+    VariableScope, emit_as_rosy_value_ref, emit_unwrap_rosy_value,
 };
 use anyhow::{Error, Result, anyhow};
 use rosy_lib::{BinaryOp, RosyBaseType, RosyType};
@@ -186,6 +186,7 @@ impl Transpile for BinaryExpr {
         };
         requested_variables.extend(right_output.requested_variables.iter().cloned());
 
+        let result_type = self.op.return_type(&left_type, &right_type).unwrap();
         let scalar = left_type.dimensions == 0 && right_type.dimensions == 0;
         let l = left_output.as_value();
         let r = right_output.as_value();
@@ -193,7 +194,17 @@ impl Transpile for BinaryExpr {
         let rref = right_output.as_ref();
         let pair = (left_type.base_type, right_type.base_type);
 
-        let serialization = if self.op == BinaryOp::Derive {
+        let serialization = if left_type.is_any() || right_type.is_any() {
+            emit_unwrap_rosy_value(
+                format!(
+                    "rosy_dyn_binary(BinaryOp::{:?}, {}, {})?",
+                    self.op,
+                    emit_as_rosy_value_ref(&left_output, &left_type),
+                    emit_as_rosy_value_ref(&right_output, &right_type)
+                ),
+                &result_type,
+            )
+        } else if self.op == BinaryOp::Derive {
             format!(
                 "RosyDerive::rosy_derive({}, ({}).clone() as i64)?",
                 lref, r

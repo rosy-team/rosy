@@ -92,7 +92,14 @@ impl Transpile for NotExpr {
         };
         requested_variables.extend(operand_output.requested_variables.iter().cloned());
 
-        let serialization = format!("RosyNot::rosy_not({})?", operand_output.as_ref());
+        let serialization = if operand_type.is_any() {
+            format!(
+                "(!RosyLO::rosy_to_logical({}))",
+                operand_output.as_ref()
+            )
+        } else {
+            format!("RosyNot::rosy_not({})?", operand_output.as_ref())
+        };
 
         if errors.is_empty() {
             Ok(TranspilationOutput {

@@ -35,6 +35,13 @@ pub enum BinaryOp {
 impl BinaryOp {
     /// Result type of `lhs op rhs`, or `None` if the pair is illegal.
     pub fn return_type(self, lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
+        if lhs.is_any() || rhs.is_any() {
+            return Some(match self {
+                Self::Eq | Self::Neq | Self::Lt | Self::Gt | Self::Lte | Self::Gte
+                | Self::And | Self::Or => RosyType::LO(),
+                _ => RosyType::ANY(),
+            });
+        }
         match self {
             Self::Add => operators::add::get_return_type(lhs, rhs),
             Self::Sub => operators::sub::get_return_type(lhs, rhs),
@@ -128,6 +135,19 @@ pub struct Intrinsic {
 
 impl Intrinsic {
     pub fn unary_return_type(self, input: &RosyType) -> Option<RosyType> {
+        if input.is_any() {
+            return Some(match self.name {
+                "ST" => RosyType::ST(),
+                "LO" => RosyType::LO(),
+                "CM" => RosyType::CM(),
+                "RE" => RosyType::RE(),
+                "VE" => RosyType::VE(),
+                "LENGTH" | "TYPE" | "NINT" | "INT" | "ABS" | "NORM" | "CONS" => {
+                    RosyType::RE()
+                }
+                _ => RosyType::ANY(),
+            });
+        }
         match self.typing {
             IntrinsicTyping::Unary(f) => f(input),
             IntrinsicTyping::Binary(_) => None,
@@ -135,6 +155,9 @@ impl Intrinsic {
     }
 
     pub fn binary_return_type(self, lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
+        if lhs.is_any() || rhs.is_any() {
+            return Some(RosyType::ANY());
+        }
         match self.typing {
             IntrinsicTyping::Binary(f) => f(lhs, rhs),
             IntrinsicTyping::Unary(_) => None,

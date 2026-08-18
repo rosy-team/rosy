@@ -65,6 +65,7 @@ impl Transpile for VariableDeclarationData {
             RosyBaseType::VE => "vec![]",
             RosyBaseType::DA => "DA::zero()",
             RosyBaseType::CD => "CD::zero()",
+            RosyBaseType::ANY => "RosyValue::RE(0.0)",
         }
         .to_string();
 

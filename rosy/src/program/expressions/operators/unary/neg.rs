@@ -95,12 +95,19 @@ impl Transpile for NegExpr {
         requested_variables.extend(operand_output.requested_variables.iter().cloned());
 
         use rosy_lib::RosyBaseType;
-        let serialization =
-            if operand_type.base_type == RosyBaseType::RE && operand_type.dimensions == 0 {
-                format!("(-{})", operand_output.as_value())
-            } else {
-                format!("RosySub::rosy_sub(&0.0f64, {})?", operand_output.as_ref())
-            };
+        let serialization = if operand_type.is_any() {
+            crate::transpile::emit_unwrap_rosy_value(
+                format!(
+                    "rosy_dyn_binary(BinaryOp::Sub, &RosyValue::RE(0.0), {})?",
+                    crate::transpile::emit_as_rosy_value_ref(&operand_output, &operand_type)
+                ),
+                &operand_type,
+            )
+        } else if operand_type.base_type == RosyBaseType::RE && operand_type.dimensions == 0 {
+            format!("(-{})", operand_output.as_value())
+        } else {
+            format!("RosySub::rosy_sub(&0.0f64, {})?", operand_output.as_ref())
+        };
 
         if errors.is_empty() {
             Ok(TranspilationOutput {

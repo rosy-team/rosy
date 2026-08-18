@@ -11,7 +11,7 @@ use crate::{RosyType, RosyBaseType, LO};
 /// Get the return type for NOT operator (unary).
 pub fn get_return_type(operand: &RosyType) -> Option<RosyType> {
     match operand.base_type {
-        RosyBaseType::LO => Some(RosyType::new(RosyBaseType::LO, 0)),
+        RosyBaseType::LO | RosyBaseType::ANY => Some(RosyType::new(RosyBaseType::LO, 0)),
         _ => None,
     }
 }

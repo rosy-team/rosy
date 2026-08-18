@@ -135,8 +135,12 @@ impl TranspileableStatement for AssignStatement {
                 } else {
                     explicit_type.dimensions = explicit_type.dimensions.saturating_sub(num_indices);
                 }
+                if explicit_type.is_any() {
+                    return Some(Ok(()));
+                }
                 if let Ok(new_type) = resolver.evaluate_recipe(&recipe)
                     && new_type != explicit_type
+                    && !new_type.is_any()
                 {
                     let scope_str = if ctx.scope_path.is_empty() {
                         "global scope".to_string()
@@ -330,6 +334,20 @@ impl TranspileableStatement for AssignStatement {
                 if let (Ok(old_type), Ok(new_type)) = (old_type_result, new_type_result)
                     && old_type != new_type
                 {
+                    if old_type.dimensions == 0
+                        && new_type.dimensions == 0
+                        && (old_type.is_any() || new_type.is_any() || old_type.base_type != new_type.base_type)
+                    {
+                        if let Some(node) = resolver.nodes.get_mut(&var_slot) {
+                            node.rule = ResolutionRule::InferredFrom {
+                                recipe: ExprRecipe::Literal(RosyType::ANY()),
+                                reason: "reused as multiple types".to_string(),
+                            };
+                            node.resolved = Some(RosyType::ANY());
+                            node.depends_on.clear();
+                        }
+                        return Some(Ok(()));
+                    }
                     let scope_str = if ctx.scope_path.is_empty() {
                         "global scope".to_string()
                     } else {
@@ -522,7 +540,10 @@ impl Transpile for AssignStatement {
         let value_type = value.type_of(context).map_err(|e| {
             vec![e.context("...while determining type of value expression for assignment")]
         })?;
-        if variable_type != value_type {
+        if variable_type != value_type
+            && !variable_type.is_any()
+            && !value_type.is_any()
+        {
             return Err(vec![anyhow!(
                 "Cannot assign value of type '{}' to variable '{}' of type '{}'!",
                 value_type,
@@ -574,7 +595,17 @@ impl Transpile for AssignStatement {
         };
         requested_variables.extend(value_output.requested_variables.iter().cloned());
 
-        let serialized_value = value_output.as_owned(&variable_type);
+        let serialized_value = if variable_type.is_any() && !value_type.is_any() {
+            format!("RosyValue::from({})", value_output.as_owned(&value_type))
+        } else if !variable_type.is_any() && value_type.is_any() {
+            format!(
+                "({}).expect_{}()?",
+                value_output.as_owned(&value_type),
+                variable_type.base_type.to_string().to_lowercase()
+            )
+        } else {
+            value_output.as_owned(&variable_type)
+        };
 
         // Serialize the entire assignment
         let var_scope = context

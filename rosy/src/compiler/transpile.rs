@@ -26,7 +26,7 @@ use crate::{
     resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot},
 };
 use anyhow::{Error, Result};
-use rosy_lib::RosyType;
+use rosy_lib::{RosyBaseType, RosyType};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 pub trait TranspileableStatement: Transpile {
@@ -253,6 +253,29 @@ impl TranspilationOutput {
                 }
             }
         }
+    }
+}
+
+/// `&RosyValue` for dyn dispatch, wrapping a concrete value when needed.
+pub fn emit_as_rosy_value_ref(out: &TranspilationOutput, ty: &RosyType) -> String {
+    if ty.is_any() {
+        out.as_ref()
+    } else {
+        format!("&RosyValue::from({})", out.as_ref())
+    }
+}
+
+/// Unwrap a `RosyValue` expression to a concrete rust type.
+pub fn emit_unwrap_rosy_value(expr: String, ty: &RosyType) -> String {
+    match ty.base_type {
+        RosyBaseType::ANY => expr,
+        RosyBaseType::RE => format!("({expr}).expect_re()?"),
+        RosyBaseType::ST => format!("({expr}).expect_st()?"),
+        RosyBaseType::LO => format!("({expr}).expect_lo()?"),
+        RosyBaseType::CM => format!("({expr}).expect_cm()?"),
+        RosyBaseType::VE => format!("({expr}).expect_ve()?"),
+        RosyBaseType::DA => format!("({expr}).expect_da()?"),
+        RosyBaseType::CD => format!("({expr}).expect_cd()?"),
     }
 }
 
