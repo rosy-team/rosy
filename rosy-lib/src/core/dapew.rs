@@ -47,14 +47,21 @@ fn decode_transport_id(id: u64) -> [u8; MAX_VARS] {
 /// - `unit`: unit number to read from
 /// - `da`: DA array — element 0 is overwritten with the data read
 /// - `num_vars`: number of independent variables
-pub fn rosy_darea(unit: u64, da: &mut Vec<DA>, num_vars: usize) -> Result<()> {
+pub fn rosy_darea(
+    unit: impl crate::AsF64,
+    da: &mut impl crate::AsDaDst,
+    num_vars: impl crate::IntoF64,
+) -> Result<()> {
     use crate::core::file_io::rosy_read_from_unit;
+    let unit = crate::rosy_as_u64(&unit);
+    let num_vars = crate::rosy_as_usize(&num_vars.into_f64());
+    let mut out = da.load_da_vec();
 
     // Ensure the output array has at least one element and is zeroed
-    while da.is_empty() {
-        da.push(DA::zero());
+    while out.is_empty() {
+        out.push(DA::zero());
     }
-    da[0] = DA::zero();
+    out[0] = DA::zero();
 
     let nv = num_vars.min(MAX_VARS);
 
@@ -89,8 +96,9 @@ pub fn rosy_darea(unit: u64, da: &mut Vec<DA>, num_vars: usize) -> Result<()> {
         }
 
         let monomial = Monomial::new(exponents);
-        da[0].set_coeff(monomial, coeff);
+        out[0].set_coeff(monomial, coeff);
     }
+    da.store_da_vec(out);
 
     Ok(())
 }
@@ -216,9 +224,17 @@ pub fn rosy_dapee(da: &impl crate::AsDaRef, id: impl crate::AsF64, result: &mut 
 /// - `exps`: array of exponents (RE values, cast to u8)
 /// - `size`: number of exponents to use (at most MAX_VARS)
 /// - `result`: written with the extracted coefficient
-pub fn rosy_dapea(da: &Vec<DA>, exps: &Vec<f64>, size: usize, result: &mut f64) -> Result<()> {
+pub fn rosy_dapea(
+    da: &impl crate::AsDaRef,
+    exps: &impl crate::PolvalReSrc,
+    size: impl crate::IntoF64,
+    result: &mut impl crate::SetF64,
+) -> Result<()> {
+    let da = da.as_da_vec();
+    let exps = exps.to_re_vec();
+    let size = crate::rosy_as_usize(&size.into_f64());
     if da.is_empty() {
-        *result = 0.0;
+        result.set_f64(0.0);
         return Ok(());
     }
     let mut exponents = [0u8; MAX_VARS];
@@ -228,7 +244,7 @@ pub fn rosy_dapea(da: &Vec<DA>, exps: &Vec<f64>, size: usize, result: &mut f64) 
         }
     }
     let monomial = Monomial::new(exponents);
-    *result = da[0].get_coeff(&monomial);
+    result.set_f64(da[0].get_coeff(&monomial));
     Ok(())
 }
 

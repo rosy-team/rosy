@@ -77,13 +77,15 @@ impl Transpile for LfalseStatement {
             }
         };
 
-        let dest_any = context
+        let dest_ty = context
             .variables
             .get(&self.identifier.name)
-            .map(|v| v.data.r#type.is_any())
-            .unwrap_or(false);
-        let rhs = if dest_any {
+            .map(|v| v.data.r#type)
+            .unwrap_or_else(rosy_lib::RosyType::LO);
+        let rhs = if dest_ty.is_any() {
             "RosyValue::from(false)"
+        } else if dest_ty == rosy_lib::RosyType::RE() {
+            "0.0"
         } else {
             "false"
         };

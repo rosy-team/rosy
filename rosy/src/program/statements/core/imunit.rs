@@ -17,7 +17,10 @@ use anyhow::{Context, Error, Result, ensure};
 use std::collections::BTreeSet;
 
 use crate::{
-    ast::*, program::expressions::core::variable_identifier::VariableIdentifier, transpile::*,
+    ast::*,
+    program::{expressions::core::variable_identifier::VariableIdentifier, statements::SourceLocation},
+    resolve::{ScopeContext, TypeResolver},
+    transpile::*,
 };
 
 #[derive(Debug)]
@@ -77,11 +80,17 @@ impl Transpile for ImunitStatement {
             }
         };
 
-        // Imaginary unit: Complex64::new(0.0, 1.0) = i
-        let serialization = format!(
-            "{}{} = num_complex::Complex64::new(0.0, 1.0);",
-            dereference, output.serialization
-        );
+        let dest_ty = context
+            .variables
+            .get(&self.identifier.name)
+            .map(|v| v.data.r#type)
+            .unwrap_or_else(rosy_lib::RosyType::CM);
+        let rhs = if dest_ty.is_any() {
+            "RosyValue::from(num_complex::Complex64::new(0.0, 1.0))"
+        } else {
+            "num_complex::Complex64::new(0.0, 1.0)"
+        };
+        let serialization = format!("{}{} = {};", dereference, output.serialization, rhs);
 
         Ok(TranspilationOutput {
             serialization,
@@ -91,4 +100,28 @@ impl Transpile for ImunitStatement {
     }
 }
 
-impl TranspileableStatement for ImunitStatement {}
+impl TranspileableStatement for ImunitStatement {
+    fn wire_inference_edges(
+        &self,
+        resolver: &mut TypeResolver,
+        ctx: &mut ScopeContext,
+        _source_location: SourceLocation,
+    ) -> Option<Result<()>> {
+        if !crate::syntax_config::is_cosy_syntax() {
+            return Some(Ok(()));
+        }
+        let Some(slot) = ctx.variables.get(&self.identifier.name) else {
+            return Some(Ok(()));
+        };
+        if let Some(node) = resolver.nodes.get_mut(slot) {
+            let keep = node
+                .resolved
+                .map(|t| t == rosy_lib::RosyType::CM() || t.is_any())
+                .unwrap_or(false);
+            if !keep {
+                node.resolved = Some(rosy_lib::RosyType::ANY());
+            }
+        }
+        Some(Ok(()))
+    }
+}

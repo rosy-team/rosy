@@ -203,6 +203,11 @@ impl RecstFmt for String {
         self.clone()
     }
 }
+impl RecstFmt for &String {
+    fn recst_fmt(&self) -> String {
+        (*self).clone()
+    }
+}
 impl RecstFmt for &str {
     fn recst_fmt(&self) -> String {
         (*self).to_string()
@@ -214,6 +219,11 @@ impl RecstFmt for RosyValue {
             RosyValue::ST(s) => s.clone(),
             other => format!("{other:?}"),
         }
+    }
+}
+impl RecstFmt for &RosyValue {
+    fn recst_fmt(&self) -> String {
+        (*self).recst_fmt()
     }
 }
 
@@ -405,6 +415,78 @@ impl AsDaRef for [RosyValue] {
         self.iter()
             .map(|v| v.clone().expect_da().unwrap_or_else(|_| DA::zero()))
             .collect()
+    }
+}
+
+pub trait AsCdRef {
+    fn as_cd_vec(&self) -> Vec<CD>;
+}
+impl AsCdRef for Vec<CD> {
+    fn as_cd_vec(&self) -> Vec<CD> {
+        self.clone()
+    }
+}
+impl AsCdRef for [CD] {
+    fn as_cd_vec(&self) -> Vec<CD> {
+        self.to_vec()
+    }
+}
+impl AsCdRef for RosyValue {
+    fn as_cd_vec(&self) -> Vec<CD> {
+        match self {
+            RosyValue::CD(d) => vec![d.clone()],
+            RosyValue::Arr(v) => v
+                .iter()
+                .filter_map(|x| x.clone().expect_cd().ok())
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+}
+impl AsCdRef for Vec<RosyValue> {
+    fn as_cd_vec(&self) -> Vec<CD> {
+        self.iter()
+            .filter_map(|x| x.clone().expect_cd().ok())
+            .collect()
+    }
+}
+pub trait AsCdDst {
+    fn load_cd_vec(&self) -> Vec<CD>;
+    fn store_cd_vec(&mut self, v: Vec<CD>);
+}
+impl AsCdDst for Vec<CD> {
+    fn load_cd_vec(&self) -> Vec<CD> {
+        self.clone()
+    }
+    fn store_cd_vec(&mut self, v: Vec<CD>) {
+        *self = v;
+    }
+}
+impl AsCdDst for f64 {
+    fn load_cd_vec(&self) -> Vec<CD> {
+        Vec::new()
+    }
+    fn store_cd_vec(&mut self, _v: Vec<CD>) {}
+}
+impl AsCdDst for Vec<RosyValue> {
+    fn load_cd_vec(&self) -> Vec<CD> {
+        self.as_cd_vec()
+    }
+    fn store_cd_vec(&mut self, v: Vec<CD>) {
+        *self = v.into_iter().map(RosyValue::CD).collect();
+    }
+}
+impl AsCdRef for Vec<f64> {
+    fn as_cd_vec(&self) -> Vec<CD> {
+        Vec::new()
+    }
+}
+impl AsCdDst for RosyValue {
+    fn load_cd_vec(&self) -> Vec<CD> {
+        self.as_cd_vec()
+    }
+    fn store_cd_vec(&mut self, v: Vec<CD>) {
+        *self = RosyValue::Arr(v.into_iter().map(RosyValue::CD).collect());
     }
 }
 

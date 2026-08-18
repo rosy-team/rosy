@@ -549,8 +549,19 @@ pub fn rosy_daflo(
 /// CDFLO: Compute the complex DA flow of x' = f(x) for time step 1.
 ///
 /// Same as DAFLO but with complex DA (CD) coefficients.
-pub fn rosy_cdflo(rhs: &Vec<CD>, ic: &Vec<CD>, result: &mut Vec<CD>, dim: usize) -> Result<()> {
-    flow_impl(rhs, ic, result, dim)
+pub fn rosy_cdflo(
+    rhs: &impl crate::AsCdRef,
+    ic: &impl crate::AsCdRef,
+    result: &mut impl crate::AsCdDst,
+    dim: impl crate::IntoF64,
+) -> Result<()> {
+    let rhs = rhs.as_cd_vec();
+    let ic = ic.as_cd_vec();
+    let dim = crate::rosy_as_usize(&dim.into_f64());
+    let mut out = result.load_cd_vec();
+    flow_impl(&rhs, &ic, &mut out, dim)?;
+    result.store_cd_vec(out);
+    Ok(())
 }
 
 /// DANOW: Compute the order-weighted max norm of a DA variable.

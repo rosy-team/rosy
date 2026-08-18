@@ -128,21 +128,35 @@ impl Transpile for ReadsStatement {
             }
         };
 
+        let dest_ty = context
+            .variables
+            .get(&self.identifier.name)
+            .map(|v| v.data.r#type)
+            .unwrap_or_else(rosy_lib::RosyType::ST);
+        let coerce = if dest_ty.is_any() {
+            "RosyValue::from(__raw)"
+        } else if dest_ty == rosy_lib::RosyType::ST() {
+            "__raw"
+        } else {
+            "rosy_as_f64(&__raw)"
+        };
         // Emit runtime dispatch: unit 5 = stdin, otherwise file unit
         let serialization = format!(
             "{deref}{dest} = {{\n\
                 let __unit = rosy_as_u64(&({unit}));\n\
-                if __unit == 5 {{\n\
+                let __raw = if __unit == 5 {{\n\
                     let mut __line = String::new();\n\
                     std::io::stdin().read_line(&mut __line).map_err(|e| anyhow::anyhow!(\"READS stdin error: {{}}\", e))?;\n\
                     __line.trim_end_matches('\\n').trim_end_matches('\\r').to_string()\n\
                 }} else {{\n\
                     rosy_lib::core::file_io::rosy_reads_string_from_unit(__unit)?\n\
-                }}\n\
+                }};\n\
+                {coerce}\n\
             }};",
             deref = dereference,
             dest = serialized_variable_identifier,
             unit = unit_serialization,
+            coerce = coerce,
         );
 
         Ok(TranspilationOutput {

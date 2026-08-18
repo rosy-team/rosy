@@ -346,14 +346,19 @@ fn evaluate_da_at_da(poly: &DA, args: &[DA], na: usize) -> Result<DA> {
 /// `Complex64` implements that trait, so the same `*` / `+` / `clone()`
 /// API works through the type alias.
 pub fn rosy_polval_cd(
-    _l: f64,
-    p_array: &[CD],
-    np: usize,
-    a_array: &[CD],
-    na: usize,
-    r_array: &mut Vec<CD>,
-    nr: usize,
+    _l: impl crate::IntoF64,
+    p_array: &impl crate::AsCdRef,
+    np: impl crate::IntoF64,
+    a_array: &impl crate::AsCdRef,
+    na: impl crate::IntoF64,
+    r_array: &mut impl crate::AsCdDst,
+    nr: impl crate::IntoF64,
 ) -> Result<()> {
+    let p_array = p_array.as_cd_vec();
+    let a_array = a_array.as_cd_vec();
+    let np = crate::rosy_as_usize(&np.into_f64());
+    let na = crate::rosy_as_usize(&na.into_f64());
+    let nr = crate::rosy_as_usize(&nr.into_f64());
     if np < nr {
         bail!("CPOLVAL: NP ({}) must be >= NR ({})", np, nr);
     }
@@ -365,16 +370,18 @@ pub fn rosy_polval_cd(
         );
     }
 
-    while r_array.len() < nr {
-        r_array.push(CD::zero());
+    let mut out = r_array.load_cd_vec();
+    while out.len() < nr {
+        out.push(CD::zero());
     }
 
     for i in 0..nr {
         if i >= p_array.len() {
             bail!("CPOLVAL: polynomial array too short at index {}", i);
         }
-        r_array[i] = evaluate_cd_at_cd(&p_array[i], a_array, na)?;
+        out[i] = evaluate_cd_at_cd(&p_array[i], &a_array, na)?;
     }
+    r_array.store_cd_vec(out);
 
     Ok(())
 }
