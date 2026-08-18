@@ -26,8 +26,8 @@ use crate::{
     ast::*,
     program::expressions::Expr,
     transpile::{
-        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
-        ValueKind, add_context_to_all,
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement, ValueKind, add_context_to_all,
     },
 };
 
@@ -136,15 +136,22 @@ impl Transpile for MblockStatement {
             }
         }
 
+        let wrap_mat = |expr: &Expr, name: &str| {
+            if expr.type_of(context).map(|t| t.is_any()).unwrap_or(false) {
+                format!("RosyValue::from({name}).expect_arr2()?")
+            } else {
+                name.to_string()
+            }
+        };
         let transform_assign = make_lvalue(
             &transform_output.serialization,
             transform_output.value_kind,
-            "rosy_mblock_t",
+            &wrap_mat(&self.transform_expr, "rosy_mblock_t"),
         );
         let inverse_assign = make_lvalue(
             &inverse_output.serialization,
             inverse_output.value_kind,
-            "rosy_mblock_ti",
+            &wrap_mat(&self.inverse_expr, "rosy_mblock_ti"),
         );
 
         let serialization = format!(

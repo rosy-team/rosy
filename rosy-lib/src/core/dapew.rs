@@ -116,7 +116,16 @@ pub fn rosy_darea(
 /// - `da`: DA array — operates on element 0
 /// - `var_i`: 1-based variable index (0 = filter by total order)
 /// - `order_n`: the target order/exponent value
-pub fn rosy_dapew(unit: u64, da: &Vec<DA>, var_i: usize, order_n: u32) -> Result<()> {
+pub fn rosy_dapew(
+    unit: impl crate::AsF64,
+    da: &impl crate::AsDaRef,
+    var_i: impl crate::IntoF64,
+    order_n: impl crate::IntoF64,
+) -> Result<()> {
+    let unit = crate::rosy_as_u64(&unit);
+    let da = da.as_da_vec();
+    let var_i = crate::rosy_as_usize(&var_i.into_f64());
+    let order_n = crate::rosy_as_u32(&order_n.into_f64());
     use crate::core::file_io::rosy_write_to_unit;
 
     if da.is_empty() {

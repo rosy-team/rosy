@@ -321,14 +321,41 @@ impl Transpile for FitStatement {
 
         // Build: let mut fit_vars = vec![var1, var2, ...];
         // FIT variables are always RE (Copy), so we can use them directly.
-        let vars_init = self.fit_variables.to_vec().join(", ");
+        let vars_init = self
+            .fit_variables
+            .iter()
+            .map(|v| {
+                let any = context
+                    .variables
+                    .get(v)
+                    .map(|d| d.data.r#type.is_any())
+                    .unwrap_or(false);
+                if any {
+                    format!("rosy_as_f64(&({v}))")
+                } else {
+                    v.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
 
         // Build inside closure: assign from slice to variables
         let vars_assign = self
             .fit_variables
             .iter()
             .enumerate()
-            .map(|(i, v)| format!("{} = __rosy_fit_vars[{}];", v, i))
+            .map(|(i, v)| {
+                let any = context
+                    .variables
+                    .get(v)
+                    .map(|d| d.data.r#type.is_any())
+                    .unwrap_or(false);
+                if any {
+                    format!("{v} = RosyValue::from(__rosy_fit_vars[{i}]);")
+                } else {
+                    format!("{v} = __rosy_fit_vars[{i}];")
+                }
+            })
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -363,7 +390,18 @@ impl Transpile for FitStatement {
             .fit_variables
             .iter()
             .enumerate()
-            .map(|(i, v)| format!("{} = __rosy_fit_vars[{}];", v, i))
+            .map(|(i, v)| {
+                let any = context
+                    .variables
+                    .get(v)
+                    .map(|d| d.data.r#type.is_any())
+                    .unwrap_or(false);
+                if any {
+                    format!("{v} = RosyValue::from(__rosy_fit_vars[{i}]);")
+                } else {
+                    format!("{v} = __rosy_fit_vars[{i}];")
+                }
+            })
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -387,7 +425,7 @@ impl Transpile for FitStatement {
             {writeback}\n\
             }}",
             vars_init = vars_init,
-            eps_val = eps_output.as_value(),
+            eps_val = format!("rosy_as_f64(&({}))", eps_output.as_value()),
             max_val = max_output.as_value(),
             algo_val = algo_output.as_value(),
             num_objs = num_objs,

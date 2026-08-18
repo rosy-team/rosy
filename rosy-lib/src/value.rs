@@ -635,14 +635,23 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
             CD, RE; CD, CM; CD, DA; CD, CD
         ),
         BinaryOp::Pow => dyn_pairs!(lhs, rhs, rosy_pow, RE, RE; VE, RE; DA, RE; CD, RE),
-        BinaryOp::Extract => dyn_pairs!(
-            lhs, rhs, rosy_extract,
-            ST, RE; ST, VE;
-            CM, RE;
-            VE, RE; VE, VE;
-            DA, RE; DA, VE;
-            CD, RE; CD, VE
-        ),
+        BinaryOp::Extract => {
+            if let (RosyValue::Arr(items), RosyValue::RE(i)) = (lhs, rhs) {
+                let idx = i.round() as usize;
+                if idx < 1 || idx > items.len() {
+                    bail!("extract index {idx} out of bounds for ARR of {}", items.len());
+                }
+                return Ok(items[idx - 1].clone());
+            }
+            dyn_pairs!(
+                lhs, rhs, rosy_extract,
+                ST, RE; ST, VE;
+                CM, RE;
+                VE, RE; VE, VE;
+                DA, RE; DA, VE;
+                CD, RE; CD, VE
+            )
+        }
         BinaryOp::Concat => dyn_pairs!(
             lhs, rhs, rosy_concat,
             RE, RE; RE, VE;

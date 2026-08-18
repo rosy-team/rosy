@@ -17,10 +17,13 @@ use anyhow::Result;
 ///
 /// Uses the same Hessenberg + Francis QR infrastructure as LEV.
 pub fn rosy_mblock(
-    matrix: &Vec<Vec<f64>>,
-    n: usize,
-    alloc_dim: usize,
+    matrix: &impl crate::AsReMat,
+    n: impl crate::IntoF64,
+    alloc_dim: impl crate::IntoF64,
 ) -> Result<(Vec<Vec<f64>>, Vec<Vec<f64>>)> {
+    let matrix = matrix.to_re_mat();
+    let n = crate::rosy_as_usize(&n.into_f64());
+    let alloc_dim = crate::rosy_as_usize(&alloc_dim.into_f64());
     if n == 0 {
         let empty = vec![vec![0.0; alloc_dim]; alloc_dim];
         return Ok((empty.clone(), empty));

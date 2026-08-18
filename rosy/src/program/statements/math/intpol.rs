@@ -120,7 +120,7 @@ impl Transpile for IntpolStatement {
         // Parens around `({deref}{dest})` are essential when scope is Arg/Higher: bare
         // `*PN.len()` parses as `*(PN.len())` (deref a usize), not `(*PN).len()`.
         let serialization = format!(
-            "{{ let __intpol_n = ({n}) as usize; if ({deref}{dest}).len() < __intpol_n + 1 {{ ({deref}{dest}).resize(__intpol_n + 1, 0.0_f64); }} for __i in 0..(__intpol_n + 1) {{ ({deref}{dest})[__i] = 0.0_f64; }} if !({deref}{dest}).is_empty() {{ ({deref}{dest})[0] = 1.0_f64; }} }}",
+            "{{ let __intpol_n = rosy_as_usize(&({n})); if ({deref}{dest}).len() < __intpol_n + 1 {{ ({deref}{dest}).resize(__intpol_n + 1, 0.0_f64); }} for __i in 0..(__intpol_n + 1) {{ ({deref}{dest})[__i] = 0.0_f64; }} if !({deref}{dest}).is_empty() {{ ({deref}{dest})[0] = 1.0_f64; }} }}",
             n = n_out.as_value(),
             deref = dereference,
             dest = coeff_out.serialization,

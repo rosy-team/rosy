@@ -297,11 +297,21 @@ impl Transpile for VariableIdentifier {
             }
             result
         };
+        let value_kind = match context
+            .variables
+            .get(&self.name)
+            .map(|v| v.scope.clone())
+        {
+            Some(VariableScope::Arg | VariableScope::Higher) if transpiled_indices.is_empty() => {
+                ValueKind::Ref
+            }
+            _ => ValueKind::Owned,
+        };
         if errors.is_empty() {
             Ok(TranspilationOutput {
                 serialization,
                 requested_variables,
-                ..Default::default()
+                value_kind,
             })
         } else {
             Err(errors)

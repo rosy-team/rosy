@@ -237,6 +237,7 @@ impl Transpile for ProcedureStatement {
                     TranspilationInputProcedureContext {
                         args: resolved_arg_data.clone(),
                         requested_variables: BTreeSet::new(),
+                        requested_types: Default::default(),
                     },
                 )
                 .is_some()
@@ -317,6 +318,15 @@ impl Transpile for ProcedureStatement {
         });
         if let Some(proc_context) = context.procedures.get_mut(&self.name) {
             proc_context.requested_variables = requested_variables.clone();
+            proc_context.requested_types = requested_variables
+                .iter()
+                .filter_map(|n| {
+                    inner_context
+                        .variables
+                        .get(n)
+                        .map(|v| (n.clone(), v.data.r#type))
+                })
+                .collect();
         } else {
             errors.push(
                 anyhow!(
@@ -372,7 +382,11 @@ impl Transpile for ProcedureStatement {
 
         let serialization = format!(
             "fn {} ( {} ) -> Result<()> {{\n{}\n\n\tOk(())\n}}",
-            self.name,
+            if crate::syntax_config::is_cosy_syntax() {
+                format!("__proc_{}", self.name)
+            } else {
+                self.name.clone()
+            },
             serialized_args.join(", "),
             indent(serialized_statements.join("\n"))
         );

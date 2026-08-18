@@ -86,7 +86,15 @@ pub fn rosy_dader(da: &mut Vec<DA>, var_index: usize) -> Result<()> {
 /// For each monomial m_k with coefficient c_k, the integral contributes
 /// `c_k / (e_v + 1)` to the monomial with exponent v incremented by 1.
 /// Terms that would exceed the truncation order are dropped.
-pub fn rosy_daint(da: &mut Vec<DA>, var_index: usize) -> Result<()> {
+pub fn rosy_daint(da: &mut impl crate::AsDaDst, var_index: impl crate::IntoF64) -> Result<()> {
+    let var_index = crate::rosy_as_usize(&var_index.into_f64());
+    let mut da_vec = da.load_da_vec();
+    rosy_daint_inner(&mut da_vec, var_index)?;
+    da.store_da_vec(da_vec);
+    Ok(())
+}
+
+fn rosy_daint_inner(da: &mut Vec<DA>, var_index: usize) -> Result<()> {
     // Acquire tables and release lock before building new DAs
     let (epsilon, _num_vars, integ_target_v, deriv_exp_v) = {
         let rt = get_runtime().context("DAINT requires DA to be initialized (call DAINI first)")?;

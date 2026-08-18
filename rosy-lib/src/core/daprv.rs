@@ -331,8 +331,15 @@ pub fn rosy_daplu(
 /// - `var_idx`: 1-based index of the variable to divide by
 /// - `da_in`:   source DA array
 /// - `result`:  output DA array
-pub fn rosy_dadiu(var_idx: usize, da_in: &Vec<DA>, result: &mut Vec<DA>) -> Result<()> {
+pub fn rosy_dadiu(
+    var_idx: impl crate::IntoF64,
+    da_in: &impl crate::AsDaRef,
+    result: &mut impl crate::AsDaDst,
+) -> Result<()> {
     use rustc_hash::FxHashMap;
+    let var_idx = crate::rosy_as_usize(&var_idx.into_f64());
+    let da_in = da_in.as_da_vec();
+    let mut out = result.load_da_vec();
 
     let config = get_config().context("DADIU requires DA to be initialized (call OV first)")?;
     let var_0idx = var_idx
@@ -342,7 +349,7 @@ pub fn rosy_dadiu(var_idx: usize, da_in: &Vec<DA>, result: &mut Vec<DA>) -> Resu
         bail!("DADIU: var_idx {} out of range [1, {}]", var_idx, config.num_vars);
     }
 
-    result.resize_with(da_in.len(), DA::zero);
+    out.resize_with(da_in.len(), DA::zero);
 
     for (comp_idx, da) in da_in.iter().enumerate() {
         let mut accum: FxHashMap<Monomial, f64> = FxHashMap::default();
@@ -361,8 +368,9 @@ pub fn rosy_dadiu(var_idx: usize, da_in: &Vec<DA>, result: &mut Vec<DA>) -> Resu
             *accum.entry(new_mono).or_insert(0.0) += coeff;
         }
 
-        result[comp_idx] = DA::from_coeffs(accum);
+        out[comp_idx] = DA::from_coeffs(accum);
     }
+    result.store_da_vec(out);
 
     Ok(())
 }

@@ -118,6 +118,7 @@ pub struct TranspilationInputFunctionContext {
 pub struct TranspilationInputProcedureContext {
     pub args: Vec<VariableData>,
     pub requested_variables: BTreeSet<String>,
+    pub requested_types: HashMap<String, RosyType>,
 }
 #[derive(Default, Clone)]
 pub struct TranspilationInputContext {
@@ -280,6 +281,69 @@ pub fn emit_as_rosy_value_ref(out: &TranspilationOutput, ty: &RosyType) -> Strin
 }
 
 /// Unwrap a `RosyValue` expression to a concrete rust type.
+pub fn emit_pass_as(
+    name: &str,
+    provided: &RosyType,
+    expected: &RosyType,
+    scope: VariableScope,
+) -> (Vec<String>, String, Vec<String>) {
+    let mut prelude = Vec::new();
+    let mut writeback = Vec::new();
+    let pass = match scope {
+        VariableScope::Local => format!("&mut {name}"),
+        VariableScope::Arg | VariableScope::Higher => name.to_string(),
+    };
+    if provided.as_rust_type() == expected.as_rust_type() {
+        return (prelude, pass, writeback);
+    }
+    if expected.is_any() && expected.dimensions == 0 {
+        let tmp = format!("__rosy_cap_{name}");
+        prelude.push(format!("let mut {tmp} = RosyValue::from(({name}).clone());"));
+        let lhs = match scope {
+            VariableScope::Local => name.to_string(),
+            VariableScope::Arg | VariableScope::Higher => format!("*{name}"),
+        };
+        writeback.push(format!(
+            "{lhs} = {};",
+            emit_unwrap_rosy_value(tmp.clone(), provided)
+        ));
+        return (prelude, format!("&mut {tmp}"), writeback);
+    }
+    if provided.is_any() {
+        let tmp = format!("__rosy_cap_{name}");
+        prelude.push(format!(
+            "let mut {tmp} = {};",
+            emit_unwrap_rosy_value(format!("({name}).clone()"), expected)
+        ));
+        return (prelude, format!("&mut {tmp}"), writeback);
+    }
+    let exp_rt = expected.as_rust_type();
+    let got_rt = provided.as_rust_type();
+    if exp_rt == "Vec<f64>" && got_rt == "f64" {
+        let tmp = format!("__rosy_cap_{name}");
+        prelude.push(format!("let mut {tmp} = vec![({name}).clone()];"));
+        return (prelude, format!("&mut {tmp}"), writeback);
+    }
+    if exp_rt == "Vec<Vec<f64>>" && got_rt == "f64" {
+        let tmp = format!("__rosy_cap_{name}");
+        prelude.push(format!("let mut {tmp} = vec![vec![({name}).clone()]];"));
+        return (prelude, format!("&mut {tmp}"), writeback);
+    }
+    if exp_rt == "Vec<Vec<f64>>" && got_rt == "Vec<f64>" {
+        let tmp = format!("__rosy_cap_{name}");
+        prelude.push(format!("let mut {tmp} = vec![({name}).clone()];"));
+        return (prelude, format!("&mut {tmp}"), writeback);
+    }
+    if exp_rt == "f64" && got_rt == "Vec<f64>" {
+        let tmp = format!("__rosy_cap_{name}");
+        prelude.push(format!(
+            "let mut {tmp} = ({name}).first().copied().unwrap_or(0.0);"
+        ));
+        return (prelude, format!("&mut {tmp}"), writeback);
+    }
+    (prelude, pass, writeback)
+}
+
 pub fn needs_box_as_any(provided: &RosyType, expected: &RosyType) -> bool {
     expected.is_any()
         && expected.dimensions == 0

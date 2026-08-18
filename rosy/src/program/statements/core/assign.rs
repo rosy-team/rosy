@@ -639,8 +639,28 @@ impl Transpile for AssignStatement {
         requested_variables.extend(value_output.requested_variables.iter().cloned());
 
         let num_indices = self.identifier.num_index_dimensions();
-        let serialized_value = if variable_type.is_any() && !value_type.is_any() {
+        let container_ty = context
+            .variables
+            .get(&self.identifier.name)
+            .map(|v| v.data.r#type);
+        let container_rosyvalue = container_ty
+            .as_ref()
+            .map(|t| t.is_any() || t.as_rust_type().contains("RosyValue"))
+            .unwrap_or(false);
+        let serialized_value = if (variable_type.is_any()
+            || (num_indices > 0 && container_rosyvalue))
+            && !value_type.is_any()
+        {
             format!("RosyValue::from({})", value_output.as_owned(&value_type))
+        } else if (variable_type.is_any() || (num_indices > 0 && container_rosyvalue))
+            && value_type.is_any()
+        {
+            let owned = value_output.as_owned(&value_type);
+            if owned.contains("RosyValue") {
+                owned
+            } else {
+                format!("RosyValue::from({owned})")
+            }
         } else if !variable_type.is_any() && value_type.is_any() {
             format!(
                 "({}).expect_{}()?",
@@ -730,12 +750,12 @@ impl Transpile for AssignStatement {
             }
             if needs_self_ref_temp {
                 format!(
-                    "{{ let __rosy_self_ref_tmp = {value}; *{lhs} = __rosy_self_ref_tmp; }}",
+                    "{{ let __rosy_self_ref_tmp = {value}; *{lhs} = (__rosy_self_ref_tmp).into(); }}",
                     value = serialized_value,
                     lhs = result,
                 )
             } else {
-                format!("*{} = {};", result, serialized_value)
+                format!("*{} = ({}).into();", result, serialized_value)
             }
         } else if needs_self_ref_temp {
             format!(

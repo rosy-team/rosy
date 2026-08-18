@@ -280,6 +280,11 @@ impl PolvalReSrc for Vec<f64> {
         self.clone()
     }
 }
+impl PolvalReSrc for f64 {
+    fn to_re_vec(&self) -> Vec<f64> {
+        vec![*self]
+    }
+}
 impl PolvalReSrc for [f64] {
     fn to_re_vec(&self) -> Vec<f64> {
         self.to_vec()
@@ -323,6 +328,14 @@ impl PolvalReDst for Vec<RosyValue> {
     }
     fn store_re_vec(&mut self, v: Vec<f64>) {
         *self = v.into_iter().map(RosyValue::RE).collect();
+    }
+}
+impl PolvalReDst for &mut Vec<RosyValue> {
+    fn load_re_vec(&self) -> Vec<f64> {
+        self.iter().map(|x| x.as_f64()).collect()
+    }
+    fn store_re_vec(&mut self, v: Vec<f64>) {
+        **self = v.into_iter().map(RosyValue::RE).collect();
     }
 }
 impl PolvalReDst for RosyValue {
@@ -473,6 +486,30 @@ impl AsCdDst for Vec<f64> {
         Vec::new()
     }
     fn store_cd_vec(&mut self, _v: Vec<CD>) {}
+}
+
+pub fn rosy_velget(v: &impl PolvalReSrc, idx: impl IntoF64) -> anyhow::Result<f64> {
+    let src = v.to_re_vec();
+    let i = rosy_as_usize(&idx.into_f64());
+    if i < 1 || i > src.len() {
+        anyhow::bail!(
+            "VELGET: component index {i} is out of bounds for vector of length {}",
+            src.len()
+        );
+    }
+    Ok(src[i - 1])
+}
+
+pub fn rosy_vezero(v: &mut impl PolvalReDst, n: impl IntoF64, thresh: impl AsF64) {
+    let n = rosy_as_usize(&n.into_f64());
+    let thresh = thresh.as_f64_val().abs();
+    let mut src = v.load_re_vec();
+    for x in src.iter_mut().take(n) {
+        if x.abs() > thresh {
+            *x = 0.0;
+        }
+    }
+    v.store_re_vec(src);
 }
 
 pub fn rosy_veunit(v: &impl PolvalReSrc) -> Vec<f64> {

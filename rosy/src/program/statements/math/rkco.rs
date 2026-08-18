@@ -32,6 +32,7 @@ use crate::{
         ValueKind, add_context_to_all,
     },
 };
+use rosy_lib::RosyType;
 
 /// AST node for `RKCO c b e a1 a2;`.
 #[derive(Debug)]
@@ -136,13 +137,17 @@ impl Transpile for RkcoStatement {
         }
 
         let wrap = |name: &str, ident: &crate::program::expressions::core::variable_identifier::VariableIdentifier| {
-            let any = context
+            let ty = context
                 .variables
                 .get(&ident.name)
-                .map(|v| v.data.r#type.is_any())
-                .unwrap_or(false);
-            if any {
+                .map(|v| v.data.r#type)
+                .unwrap_or_else(RosyType::VE);
+            if ty.is_any() {
                 format!("RosyValue::from({name})")
+            } else if ty == RosyType::RE() {
+                format!("{name}.first().copied().unwrap_or(0.0)")
+            } else if ty.base_type == rosy_lib::RosyBaseType::RE && ty.dimensions >= 2 {
+                format!("vec![{name}.clone()]")
             } else {
                 name.to_string()
             }

@@ -203,16 +203,19 @@ impl Transpile for LoopStatement {
         let mut serialized_statements = Vec::new();
         let mut errors = Vec::new();
 
-        inner_context.variables.insert(
-            self.iterator.clone(),
-            ScopedVariableData {
-                scope: VariableScope::Local,
-                data: VariableData {
-                    name: self.iterator.clone(),
-                    r#type: RosyType::RE(),
+        let outer = context.variables.get(&self.iterator).cloned();
+        if outer.is_none() {
+            inner_context.variables.insert(
+                self.iterator.clone(),
+                ScopedVariableData {
+                    scope: VariableScope::Local,
+                    data: VariableData {
+                        name: self.iterator.clone(),
+                        r#type: RosyType::RE(),
+                    },
                 },
-            },
-        );
+            );
+        }
 
         // Transpile each inner statement
         for stmt in &self.body {
@@ -292,27 +295,49 @@ impl Transpile for LoopStatement {
         let start = re_val(&start_output, &start_type);
         let end = re_val(&end_output, &end_type);
         let body = indent(serialized_statements.join("\n"));
+        let (it, sync, bump) = if let Some(outer) = &outer {
+            let rust_it = format!("__rosy_loop_{iter}");
+            let star = match outer.scope {
+                VariableScope::Local => "",
+                VariableScope::Arg | VariableScope::Higher => "*",
+            };
+            // Higher locals live in a parent rust fn; nested `fn` cannot assign them.
+            let sync = if outer.scope == VariableScope::Higher {
+                String::new()
+            } else if outer.data.r#type.is_any() {
+                format!("{star}{iter} = RosyValue::from({rust_it});")
+            } else if outer.data.r#type == RosyType::RE() {
+                format!("{star}{iter} = {rust_it};")
+            } else {
+                String::new()
+            };
+            (rust_it, sync, true)
+        } else {
+            (iter.clone(), String::new(), false)
+        };
         let loop_core = if let Some(step) = &step_value {
             format!(
-                "let mut {iter}: RE = rosy_as_f64(&({start}));\n\
+                "let mut {it}: RE = rosy_as_f64(&({start}));\n\
                  let __{iter}_end: RE = rosy_as_f64(&({end}));\n\
                  let __{iter}_step: RE = rosy_as_f64(&({step}));\n\
-                 while (__{iter}_step > 0.0_f64 && {iter} <= __{iter}_end) || (__{iter}_step <= 0.0_f64 && {iter} >= __{iter}_end) {{\n\
+                 while (__{iter}_step > 0.0_f64 && {it} <= __{iter}_end) || (__{iter}_step <= 0.0_f64 && {it} >= __{iter}_end) {{\n\
+                 {sync}\n\
                  {body}\n\
-                 \t{iter} += __{iter}_step;\n\
+                 \t{it} += __{iter}_step;\n\
                  }}"
             )
         } else {
             format!(
-                "let mut {iter}: RE = rosy_as_f64(&({start}));\n\
+                "let mut {it}: RE = rosy_as_f64(&({start}));\n\
                  let __{iter}_end: RE = rosy_as_f64(&({end}));\n\
-                 while {iter} <= __{iter}_end {{\n\
+                 while {it} <= __{iter}_end {{\n\
+                 {sync}\n\
                  {body}\n\
-                 \t{iter} += 1.0_f64;\n\
+                 \t{it} += 1.0_f64;\n\
                  }}"
             )
         };
-        // Always brace so `let mut I: RE` cannot shadow a later I in this block.
+        let _ = bump;
         let serialization = format!("{{ {loop_core} }}");
         if errors.is_empty() {
             Ok(TranspilationOutput {
