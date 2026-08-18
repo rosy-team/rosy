@@ -132,7 +132,9 @@ impl TranspileableExpr for VariableIdentifier {
         let num_indices = self.num_index_dimensions();
         let mut var_type = var_data.data.r#type;
         if var_type.is_any() {
-            return Ok(RosyType::ANY());
+            let peel = num_indices.min(var_type.dimensions);
+            var_type.dimensions -= peel;
+            return Ok(var_type);
         }
 
         // Apply indices in cascade: each index peels one declared dimension

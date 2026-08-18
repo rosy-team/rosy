@@ -196,7 +196,7 @@ impl Transpile for ProcedureCallStatement {
                             "procedure '{}' expects argument {} ('{}') to be of type '{}', but type '{}' was provided!",
                             self.name, i+1, proc_context.args[i].name, expected_type, provided_type
                         ));
-                    } else if expected_type.is_any() && !provided_type.is_any() {
+                    } else if needs_box_as_any(&provided_type, &expected_type) {
                         let temp_name = format!("__rosy_any_arg_{}", i);
                         let owned = arg_output.as_owned(&provided_type);
                         prelude_decls.push(format!(
@@ -206,8 +206,14 @@ impl Transpile for ProcedureCallStatement {
                         serialized_args.push(format!("&mut {}", temp_name));
                         requested_variables.extend(arg_output.requested_variables);
                         if let Some(name) = arg_expr.as_bare_variable_name() {
+                            let star = match context.variables.get(name).map(|v| v.scope.clone())
+                            {
+                                Some(VariableScope::Local) | None => "",
+                                Some(VariableScope::Arg | VariableScope::Higher) => "*",
+                            };
                             writeback_decls.push(format!(
-                                "{} = {};",
+                                "{}{} = {};",
+                                star,
                                 name,
                                 emit_unwrap_rosy_value(temp_name.clone(), &provided_type)
                             ));

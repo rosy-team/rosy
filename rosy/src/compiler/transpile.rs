@@ -280,11 +280,23 @@ pub fn emit_as_rosy_value_ref(out: &TranspilationOutput, ty: &RosyType) -> Strin
 }
 
 /// Unwrap a `RosyValue` expression to a concrete rust type.
+pub fn needs_box_as_any(provided: &RosyType, expected: &RosyType) -> bool {
+    expected.is_any()
+        && expected.dimensions == 0
+        && (provided.dimensions > 0 || !provided.is_any())
+}
+
 pub fn emit_unwrap_rosy_value(expr: String, ty: &RosyType) -> String {
-    if ty.dimensions > 0 && ty.base_type == RosyBaseType::RE {
-        return format!("({expr}).expect_ve()?");
+    if ty.is_any() && ty.dimensions >= 2 {
+        return format!("({expr}).expect_arr2()?");
     }
-    if ty.dimensions > 1 && ty.base_type == RosyBaseType::RE {
+    if ty.is_any() && ty.dimensions == 1 {
+        return format!("({expr}).expect_arr()?");
+    }
+    if ty.dimensions >= 2 && ty.base_type == RosyBaseType::RE {
+        return format!("({expr}).expect_re2()?");
+    }
+    if ty.dimensions > 0 && ty.base_type == RosyBaseType::RE {
         return format!("({expr}).expect_ve()?");
     }
     match ty.base_type {

@@ -246,6 +246,10 @@ impl PolvalDaSrc for RosyValue {
     fn to_da_vec(&self) -> Vec<DA> {
         match self {
             RosyValue::DA(d) => vec![d.clone()],
+            RosyValue::Arr(v) => v
+                .iter()
+                .map(|x| x.clone().expect_da().unwrap_or_else(|_| DA::zero()))
+                .collect(),
             _ => Vec::new(),
         }
     }
@@ -273,6 +277,7 @@ impl PolvalReSrc for RosyValue {
     fn to_re_vec(&self) -> Vec<f64> {
         match self {
             RosyValue::VE(v) => v.clone(),
+            RosyValue::Arr(v) => v.iter().map(|x| x.as_f64()).collect(),
             other => vec![other.as_f64()],
         }
     }
@@ -329,6 +334,10 @@ impl AsDaRef for RosyValue {
     fn as_da_vec(&self) -> Vec<DA> {
         match self {
             RosyValue::DA(d) => vec![d.clone()],
+            RosyValue::Arr(v) => v
+                .iter()
+                .map(|x| x.clone().expect_da().unwrap_or_else(|_| DA::zero()))
+                .collect(),
             _ => Vec::new(),
         }
     }
@@ -399,11 +408,11 @@ impl<T: RosyIndexable + ?Sized> RosyIndexable for &mut T {
 }
 
 impl RosyIndexable for RosyValue {
-    type Out = f64;
-    fn rosy_index(&self, idx: usize, name: &str) -> &f64 {
+    type Out = RosyValue;
+    fn rosy_index(&self, idx: usize, name: &str) -> &RosyValue {
         match self {
-            RosyValue::VE(v) => v.rosy_index(idx, name),
-            RosyValue::RE(v) if idx == 1 => v,
+            RosyValue::Arr(v) => v.rosy_index(idx, name),
+            other if idx == 1 => other,
             other => panic!(
                 "cannot index {} '{}' at {}",
                 other.kind_name(),
@@ -452,25 +461,32 @@ impl RosyMutIndexable for f64 {
 }
 
 impl RosyMutIndexable for RosyValue {
-    type Out = f64;
-    fn rosy_index_mut(&mut self, idx: usize, name: &str) -> &mut f64 {
+    type Out = RosyValue;
+    fn rosy_index_mut(&mut self, idx: usize, name: &str) -> &mut RosyValue {
         if idx == 0 {
             panic!("Index 0 into '{name}' is out of bounds — Rosy uses 1-based indexing");
         }
+        if let RosyValue::VE(v) = self {
+            let arr = std::mem::take(v)
+                .into_iter()
+                .map(RosyValue::RE)
+                .collect();
+            *self = RosyValue::Arr(arr);
+        }
         match self {
-            RosyValue::VE(v) => {
+            RosyValue::Arr(v) => {
                 if idx > v.len() {
-                    v.resize(idx, 0.0);
+                    v.resize(idx, RosyValue::RE(0.0));
                 }
                 &mut v[idx - 1]
             }
-            RosyValue::RE(v) if idx == 1 => v,
-            RosyValue::RE(_) => panic!("Index {idx} into scalar '{name}'"),
-            RosyValue::ST(_) => panic!("cannot mutably index '{name}' (ST)"),
-            RosyValue::LO(_) => panic!("cannot mutably index '{name}' (LO)"),
-            RosyValue::CM(_) => panic!("cannot mutably index '{name}' (CM)"),
-            RosyValue::DA(_) => panic!("cannot mutably index '{name}' (DA)"),
-            RosyValue::CD(_) => panic!("cannot mutably index '{name}' (CD)"),
+            other if idx == 1 => other,
+            other => panic!(
+                "cannot mutably index {} '{}' at {}",
+                other.kind_name(),
+                name,
+                idx
+            ),
         }
     }
 }

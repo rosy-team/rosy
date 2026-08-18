@@ -16,6 +16,8 @@ pub enum RosyValue {
     VE(VE),
     DA(DA),
     CD(CD),
+    /// Nested COSY cell (array of ANY).
+    Arr(Vec<RosyValue>),
 }
 
 impl RosyValue {
@@ -28,6 +30,7 @@ impl RosyValue {
             Self::VE(_) => "VE",
             Self::DA(_) => "DA",
             Self::CD(_) => "CD",
+            Self::Arr(_) => "ARR",
         }
     }
 
@@ -58,6 +61,7 @@ impl RosyValue {
     pub fn expect_ve(self) -> Result<VE> {
         match self {
             Self::VE(v) => Ok(v),
+            Self::Arr(v) => Ok(v.into_iter().map(|x| x.as_f64()).collect()),
             other => bail!("expected VE, held {}", other.kind_name()),
         }
     }
@@ -72,6 +76,30 @@ impl RosyValue {
             Self::CD(v) => Ok(v),
             other => bail!("expected CD, held {}", other.kind_name()),
         }
+    }
+    pub fn expect_arr(self) -> Result<Vec<RosyValue>> {
+        match self {
+            Self::Arr(v) => Ok(v),
+            Self::VE(v) => Ok(v.into_iter().map(RosyValue::RE).collect()),
+            other => Ok(vec![other]),
+        }
+    }
+    pub fn expect_arr2(self) -> Result<Vec<Vec<RosyValue>>> {
+        Ok(self
+            .expect_arr()?
+            .into_iter()
+            .map(|row| match row {
+                RosyValue::Arr(v) => v,
+                other => vec![other],
+            })
+            .collect())
+    }
+    pub fn expect_re2(self) -> Result<Vec<Vec<f64>>> {
+        Ok(self
+            .expect_arr2()?
+            .into_iter()
+            .map(|row| row.into_iter().map(|x| x.as_f64()).collect())
+            .collect())
     }
 }
 
@@ -103,7 +131,22 @@ impl From<CM> for RosyValue {
 }
 impl From<VE> for RosyValue {
     fn from(v: VE) -> Self {
-        Self::VE(v)
+        Self::Arr(v.into_iter().map(RosyValue::RE).collect())
+    }
+}
+impl From<Vec<RosyValue>> for RosyValue {
+    fn from(v: Vec<RosyValue>) -> Self {
+        Self::Arr(v)
+    }
+}
+impl From<Vec<Vec<RosyValue>>> for RosyValue {
+    fn from(v: Vec<Vec<RosyValue>>) -> Self {
+        Self::Arr(v.into_iter().map(RosyValue::Arr).collect())
+    }
+}
+impl From<&Vec<RosyValue>> for RosyValue {
+    fn from(v: &Vec<RosyValue>) -> Self {
+        Self::Arr(v.clone())
     }
 }
 impl From<DA> for RosyValue {
@@ -138,7 +181,7 @@ impl From<&CM> for RosyValue {
 }
 impl From<&VE> for RosyValue {
     fn from(v: &VE) -> Self {
-        Self::VE(v.clone())
+        Self::Arr(v.iter().copied().map(RosyValue::RE).collect())
     }
 }
 impl From<&DA> for RosyValue {
@@ -162,6 +205,10 @@ impl RosyDisplay for &RosyValue {
             RosyValue::VE(v) => v.rosy_display(),
             RosyValue::DA(v) => v.rosy_display(),
             RosyValue::CD(v) => v.rosy_display(),
+            RosyValue::Arr(v) => format!(
+                "[{}]",
+                v.iter().map(|x| x.rosy_display()).collect::<Vec<_>>().join(",")
+            ),
         }
     }
 }
@@ -218,6 +265,7 @@ impl RosyLENGTH for RosyValue {
             RosyValue::VE(v) => v.rosy_length(),
             RosyValue::DA(v) => v.rosy_length(),
             RosyValue::CD(v) => v.rosy_length(),
+            RosyValue::Arr(v) => v.len() as RE,
         }
     }
 }
@@ -232,6 +280,7 @@ impl RosyTYPE for RosyValue {
             RosyValue::VE(v) => v.rosy_type(),
             RosyValue::DA(v) => v.rosy_type(),
             RosyValue::CD(v) => v.rosy_type(),
+            RosyValue::Arr(_) => Ok(5.0),
         }
     }
 }
@@ -244,7 +293,11 @@ impl Default for RosyValue {
 
 impl From<Vec<Vec<f64>>> for RosyValue {
     fn from(v: Vec<Vec<f64>>) -> Self {
-        Self::VE(v.into_iter().flatten().collect())
+        Self::Arr(
+            v.into_iter()
+                .map(|row| RosyValue::Arr(row.into_iter().map(RosyValue::RE).collect()))
+                .collect(),
+        )
     }
 }
 
@@ -273,6 +326,7 @@ impl RosyValue {
             Self::DA(d) => d.constant_part(),
             Self::CD(d) => d.constant_part().re,
             Self::ST(s) => s.trim().parse().unwrap_or(0.0),
+            Self::Arr(v) => v.first().map(|x| x.as_f64()).unwrap_or(0.0),
         }
     }
 
@@ -459,6 +513,11 @@ impl RosyVMAX for RosyValue {
         match self {
             Self::RE(v) => v.rosy_vmax(),
             Self::VE(v) => v.rosy_vmax(),
+            Self::Arr(v) => v
+                .iter()
+                .map(|x| x.as_f64())
+                .reduce(f64::max)
+                .ok_or_else(|| anyhow::anyhow!("VMAX of empty ARR")),
             other => bail!("VMAX not defined for {}", other.kind_name()),
         }
     }
@@ -469,6 +528,11 @@ impl RosyVMIN for RosyValue {
         match self {
             Self::RE(v) => v.rosy_vmin(),
             Self::VE(v) => v.rosy_vmin(),
+            Self::Arr(v) => v
+                .iter()
+                .map(|x| x.as_f64())
+                .reduce(f64::min)
+                .ok_or_else(|| anyhow::anyhow!("VMIN of empty ARR")),
             other => bail!("VMIN not defined for {}", other.kind_name()),
         }
     }

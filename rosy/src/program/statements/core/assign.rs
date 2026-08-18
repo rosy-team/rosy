@@ -639,21 +639,7 @@ impl Transpile for AssignStatement {
         requested_variables.extend(value_output.requested_variables.iter().cloned());
 
         let num_indices = self.identifier.num_index_dimensions();
-        let container_dims = context
-            .variables
-            .get(&self.identifier.name)
-            .map(|v| v.data.r#type.dimensions)
-            .unwrap_or(variable_type.dimensions);
-        // 0-d ANY cell indexes as f64 (VE / scalar). Vec<RosyValue> keeps RosyValue.
-        let serialized_value = if num_indices > 0
-            && variable_type.is_any()
-            && container_dims == 0
-        {
-            format!(
-                "rosy_as_f64(&({}))",
-                value_output.as_owned(&value_type)
-            )
-        } else if variable_type.is_any() && !value_type.is_any() {
+        let serialized_value = if variable_type.is_any() && !value_type.is_any() {
             format!("RosyValue::from({})", value_output.as_owned(&value_type))
         } else if !variable_type.is_any() && value_type.is_any() {
             format!(
