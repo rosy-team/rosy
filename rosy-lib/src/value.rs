@@ -74,11 +74,17 @@ impl RosyValue {
         }
     }
     pub fn expect_cd(self) -> Result<CD> {
+        Ok(self.as_cd())
+    }
+
+    /// Promote DA / RE / CM into CD so fox CDNFDA/CPOLVAL/CDFLO see the series.
+    pub fn as_cd(&self) -> CD {
         match self {
-            Self::CD(v) => Ok(v),
-            Self::CM(v) => Ok(CD::complex_constant(v)),
-            Self::DA(v) => Ok(CD::from_da(&v)),
-            other => Ok(CD::constant(other.as_f64())),
+            Self::CD(v) => v.clone(),
+            Self::DA(v) => CD::from_da(v),
+            Self::CM(v) => CD::complex_constant(*v),
+            Self::Arr(v) => v.first().map(|x| x.as_cd()).unwrap_or_else(CD::zero),
+            other => CD::constant(other.as_f64()),
         }
     }
     pub fn expect_arr(self) -> Result<Vec<RosyValue>> {

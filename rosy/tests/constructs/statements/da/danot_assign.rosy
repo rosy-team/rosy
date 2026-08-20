@@ -1,0 +1,18 @@
+BEGIN;
+    { DANOT 1 assignment keeps only linear; remainder is higher orders }
+    VARIABLE (DA) X;
+    VARIABLE (DA) Y;
+    VARIABLE (DA) Z;
+    DAINI 3 2 0 0;
+    X := DA(1) * DA(1) + DA(1);
+    DANOT 1;
+    Y := X;
+    DANOT 3;
+    Z := X - Y;
+    WRITE 6 Z;
+END;
+
+======= expect
+     I  COEFFICIENT            ORDER EXPONENTS
+     1   1.000000000000000       2   2 0
+     -----------------------------------

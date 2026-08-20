@@ -217,7 +217,7 @@ impl RecstFmt for RosyValue {
     fn recst_fmt(&self) -> String {
         match self {
             RosyValue::ST(s) => s.clone(),
-            other => format!("{other:?}"),
+            other => other.rosy_display(),
         }
     }
 }
@@ -444,6 +444,16 @@ impl AsDaRef for [RosyValue] {
 pub trait AsCdRef {
     fn as_cd_vec(&self) -> Vec<CD>;
 }
+impl AsCdRef for DA {
+    fn as_cd_vec(&self) -> Vec<CD> {
+        vec![CD::from_da(self)]
+    }
+}
+impl AsCdRef for CD {
+    fn as_cd_vec(&self) -> Vec<CD> {
+        vec![self.clone()]
+    }
+}
 impl AsCdRef for Vec<CD> {
     fn as_cd_vec(&self) -> Vec<CD> {
         self.clone()
@@ -458,19 +468,15 @@ impl AsCdRef for RosyValue {
     fn as_cd_vec(&self) -> Vec<CD> {
         match self {
             RosyValue::CD(d) => vec![d.clone()],
-            RosyValue::Arr(v) => v
-                .iter()
-                .filter_map(|x| x.clone().expect_cd().ok())
-                .collect(),
-            _ => Vec::new(),
+            RosyValue::DA(d) => vec![CD::from_da(d)],
+            RosyValue::Arr(v) => v.iter().map(|x| x.as_cd()).collect(),
+            other => vec![other.as_cd()],
         }
     }
 }
 impl AsCdRef for Vec<RosyValue> {
     fn as_cd_vec(&self) -> Vec<CD> {
-        self.iter()
-            .filter_map(|x| x.clone().expect_cd().ok())
-            .collect()
+        self.iter().map(|x| x.as_cd()).collect()
     }
 }
 pub trait AsCdDst {
@@ -483,6 +489,14 @@ impl AsCdDst for Vec<CD> {
     }
     fn store_cd_vec(&mut self, v: Vec<CD>) {
         *self = v;
+    }
+}
+impl AsCdDst for CD {
+    fn load_cd_vec(&self) -> Vec<CD> {
+        vec![self.clone()]
+    }
+    fn store_cd_vec(&mut self, v: Vec<CD>) {
+        *self = v.into_iter().next().unwrap_or_else(CD::zero);
     }
 }
 impl AsCdDst for f64 {
@@ -576,7 +590,11 @@ impl AsCdDst for RosyValue {
         self.as_cd_vec()
     }
     fn store_cd_vec(&mut self, v: Vec<CD>) {
-        *self = RosyValue::Arr(v.into_iter().map(RosyValue::CD).collect());
+        if v.len() == 1 {
+            *self = RosyValue::CD(v.into_iter().next().unwrap());
+        } else {
+            *self = RosyValue::Arr(v.into_iter().map(RosyValue::CD).collect());
+        }
     }
 }
 
@@ -851,5 +869,29 @@ impl TryFrom<&str> for RosyBaseType {
             "CD" => Ok(RosyBaseType::CD),
             _ => Err(anyhow::anyhow!("Can't convert {} to a Rosy type", value)),
         }
+    }
+}
+
+#[cfg(test)]
+mod cd_coerce_tests {
+    use super::*;
+
+    #[serial_test::serial]
+    #[test]
+    fn da_cell_is_visible_to_cdnfda() -> anyhow::Result<()> {
+        crate::taylor::cleanup_taylor();
+        crate::taylor::init_taylor(3, 4)?;
+        let da = DA::variable(1)?;
+        let cell = RosyValue::DA(da.clone());
+        let cds = cell.as_cd_vec();
+        assert_eq!(cds.len(), 1);
+        assert!(cds[0].constant_part().norm() == 0.0);
+
+        let mut dst = RosyValue::RE(0.0);
+        dst.store_cd_vec(vec![CD::from_da(&da)]);
+        assert!(matches!(dst, RosyValue::CD(_)));
+
+        crate::taylor::cleanup_taylor();
+        Ok(())
     }
 }
