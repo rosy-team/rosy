@@ -50,6 +50,30 @@ pub fn rosy_mblock(
     // 2. Francis QR iteration → quasi-upper-triangular (real Schur) form
     super::lev::francis_qr_pub(&mut h, &mut q, n)?;
 
+    // COSY plane orientation: each 2×2 block should have T[i,i+1] ≥ 0
+    // so COEF(map_i, p_i) matches the usual rotation sense (else TS yields 1-ν).
+    let mut k = 0;
+    while k + 1 < n {
+        let is_pair = h[k + 1][k].abs() > 1e-12 || h[k][k + 1].abs() > 1e-12;
+        if is_pair {
+            if h[k][k + 1] < 0.0 {
+                let j = k + 1;
+                for i in 0..n {
+                    q[i][j] = -q[i][j];
+                }
+                for i in 0..n {
+                    if i != j {
+                        h[i][j] = -h[i][j];
+                        h[j][i] = -h[j][i];
+                    }
+                }
+            }
+            k += 2;
+        } else {
+            k += 1;
+        }
+    }
+
     // Q is the transformation matrix: Q^T * A * Q = T (block-diagonal)
     // Q^{-1} = Q^T for orthogonal Q
 

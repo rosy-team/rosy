@@ -75,10 +75,18 @@ impl PolvalAnyDst for RosyValue {
     }
 }
 
-/// Fox ANY arrays: pick DA compose, particle VE, or scalar RE from the first cell.
+fn rosy_value_is_cd(v: &RosyValue) -> bool {
+    match v {
+        RosyValue::CD(_) | RosyValue::CM(_) => true,
+        RosyValue::Arr(xs) => xs.iter().any(rosy_value_is_cd),
+        _ => false,
+    }
+}
+
+/// Fox ANY arrays: pick DA compose, CD compose, particle VE, or scalar RE.
 pub fn rosy_polval_any(
     l: impl crate::IntoF64,
-    p_array: &impl crate::PolvalDaSrc,
+    p_array: &(impl crate::PolvalDaSrc + PolvalAnySrc),
     np: impl crate::IntoF64,
     a_array: &impl PolvalAnySrc,
     na: impl crate::IntoF64,
@@ -86,6 +94,13 @@ pub fn rosy_polval_any(
     nr: impl crate::IntoF64,
 ) -> Result<()> {
     let a_cells = a_array.polval_any_cells();
+    let p_cells = p_array.polval_any_cells();
+    if p_cells.iter().any(rosy_value_is_cd) || a_cells.iter().any(rosy_value_is_cd) {
+        let mut out: Vec<CD> = Vec::new();
+        rosy_polval_cd(l, &p_cells, np, &a_cells, na, &mut out, nr)?;
+        r_array.store_polval_any(out.into_iter().map(RosyValue::CD).collect());
+        return Ok(());
+    }
     match a_cells.first() {
         Some(RosyValue::DA(_)) => {
             let p = p_array.to_da_vec();
@@ -642,4 +657,37 @@ fn evaluate_da_at_re(poly: &DA, args: &[f64], na: usize) -> Result<f64> {
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::RosyValue;
+
+    #[serial_test::serial]
+    #[test]
+    fn polval_any_composes_da_map_on_cd_args() -> anyhow::Result<()> {
+        crate::taylor::cleanup_taylor();
+        crate::taylor::init_taylor(2, 2)?;
+        let p = vec![RosyValue::DA(DA::variable(1)?)];
+        let a = vec![
+            RosyValue::CD(CD::from_da(&DA::variable(2)?)),
+            RosyValue::CD(CD::from_da(&DA::variable(1)?)),
+        ];
+        let mut out = RosyValue::RE(0.0);
+        rosy_polval_any(1f64, &p, 1f64, &a, 2f64, &mut out, 1f64)?;
+        let RosyValue::CD(cd) = out else {
+            panic!("expected CD");
+        };
+        // P = x1, A = (x2, x1) as CD → result is the CD for x2
+        let mut x2_coeff = 0.0;
+        for (mono, c) in cd.real_part().coeffs_iter() {
+            if mono.exponents.get(1).copied() == Some(1) && mono.total_order == 1 {
+                x2_coeff = c;
+            }
+        }
+        assert!((x2_coeff - 1.0).abs() < 1e-12, "x2 coeff {x2_coeff}");
+        crate::taylor::cleanup_taylor();
+        Ok(())
+    }
 }

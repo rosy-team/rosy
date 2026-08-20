@@ -1,0 +1,24 @@
+BEGIN;
+    FUNCTION MA A B ;
+        MA := 0 ;
+    ENDFUNCTION ;
+    VARIABLE (RE 2 2) MA ;
+    MA(1, 2) := 3 ;
+    WRITE 6 MA(1, 2) ;
+END ;
+
+======= expect
+ 3.000000000000000
+
+======= fox
+BEGIN ;
+PROCEDURE RUN ;
+    FUNCTION MA A B ;
+        MA := 0 ;
+    ENDFUNCTION ;
+    VARIABLE MA 1 2 2 ;
+    MA(1, 2) := 3 ;
+    WRITE 6 MA(1, 2) ;
+ENDPROCEDURE ;
+RUN ;
+END ;

@@ -111,10 +111,13 @@ impl VarExpr {
                             && num_args <= v.data.r#type.dimensions
                     };
 
+                    // COSY: a same-named array in scope shadows a function.
+                    // BM's MA(I,J) is the local Jacobian, not FUNCTION MA.
                     let route_as_call = match (func_accepts, var_accepts) {
-                        (true, _) => true,                    // function arity matches — prefer call
-                        (false, true) => false, // only variable fits — multi-dim index
-                        (false, false) => is_func || !is_var, // surface the more informative error downstream
+                        (true, true) => false,
+                        (true, false) => true,
+                        (false, true) => false,
+                        (false, false) => is_func || !is_var,
                     };
 
                     if route_as_call {
