@@ -75,10 +75,12 @@ macro_rules! expr_kind {
             fn try_inplace_append(
                 &self,
                 target_var: &str,
+                target_indices: &[String],
+                dest: &str,
                 context: &mut TranspilationInputContext,
             ) -> Option<Result<TranspilationOutput, Vec<Error>>> {
                 match self {
-                    $(Self::$var(v) => v.try_inplace_append(target_var, context),)+
+                    $(Self::$var(v) => v.try_inplace_append(target_var, target_indices, dest, context),)+
                 }
             }
         }

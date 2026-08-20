@@ -1,6 +1,6 @@
 //! Shared AST for every infix operator (`+`, `&`, `|`, `^`, …).
 
-use crate::program::expressions::Expr;
+use crate::program::expressions::{Expr, ExprKind};
 use crate::resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot};
 use crate::transpile::{
     TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr, ValueKind,
@@ -17,6 +17,17 @@ pub struct BinaryExpr {
     pub right: Box<Expr>,
 }
 
+fn collect_concat_leaves<'a>(expr: &'a Expr, out: &mut Vec<&'a Expr>) {
+    if let ExprKind::Binary(bin) = &expr.inner
+        && bin.op == BinaryOp::Concat
+    {
+        collect_concat_leaves(&bin.left, out);
+        collect_concat_leaves(&bin.right, out);
+        return;
+    }
+    out.push(expr);
+}
+
 impl BinaryExpr {
     pub fn new(op: BinaryOp, left: Expr, right: Expr) -> Self {
         Self {
@@ -24,6 +35,79 @@ impl BinaryExpr {
             left: Box::new(left),
             right: Box::new(right),
         }
+    }
+
+    /// Homogeneous scalar `&` chains: `1 & 2 & 3` → `vec![1, 2, 3]`,
+    /// `"a" & "b"` → `format!("{}{}", a, b)`. Mixed types stay pairwise.
+    fn try_emit_flat_concat(
+        &self,
+        context: &mut TranspilationInputContext,
+    ) -> Option<Result<TranspilationOutput, Vec<Error>>> {
+        let mut leaves = Vec::new();
+        collect_concat_leaves(&self.left, &mut leaves);
+        collect_concat_leaves(&self.right, &mut leaves);
+        if leaves.len() < 2 {
+            return None;
+        }
+
+        let mut types = Vec::with_capacity(leaves.len());
+        for leaf in &leaves {
+            types.push(leaf.type_of(context).ok()?);
+        }
+        if types.iter().any(|t| t.is_any()) {
+            return None;
+        }
+        let all_re = types
+            .iter()
+            .all(|t| t.base_type == RosyBaseType::RE && t.dimensions == 0);
+        let all_st = types
+            .iter()
+            .all(|t| t.base_type == RosyBaseType::ST && t.dimensions == 0);
+        if !all_re && !all_st {
+            return None;
+        }
+
+        let mut parts = Vec::with_capacity(leaves.len());
+        let mut requested_variables = BTreeSet::new();
+        let mut errors = Vec::new();
+        for (i, leaf) in leaves.iter().enumerate() {
+            match leaf.transpile(context) {
+                Ok(output) => {
+                    requested_variables.extend(output.requested_variables.iter().cloned());
+                    parts.push(if all_re {
+                        output.as_value()
+                    } else {
+                        output.as_ref()
+                    });
+                }
+                Err(e) => {
+                    for err in e {
+                        errors.push(err.context(format!(
+                            "...while transpiling term {} of concatenation",
+                            i + 1
+                        )));
+                    }
+                }
+            }
+        }
+        if !errors.is_empty() {
+            return Some(Err(errors));
+        }
+
+        let serialization = if all_re {
+            format!("vec![{}]", parts.join(", "))
+        } else {
+            format!(
+                "format!(\"{}\"{})",
+                "{}".repeat(parts.len()),
+                parts.iter().map(|p| format!(", {p}")).collect::<String>()
+            )
+        };
+        Some(Ok(TranspilationOutput {
+            serialization,
+            requested_variables,
+            value_kind: ValueKind::Owned,
+        }))
     }
 }
 
@@ -76,13 +160,29 @@ impl TranspileableExpr for BinaryExpr {
     fn try_inplace_append(
         &self,
         target_var: &str,
+        target_indices: &[String],
+        dest: &str,
         context: &mut TranspilationInputContext,
     ) -> Option<Result<TranspilationOutput, Vec<Error>>> {
         if self.op != BinaryOp::Concat {
             return None;
         }
-        let left_name = self.left.inner.as_bare_variable_name()?;
-        if left_name != target_var {
+        let left_ident = match &self.left.inner {
+            ExprKind::Var(v) => &v.identifier,
+            ExprKind::Ident(id) => id,
+            _ => return None,
+        };
+        if left_ident.name != target_var {
+            return None;
+        }
+        let mut left_indices = Vec::new();
+        for index_expr in left_ident.flat_indices() {
+            match index_expr.transpile(context) {
+                Ok(out) => left_indices.push(out.as_value()),
+                Err(e) => return Some(Err(e)),
+            }
+        }
+        if left_indices != target_indices {
             return None;
         }
 
@@ -111,29 +211,25 @@ impl TranspileableExpr for BinaryExpr {
 
         let mut requested_variables = BTreeSet::new();
         requested_variables.extend(right_output.requested_variables.iter().cloned());
-
-        let target_deref = match context.variables.get(target_var).map(|v| &v.scope) {
-            Some(VariableScope::Local) => "",
-            Some(VariableScope::Arg) => "*",
-            Some(VariableScope::Higher) => {
-                requested_variables.insert(target_var.to_string());
-                "*"
-            }
-            None => "",
-        };
+        if matches!(
+            context.variables.get(target_var).map(|v| &v.scope),
+            Some(VariableScope::Higher)
+        ) {
+            requested_variables.insert(target_var.to_string());
+        }
 
         let needs_clone = matches!(right_type.base_type, RosyBaseType::DA | RosyBaseType::CD);
         let code = if is_push {
             let val = right_output.as_value();
             if needs_clone {
-                format!("{{ let __v = {val}.clone(); ({target_deref}{target_var}).push(__v); }}")
+                format!("{{ let __v = {val}.clone(); {dest}.push(__v); }}")
             } else {
-                format!("{{ let __v = {val}; ({target_deref}{target_var}).push(__v); }}")
+                format!("{{ let __v = {val}; {dest}.push(__v); }}")
             }
         } else {
             let val_ref = right_output.as_ref();
             format!(
-                "{{ let __v: Vec<_> = ({val_ref}).to_vec(); ({target_deref}{target_var}).extend_from_slice(&__v); }}"
+                "{{ let __v: Vec<_> = ({val_ref}).to_vec(); {dest}.extend_from_slice(&__v); }}"
             )
         };
 
@@ -159,6 +255,12 @@ impl Transpile for BinaryExpr {
                 left_type,
                 right_type
             )]);
+        }
+
+        if self.op == BinaryOp::Concat
+            && let Some(flat) = self.try_emit_flat_concat(context)
+        {
+            return flat;
         }
 
         let mut errors = Vec::new();

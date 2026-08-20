@@ -595,13 +595,23 @@ impl Transpile for AssignStatement {
             )]);
         }
 
-        // Optimization: detect `X := X & expr` and generate in-place append
-        if self.identifier.num_index_dimensions() == 0
-            && let Some(result) = value
-                .inner
-                .try_inplace_append(&self.identifier.name, context)
+        // `X := X & expr` / `X(I) := X(I) & expr` → push/extend on the cell
+        if let Ok((dest, idx_serials, mut dest_vars)) =
+            assignment_append_dest(&self.identifier, context)
+            && let Some(result) = value.inner.try_inplace_append(
+                &self.identifier.name,
+                &idx_serials,
+                &dest,
+                context,
+            )
         {
-            return result;
+            return match result {
+                Ok(mut out) => {
+                    out.requested_variables.append(&mut dest_vars);
+                    Ok(out)
+                }
+                Err(e) => Err(e),
+            };
         }
 
         let mut requested_variables = BTreeSet::new();
@@ -780,4 +790,49 @@ impl Transpile for AssignStatement {
             Err(errors)
         }
     }
+}
+
+fn assignment_append_dest(
+    ident: &VariableIdentifier,
+    context: &mut TranspilationInputContext,
+) -> Result<(String, Vec<String>, BTreeSet<String>), Vec<Error>> {
+    let mut requested_variables = BTreeSet::new();
+    let mut idx_serials = Vec::new();
+    for index_expr in ident.flat_indices() {
+        let output = index_expr.transpile(context).map_err(|e| {
+            e.into_iter()
+                .map(|err| {
+                    err.context(format!(
+                        "...while transpiling index expression for assignment to '{}'",
+                        ident.name
+                    ))
+                })
+                .collect::<Vec<Error>>()
+        })?;
+        requested_variables.extend(output.requested_variables.iter().cloned());
+        idx_serials.push(output.as_value());
+    }
+    let scope = context.variables.get(&ident.name).map(|v| v.scope.clone());
+    if matches!(scope, Some(VariableScope::Higher)) {
+        requested_variables.insert(ident.name.clone());
+    }
+    let dest = if idx_serials.is_empty() {
+        match scope {
+            Some(VariableScope::Arg | VariableScope::Higher) => format!("(*{})", ident.name),
+            _ => format!("({})", ident.name),
+        }
+    } else {
+        let mut cell = match scope {
+            Some(VariableScope::Local) | None => format!("&mut {}", ident.name),
+            Some(VariableScope::Arg | VariableScope::Higher) => ident.name.clone(),
+        };
+        for idx in &idx_serials {
+            cell = format!(
+                "rosy_get_mut({cell}, {idx}, \"{name}\")",
+                name = ident.name
+            );
+        }
+        cell
+    };
+    Ok((dest, idx_serials, requested_variables))
 }

@@ -349,9 +349,12 @@ impl TranspileableExpr for Expr {
     fn try_inplace_append(
         &self,
         target_var: &str,
+        target_indices: &[String],
+        dest: &str,
         context: &mut TranspilationInputContext,
     ) -> Option<Result<TranspilationOutput, Vec<Error>>> {
-        self.inner.try_inplace_append(target_var, context)
+        self.inner
+            .try_inplace_append(target_var, target_indices, dest, context)
     }
 }
 impl Transpile for Expr {

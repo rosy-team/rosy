@@ -74,12 +74,13 @@ pub trait TranspileableExpr: Transpile {
     fn as_bare_variable_name(&self) -> Option<&str> {
         None
     }
-    /// Optimization: if this expression is `target_var & expr`, return code
-    /// that appends in-place (push/extend) instead of clone + concat + assign.
-    /// Returns None if the optimization doesn't apply (default).
+    /// Optimization: if this expression is `target & expr` (bare or indexed),
+    /// append in-place onto `dest` instead of clone + concat + assign.
     fn try_inplace_append(
         &self,
         _target_var: &str,
+        _target_indices: &[String],
+        _dest: &str,
         _context: &mut TranspilationInputContext,
     ) -> Option<Result<TranspilationOutput, Vec<Error>>> {
         None
