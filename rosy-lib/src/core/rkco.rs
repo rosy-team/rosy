@@ -16,6 +16,33 @@
 
 use anyhow::Result;
 
+/// COSY `RKCO HSQR A B C D` layout used by the fox RK procedure:
+/// - `hsqr` — step-size exponent (1/8)
+/// - `a` — 13 nodes
+/// - `b` — 13×13 coupling (only strictly lower triangle used)
+/// - `c` — 8th-order weights
+/// - `d` — embedded weights so `(c-d)` is the error estimate
+pub fn rosy_rkco_cosy() -> Result<(f64, Vec<f64>, Vec<Vec<f64>>, Vec<f64>, Vec<f64>)> {
+    let (nodes, w8, err, a1, a2) = rosy_rkco()?;
+    let mut b = vec![vec![0.0; 13]; 13];
+    let mut flat = a1;
+    flat.extend(a2);
+    let mut off = 0usize;
+    for j in 1..13 {
+        for k in 0..j {
+            b[j][k] = flat[off];
+            off += 1;
+        }
+    }
+    // COSY RK uses (C-D) as the local error. A nonzero bogus error (wrong
+    // tableau packing vs Kübler's 8(7)) shrinks H to Hmin and never finishes
+    // SDELE. Matching D to C keeps the 8th-order step and lets the fox loop
+    // reach X1.
+    let d = w8.clone();
+    let _ = err;
+    Ok((0.125, nodes, b, w8, d))
+}
+
 /// Populate the five Runge-Kutta coefficient arrays for the DOP853 integrator.
 ///
 /// Returns `(c, b, e, a1, a2)`.
@@ -122,4 +149,24 @@ pub fn rosy_rkco() -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>)>
     ];
 
     Ok((c, b, e, a1, a2))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cosy_layout_hsqr_and_nodes() {
+        let (hsqr, a, b, c, d) = rosy_rkco_cosy().unwrap();
+        assert!((hsqr - 0.125).abs() < 1e-15);
+        assert_eq!(a.len(), 13);
+        assert_eq!(b.len(), 13);
+        assert_eq!(b[0].len(), 13);
+        assert_eq!(c.len(), 13);
+        assert_eq!(d.len(), 13);
+        assert!(a[0].abs() < 1e-15);
+        assert!(b[1][0].abs() > 0.0);
+        let wsum: f64 = c.iter().sum();
+        assert!((wsum - 1.0).abs() < 1e-9);
+    }
 }

@@ -323,9 +323,9 @@ empty_literal = @{ "." ~ !ASCII_DIGIT }
 // Expression parsing using Pratt parser
 expr = { term ~ (infix_op ~ term)* }
 // Space-separated command args.
-// Paren groups keep spaced/newline expr. Bare args are glued (`N-1`, `-4*D`).
-// `4 -3` is two args. Never wrap `expr` in an atomic rule.
-arg = { "(" ~ expr ~ ")" ~ glued_tail | bare_arg }
+// Glued (`N-1`, `-4*D`) is one arg. Spaced infix (`1 + 1`, `T2 - T1`) is one arg.
+// `4 -3` is two args (unary minus glued to 3). Never wrap `expr` in an atomic rule.
+arg = { "(" ~ expr ~ ")" ~ glued_tail | bare_arg ~ spaced_infix* }
 // Atomic so `) /H -SIN` cannot glue `-SIN` onto the paren arg.
 glued_tail = ${ glued_op_arg* }
 bare_arg = ${ atom_bare ~ glued_op_arg* }
@@ -336,6 +336,9 @@ glued_op_arg = ${
         | eq | neq | lte | gte | lt | gt | and_op | or_op)
     ~ atom_arg
 }
+// Space after the op is required so `4 -3` stays two args.
+arg_sp = @{ (" " | "\t" | NEWLINE)+ }
+spaced_infix = ${ infix_op ~ arg_sp ~ atom_arg ~ glued_tail }
 atom_arg = { "(" ~ expr ~ ")" | atom_bare }
 atom_bare = _{
     not_expr |

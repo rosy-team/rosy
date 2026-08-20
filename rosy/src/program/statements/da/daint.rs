@@ -22,6 +22,7 @@
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};
+use rosy_lib::RosyType;
 use std::collections::BTreeSet;
 
 use crate::{
@@ -101,11 +102,18 @@ impl Transpile for DaintStatement {
                 add_context_to_all(e, "...while transpiling dest in DAINT".to_string())
             })?;
             requested_variables.extend(dest_out.requested_variables.iter().cloned());
+            let dest_ty = dest.type_of(context).unwrap_or_else(|_| RosyType::ANY());
+            let store = if dest_ty.is_any() {
+                format!("{} = RosyValue::from(__daint)", dest_out.as_value())
+            } else if dest_ty.base_type == rosy_lib::RosyBaseType::RE {
+                format!("{} = RosyValue::from(__daint).as_f64()", dest_out.as_value())
+            } else {
+                format!("{} = __daint", dest_out.as_value())
+            };
             format!(
-                "{{ let mut __daint = {}.clone(); rosy_lib::core::da_ops::rosy_daint(&mut __daint, rosy_as_usize(&({})))?; {} = __daint; }}",
+                "{{ let mut __daint = {}.clone(); rosy_lib::core::da_ops::rosy_daint(&mut __daint, rosy_as_usize(&({})))?; {store}; }}",
                 da_output.as_owned(&da_ty),
                 index_output.as_value(),
-                dest_out.as_value(),
             )
         } else {
             format!(

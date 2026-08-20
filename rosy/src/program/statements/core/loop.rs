@@ -204,18 +204,16 @@ impl Transpile for LoopStatement {
         let mut errors = Vec::new();
 
         let outer = context.variables.get(&self.iterator).cloned();
-        if outer.is_none() {
-            inner_context.variables.insert(
-                self.iterator.clone(),
-                ScopedVariableData {
-                    scope: VariableScope::Local,
-                    data: VariableData {
-                        name: self.iterator.clone(),
-                        r#type: RosyType::RE(),
-                    },
+        inner_context.variables.insert(
+            self.iterator.clone(),
+            ScopedVariableData {
+                scope: VariableScope::Local,
+                data: VariableData {
+                    name: self.iterator.clone(),
+                    r#type: RosyType::RE(),
                 },
-            );
-        }
+            },
+        );
 
         // Transpile each inner statement
         for stmt in &self.body {
@@ -295,22 +293,9 @@ impl Transpile for LoopStatement {
         let start = re_val(&start_output, &start_type);
         let end = re_val(&end_output, &end_type);
         let body = indent(serialized_statements.join("\n"));
-        let (it, sync, bump) = if let Some(outer) = &outer {
+        let (it, sync, bump) = if outer.is_some() {
             let rust_it = format!("__rosy_loop_{iter}");
-            let star = match outer.scope {
-                VariableScope::Local => "",
-                VariableScope::Arg | VariableScope::Higher => "*",
-            };
-            // Higher locals live in a parent rust fn; nested `fn` cannot assign them.
-            let sync = if outer.scope == VariableScope::Higher {
-                String::new()
-            } else if outer.data.r#type.is_any() {
-                format!("{star}{iter} = RosyValue::from({rust_it});")
-            } else if outer.data.r#type == RosyType::RE() {
-                format!("{star}{iter} = {rust_it};")
-            } else {
-                String::new()
-            };
+            let sync = format!("let mut {iter}: RE = {rust_it};");
             (rust_it, sync, true)
         } else {
             (iter.clone(), String::new(), false)

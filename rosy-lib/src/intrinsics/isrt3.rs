@@ -41,6 +41,13 @@ impl RosyISRT3 for DA {
     }
 }
 
+impl RosyISRT3 for crate::RosyValue {
+    type Output = VE;
+    fn rosy_isrt3(&self) -> anyhow::Result<Self::Output> {
+        self.clone().expect_ve()?.rosy_isrt3()
+    }
+}
+
 /// Compute x^(-3/2) of a DA object using binomial series.
 ///
 /// Uses: f^alpha where alpha = -1.5

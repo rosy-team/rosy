@@ -23,11 +23,14 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
+    resolve::{ExprRecipe, ResolutionRule, ScopeContext, TypeResolver},
+    syntax_config,
     transpile::{
-        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
-        add_context_to_all,
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement, add_context_to_all,
     },
 };
+use rosy_lib::RosyType;
 
 /// AST node for the `DAFLO rhs ic result dim;` ODE flow statement.
 #[derive(Debug)]
@@ -120,4 +123,34 @@ impl Transpile for DafloStatement {
     }
 }
 
-impl TranspileableStatement for DafloStatement {}
+impl TranspileableStatement for DafloStatement {
+    fn wire_inference_edges(
+        &self,
+        resolver: &mut TypeResolver,
+        ctx: &mut ScopeContext,
+        _source_location: crate::program::statements::SourceLocation,
+    ) -> Option<Result<()>> {
+        let Some(name) = self.result.as_bare_variable_name() else {
+            return Some(Ok(()));
+        };
+        let Some(slot) = ctx.variables.get(name).cloned() else {
+            return Some(Ok(()));
+        };
+        if let Some(node) = resolver.nodes.get_mut(&slot) {
+            if syntax_config::is_cosy_syntax() {
+                node.rule = ResolutionRule::InferredFrom {
+                    recipe: ExprRecipe::Literal(RosyType::ANY()),
+                    reason: "DAFLO dest (COSY cell)".into(),
+                };
+                node.resolved = Some(RosyType::ANY());
+                node.depends_on.clear();
+            } else if node.resolved.is_none() {
+                node.rule = ResolutionRule::InferredFrom {
+                    recipe: ExprRecipe::Literal(RosyType::DA()),
+                    reason: "DAFLO dest".into(),
+                };
+            }
+        }
+        Some(Ok(()))
+    }
+}

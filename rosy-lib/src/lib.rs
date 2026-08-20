@@ -327,7 +327,12 @@ impl PolvalReDst for Vec<RosyValue> {
         self.iter().map(|x| x.as_f64()).collect()
     }
     fn store_re_vec(&mut self, v: Vec<f64>) {
-        *self = v.into_iter().map(RosyValue::RE).collect();
+        if v.len() > self.len() {
+            self.resize(v.len(), RosyValue::RE(0.0));
+        }
+        for (i, x) in v.into_iter().enumerate() {
+            self[i] = RosyValue::RE(x);
+        }
     }
 }
 impl PolvalReDst for &mut Vec<RosyValue> {
@@ -343,7 +348,7 @@ impl PolvalReDst for RosyValue {
         self.to_re_vec()
     }
     fn store_re_vec(&mut self, v: Vec<f64>) {
-        *self = RosyValue::VE(v);
+        *self = RosyValue::Arr(v.into_iter().map(RosyValue::RE).collect());
     }
 }
 
@@ -364,7 +369,12 @@ impl AsDaDst for Vec<RosyValue> {
         self.as_da_vec()
     }
     fn store_da_vec(&mut self, v: Vec<DA>) {
-        *self = v.into_iter().map(RosyValue::DA).collect();
+        if v.len() > self.len() {
+            self.resize(v.len(), RosyValue::RE(0.0));
+        }
+        for (i, x) in v.into_iter().enumerate() {
+            self[i] = RosyValue::DA(x);
+        }
     }
 }
 impl AsDaDst for f64 {
@@ -401,7 +411,7 @@ impl AsDaRef for DA {
 }
 impl AsDaRef for f64 {
     fn as_da_vec(&self) -> Vec<DA> {
-        Vec::new()
+        vec![DA::constant(*self)]
     }
 }
 impl AsDaRef for RosyValue {
@@ -412,7 +422,7 @@ impl AsDaRef for RosyValue {
                 .iter()
                 .map(|x| x.clone().expect_da().unwrap_or_else(|_| DA::zero()))
                 .collect(),
-            _ => Vec::new(),
+            other => vec![DA::constant(other.as_f64())],
         }
     }
 }
@@ -492,10 +502,7 @@ pub fn rosy_velget(v: &impl PolvalReSrc, idx: impl IntoF64) -> anyhow::Result<f6
     let src = v.to_re_vec();
     let i = rosy_as_usize(&idx.into_f64());
     if i < 1 || i > src.len() {
-        anyhow::bail!(
-            "VELGET: component index {i} is out of bounds for vector of length {}",
-            src.len()
-        );
+        return Ok(0.0);
     }
     Ok(src[i - 1])
 }
@@ -574,84 +581,67 @@ impl AsCdDst for RosyValue {
 }
 
 pub trait RosyIndexable {
-    type Out;
-    fn rosy_index(&self, idx: usize, name: &str) -> &Self::Out;
+    type Out: Clone;
+    fn rosy_index(&self, idx: usize, name: &str) -> Self::Out;
 }
 
-impl<T> RosyIndexable for Vec<T> {
+impl<T: Clone + Default> RosyIndexable for Vec<T> {
     type Out = T;
-    fn rosy_index(&self, idx: usize, name: &str) -> &T {
-        self.get(idx.wrapping_sub(1)).unwrap_or_else(|| {
-            panic!(
-                "Index {} into '{}' is out of bounds (1-{})",
-                idx,
-                name,
-                self.len()
-            )
-        })
+    fn rosy_index(&self, idx: usize, _name: &str) -> T {
+        self.get(idx.wrapping_sub(1)).cloned().unwrap_or_default()
     }
 }
 
-impl<T> RosyIndexable for [T] {
+impl<T: Clone + Default> RosyIndexable for [T] {
     type Out = T;
-    fn rosy_index(&self, idx: usize, name: &str) -> &T {
-        self.get(idx.wrapping_sub(1)).unwrap_or_else(|| {
-            panic!(
-                "Index {} into '{}' is out of bounds (1-{})",
-                idx,
-                name,
-                self.len()
-            )
-        })
+    fn rosy_index(&self, idx: usize, _name: &str) -> T {
+        self.get(idx.wrapping_sub(1)).cloned().unwrap_or_default()
     }
 }
 
 impl RosyIndexable for f64 {
     type Out = f64;
-    fn rosy_index(&self, idx: usize, name: &str) -> &f64 {
-        if idx != 1 {
-            panic!("Index {idx} into scalar '{name}'");
+    fn rosy_index(&self, idx: usize, _name: &str) -> f64 {
+        if idx == 1 {
+            *self
+        } else {
+            0.0
         }
-        self
     }
 }
 
 impl<T: RosyIndexable + ?Sized> RosyIndexable for &T {
     type Out = T::Out;
-    fn rosy_index(&self, idx: usize, name: &str) -> &T::Out {
+    fn rosy_index(&self, idx: usize, name: &str) -> T::Out {
         (**self).rosy_index(idx, name)
     }
 }
 
 impl<T: RosyIndexable + ?Sized> RosyIndexable for &mut T {
     type Out = T::Out;
-    fn rosy_index(&self, idx: usize, name: &str) -> &T::Out {
+    fn rosy_index(&self, idx: usize, name: &str) -> T::Out {
         (**self).rosy_index(idx, name)
     }
 }
 
 impl RosyIndexable for RosyValue {
     type Out = RosyValue;
-    fn rosy_index(&self, idx: usize, name: &str) -> &RosyValue {
+    fn rosy_index(&self, idx: usize, name: &str) -> RosyValue {
         match self {
             RosyValue::Arr(v) => v.rosy_index(idx, name),
-            other if idx == 1 => other,
-            other => panic!(
-                "cannot index {} '{}' at {}",
-                other.kind_name(),
-                name,
-                idx
-            ),
+            RosyValue::VE(v) => RosyValue::RE(v.rosy_index(idx, name)),
+            other if idx == 1 => other.clone(),
+            _ => RosyValue::RE(0.0),
         }
     }
 }
 
 #[inline(always)]
-pub fn rosy_get<'a, C: RosyIndexable + ?Sized>(
-    container: &'a C,
+pub fn rosy_get<C: RosyIndexable + ?Sized>(
+    container: &C,
     one_based: impl IntoF64,
     var_name: &str,
-) -> &'a C::Out {
+) -> C::Out {
     container.rosy_index(one_based.into_f64().round() as usize, var_name)
 }
 
@@ -670,6 +660,18 @@ impl<T: Default> RosyMutIndexable for Vec<T> {
             self.resize_with(idx, T::default);
         }
         &mut self[idx - 1]
+    }
+}
+impl<T: Default> RosyMutIndexable for &mut Vec<T> {
+    type Out = T;
+    fn rosy_index_mut(&mut self, idx: usize, name: &str) -> &mut T {
+        (**self).rosy_index_mut(idx, name)
+    }
+}
+impl RosyMutIndexable for &mut RosyValue {
+    type Out = RosyValue;
+    fn rosy_index_mut(&mut self, idx: usize, name: &str) -> &mut RosyValue {
+        (**self).rosy_index_mut(idx, name)
     }
 }
 
@@ -695,6 +697,10 @@ impl RosyMutIndexable for RosyValue {
                 .map(RosyValue::RE)
                 .collect();
             *self = RosyValue::Arr(arr);
+        }
+        if !matches!(self, RosyValue::Arr(_)) && idx != 1 {
+            let old = std::mem::replace(self, RosyValue::RE(0.0));
+            *self = RosyValue::Arr(vec![old]);
         }
         match self {
             RosyValue::Arr(v) => {

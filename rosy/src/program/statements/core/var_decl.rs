@@ -232,13 +232,13 @@ impl FromRule for VarDeclStatement {
             }
         }
 
-        // Cosy 0-d cells stay untyped (inference + ANY). Extra memsize
-        // numbers after the first are array dims, typed as RE.
+        // Extra memsize numbers after the first are array dims (ANY cells).
+        // 0-d untyped stays open for inference; leftover fox cells become ANY.
         let r#type = if syntax_config::is_cosy_syntax()
             && r#type.is_none()
             && !dimension_exprs.is_empty()
         {
-            Some(RosyType::new(RosyBaseType::RE, dimension_exprs.len()))
+            Some(RosyType::new(RosyBaseType::ANY, dimension_exprs.len()))
         } else {
             r#type
         };
@@ -328,6 +328,14 @@ impl Transpile for VarDeclStatement {
                 },
             },
         );
+        if let Some(prev) = &previous
+            && prev.scope == VariableScope::Higher
+        {
+            context
+                .outer_bindings
+                .insert(self.data.name.clone(), prev.clone());
+        }
+
         if let Some(prev) = previous
             && prev.scope != VariableScope::Higher
             && !syntax_config::is_cosy_syntax()
@@ -344,7 +352,7 @@ impl Transpile for VarDeclStatement {
 
         let serialization = format!(
             "let mut {}: {} = {};",
-            self.data.name,
+            context.rust_ident(&self.data.name),
             resolved_type.as_rust_type(),
             data_default_serialization
         );

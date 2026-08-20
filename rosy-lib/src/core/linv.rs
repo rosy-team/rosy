@@ -100,3 +100,28 @@ pub fn rosy_linv(
 
     Ok((inv, 0.0))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inverts_known_2x2() {
+        let m = vec![vec![1.0, 2.0], vec![3.0, 4.0]];
+        let (inv, err) = rosy_linv(&m, 2.0, 2.0).unwrap();
+        assert_eq!(err, 0.0);
+        assert!((inv[0][0] + 2.0).abs() < 1e-9);
+        assert!((inv[0][1] - 1.0).abs() < 1e-9);
+        assert!((inv[1][0] - 1.5).abs() < 1e-9);
+        assert!((inv[1][1] + 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn identity_is_not_singular() {
+        let m = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
+        let (inv, err) = rosy_linv(&m, 2.0, 2.0).unwrap();
+        assert_eq!(err, 0.0);
+        assert!((inv[0][0] - 1.0).abs() < 1e-12);
+        assert!((inv[1][1] - 1.0).abs() < 1e-12);
+    }
+}

@@ -148,11 +148,12 @@ fn flatten_arg_node<'a>(
     out: &mut Vec<pest::iterators::Pair<'a, Rule>>,
 ) {
     match pair.as_rule() {
-        Rule::arg | Rule::bare_arg | Rule::atom_arg | Rule::glued_tail => {
+        Rule::arg | Rule::bare_arg | Rule::atom_arg | Rule::glued_tail | Rule::spaced_infix => {
             for g in pair.into_inner() {
                 flatten_arg_node(g, out);
             }
         }
+        Rule::arg_sp => {}
         Rule::glued_op_arg => flatten_glued_op(pair, out),
         _ => out.push(pair),
     }

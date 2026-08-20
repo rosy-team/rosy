@@ -12,3 +12,19 @@ END;
 
 ======= expect
  0.000000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE M 1 2 2;
+    VARIABLE INV 1 2 2;
+    VARIABLE ERR 1;
+    M(1,1) := 1;
+    M(1,2) := 2;
+    M(2,1) := 3;
+    M(2,2) := 4;
+    LINV M INV 2 2 ERR;
+    WRITE 6 ERR;
+ENDPROCEDURE;
+RUN;
+END;

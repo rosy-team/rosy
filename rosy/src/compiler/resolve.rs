@@ -321,7 +321,7 @@ impl TypeResolver {
             ctx.procedures.get(name).cloned()
         };
 
-        if let Some(params) = param_slots {
+        if let Some(params) = &param_slots {
             for (i, arg_expr) in args.iter().enumerate() {
                 if let Some((_, param_slot)) = params.get(i) {
                     // Only update if the parameter slot is unresolved
@@ -343,6 +343,42 @@ impl TypeResolver {
                         reason: format!("inferred from argument {} at call site", i + 1),
                     };
                     node.depends_on = deps;
+                }
+            }
+        }
+
+        // Fox: passing a cell into an ANY argument (MGF F, POTI P) means
+        // that cell must hold DA. Don't leave it as leftover RE.
+        if crate::syntax_config::is_cosy_syntax() {
+            if let Some(params) = &param_slots {
+                for (i, arg_expr) in args.iter().enumerate() {
+                    let Some(name) = arg_expr.as_bare_variable_name() else {
+                        continue;
+                    };
+                    let Some((_, param_slot)) = params.get(i) else {
+                        continue;
+                    };
+                    let param_any = self
+                        .nodes
+                        .get(param_slot)
+                        .and_then(|n| n.resolved)
+                        .map(|t| t.is_any())
+                        .unwrap_or(false);
+                    if !param_any {
+                        continue;
+                    }
+                    if let Some(var_slot) = ctx.variables.get(name) {
+                        if let Some(node) = self.nodes.get_mut(var_slot) {
+                            if !node.resolved.map(|t| t.is_any()).unwrap_or(false) {
+                                node.resolved = Some(RosyType::ANY());
+                                node.rule = ResolutionRule::InferredFrom {
+                                    recipe: ExprRecipe::Literal(RosyType::ANY()),
+                                    reason: "passed to ANY procedure argument".into(),
+                                };
+                                node.depends_on.clear();
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -441,15 +477,15 @@ impl TypeResolver {
             }
         }
 
-        // Leftovers are cycles (SPOS := SF; SF := SPOS+SLOC). Cosy cells
-        // default to RE so the loop can close.
+        // Leftovers are cycles (SPOS := SF; SF := SPOS+SLOC) or dest-only
+        // cells (MGF F). COSY cells are untyped; ANY keeps DA in them.
         if crate::syntax_config::is_cosy_syntax() {
             for node in self.nodes.values_mut() {
                 if node.resolved.is_none() && !warned_slots.contains(&node.slot) {
-                    node.resolved = Some(RosyType::RE());
+                    node.resolved = Some(RosyType::ANY());
                     node.rule = ResolutionRule::InferredFrom {
-                        recipe: ExprRecipe::Literal(RosyType::RE()),
-                        reason: "cycle defaulted to RE".to_string(),
+                        recipe: ExprRecipe::Literal(RosyType::ANY()),
+                        reason: "cycle/untyped cell defaulted to ANY".to_string(),
                     };
                 }
             }
@@ -682,7 +718,7 @@ impl TypeResolver {
                 })?,
             ResolutionRule::Unresolved => {
                 if crate::syntax_config::is_cosy_syntax() {
-                    RosyType::RE()
+                    RosyType::ANY()
                 } else {
                     let msg = format!(
                         "No type could be determined for {}\n  💡 Add an explicit type annotation or assign a value with a known type.",

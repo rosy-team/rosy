@@ -126,6 +126,12 @@ pub struct TranspilationInputContext {
     pub functions: HashMap<String, TranspilationInputFunctionContext>,
     pub procedures: HashMap<String, TranspilationInputProcedureContext>,
     pub in_loop: bool,
+    /// Higher bindings hidden by a local of the same name. RK's step `H`
+    /// shadows the global curvature `H`; ODE/POTFLD still need the outer one.
+    pub outer_bindings: HashMap<String, ScopedVariableData>,
+    /// Set while emitting COSY `PROCEDURE RK`, whose local step `H` must not
+    /// hide the global curvature `H` captured by ODE/POTFLD.
+    pub split_rk_h: bool,
 }
 
 impl TranspilationInputContext {
@@ -152,6 +158,21 @@ impl TranspilationInputContext {
     /// Hint for an undeclared function name.
     pub fn function_hint(&self, name: &str) -> String {
         Self::case_hint(name, self.functions.keys())
+    }
+
+    /// COSY RK names its step `H`, same as global curvature. Keep both.
+    pub fn rust_ident(&self, name: &str) -> String {
+        if self.split_rk_h
+            && name == "H"
+            && self
+                .variables
+                .get(name)
+                .is_some_and(|v| v.scope == VariableScope::Local)
+        {
+            "__loc_H".to_string()
+        } else {
+            name.to_string()
+        }
     }
 }
 
@@ -311,9 +332,14 @@ pub fn emit_pass_as(
     }
     if provided.is_any() {
         let tmp = format!("__rosy_cap_{name}");
+        let src = if provided.dimensions > 0 {
+            format!("RosyValue::from(({name}).clone())")
+        } else {
+            format!("({name}).clone()")
+        };
         prelude.push(format!(
             "let mut {tmp} = {};",
-            emit_unwrap_rosy_value(format!("({name}).clone()"), expected)
+            emit_unwrap_rosy_value(src, expected)
         ));
         return (prelude, format!("&mut {tmp}"), writeback);
     }
@@ -339,6 +365,15 @@ pub fn emit_pass_as(
         prelude.push(format!(
             "let mut {tmp} = ({name}).first().copied().unwrap_or(0.0);"
         ));
+        return (prelude, format!("&mut {tmp}"), writeback);
+    }
+    if expected.is_any() && expected.dimensions > 0 && provided.dimensions == 0 {
+        let tmp = format!("__rosy_cap_{name}");
+        let mut cell = format!("RosyValue::from(({name}).clone())");
+        for _ in 0..expected.dimensions {
+            cell = format!("vec![{cell}]");
+        }
+        prelude.push(format!("let mut {tmp} = {cell};"));
         return (prelude, format!("&mut {tmp}"), writeback);
     }
     (prelude, pass, writeback)

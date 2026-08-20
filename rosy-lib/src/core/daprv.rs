@@ -448,7 +448,14 @@ pub fn rosy_dacliw(
     let config = get_config().context("DACLIW requires DA to be initialized (call OV first)")?;
     let da = da.as_da_vec();
     let n = crate::rosy_as_usize(&n.into_f64());
-    let da_ref = da.first().context("DACLIW: DA vector is empty")?;
+    let zero;
+    let da_ref = match da.first() {
+        Some(d) => d,
+        None => {
+            zero = DA::zero();
+            &zero
+        }
+    };
 
     let mut out = linear.load_re_vec();
     out.resize(n, 0.0);

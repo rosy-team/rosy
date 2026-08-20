@@ -28,6 +28,13 @@ impl RosyWERF for CM {
     }
 }
 
+impl RosyWERF for crate::RosyValue {
+    type Output = CM;
+    fn rosy_werf(&self) -> anyhow::Result<Self::Output> {
+        self.clone().expect_cm()?.rosy_werf()
+    }
+}
+
 /// WERF for CD (complex Taylor composition).
 ///
 /// w'(z) = -2*z*w(z) + 2i/sqrt(pi)

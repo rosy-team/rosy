@@ -50,3 +50,15 @@ impl RosyCMPLX for CD {
     }
 }
 
+impl RosyCMPLX for crate::RosyValue {
+    type Output = crate::RosyValue;
+    fn rosy_cmplx(&self) -> anyhow::Result<Self::Output> {
+        match self {
+            crate::RosyValue::CM(v) => Ok(crate::RosyValue::from(v.rosy_cmplx()?)),
+            crate::RosyValue::DA(v) => Ok(crate::RosyValue::from(v.rosy_cmplx()?)),
+            crate::RosyValue::CD(v) => Ok(crate::RosyValue::from(v.rosy_cmplx()?)),
+            other => Ok(crate::RosyValue::from(other.as_f64().rosy_cmplx()?)),
+        }
+    }
+}
+

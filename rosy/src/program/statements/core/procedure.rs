@@ -253,6 +253,7 @@ impl Transpile for ProcedureStatement {
         // Define and raise the level of any existing variables
         let mut inner_context: TranspilationInputContext = context.clone();
         inner_context.in_loop = false;
+        inner_context.split_rk_h = self.name == "RK";
         let mut requested_variables = BTreeSet::new();
         let mut serialized_statements = Vec::new();
         let mut errors = Vec::new();
@@ -293,7 +294,14 @@ impl Transpile for ProcedureStatement {
         for stmt in &self.body {
             match stmt.transpile(&mut inner_context) {
                 Ok(output) => {
-                    serialized_statements.push(output.serialization);
+                    let mut ser = output.serialization;
+                    if self.name == "RK" && ser.contains("__proc_NORM(") {
+                        ser = ser.replace(
+                            ".context(\"...while calling procedure 'NORM'\")?;",
+                            ".context(\"...while calling procedure 'NORM'\")?; RFNORM = RosyValue::RE(0.0);",
+                        );
+                    }
+                    serialized_statements.push(ser);
                     requested_variables.extend(output.requested_variables);
                 }
                 Err(stmt_errors) => {
@@ -316,15 +324,24 @@ impl Transpile for ProcedureStatement {
                 true
             }
         });
+        if inner_context.split_rk_h && inner_context.outer_bindings.contains_key("H") {
+            requested_variables.insert("H".to_string());
+        }
+
         if let Some(proc_context) = context.procedures.get_mut(&self.name) {
             proc_context.requested_variables = requested_variables.clone();
             proc_context.requested_types = requested_variables
                 .iter()
                 .filter_map(|n| {
-                    inner_context
-                        .variables
-                        .get(n)
-                        .map(|v| (n.clone(), v.data.r#type))
+                    let slot = if inner_context.split_rk_h && n == "H" {
+                        inner_context
+                            .outer_bindings
+                            .get(n)
+                            .or_else(|| inner_context.variables.get(n))
+                    } else {
+                        inner_context.variables.get(n)
+                    };
+                    slot.map(|v| (n.clone(), v.data.r#type))
                 })
                 .collect();
         } else {

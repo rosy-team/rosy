@@ -72,7 +72,7 @@ impl RosyExtract<&RE> for &RE {
         if index.round() == 1.0 {
             Ok(*self)
         } else {
-            bail!("Cannot extract index {} from a scalar", index);
+            Ok(0.0)
         }
     }
 }

@@ -24,6 +24,13 @@ impl RosyERF for RE {
     }
 }
 
+impl RosyERF for crate::RosyValue {
+    type Output = RE;
+    fn rosy_erf(&self) -> anyhow::Result<Self::Output> {
+        self.as_f64().rosy_erf()
+    }
+}
+
 /// ERF for DA (Taylor composition).
 ///
 /// ERF'(x) = (2/sqrt(pi)) * exp(-x^2)

@@ -136,51 +136,95 @@ impl Transpile for RkcoStatement {
             }
         }
 
-        let wrap = |name: &str, ident: &crate::program::expressions::core::variable_identifier::VariableIdentifier| {
-            let ty = context
+        let ty_of = |ident: &crate::program::expressions::core::variable_identifier::VariableIdentifier| {
+            context
                 .variables
                 .get(&ident.name)
                 .map(|v| v.data.r#type)
-                .unwrap_or_else(RosyType::VE);
-            if ty.is_any() {
+                .unwrap_or_else(RosyType::VE)
+        };
+        let wrap1 = |name: &str, ty: RosyType| {
+            if ty.is_any() && ty.dimensions > 0 {
+                format!("{name}.into_iter().map(RosyValue::RE).collect::<Vec<_>>()")
+            } else if ty.is_any() {
                 format!("RosyValue::from({name})")
             } else if ty == RosyType::RE() {
-                format!("{name}.first().copied().unwrap_or(0.0)")
-            } else if ty.base_type == rosy_lib::RosyBaseType::RE && ty.dimensions >= 2 {
-                format!("vec![{name}.clone()]")
+                format!("{name}")
             } else {
                 name.to_string()
             }
         };
-        let c_assign = make_lvalue(
-            &c_output.serialization,
-            c_output.value_kind,
-            &wrap("rosy_rkco_c", &self.c_var),
-        );
-        let b_assign = make_lvalue(
-            &b_output.serialization,
-            b_output.value_kind,
-            &wrap("rosy_rkco_b", &self.b_var),
-        );
-        let e_assign = make_lvalue(
-            &e_output.serialization,
-            e_output.value_kind,
-            &wrap("rosy_rkco_e", &self.e_var),
-        );
-        let a1_assign = make_lvalue(
-            &a1_output.serialization,
-            a1_output.value_kind,
-            &wrap("rosy_rkco_a1", &self.a1_var),
-        );
-        let a2_assign = make_lvalue(
-            &a2_output.serialization,
-            a2_output.value_kind,
-            &wrap("rosy_rkco_a2", &self.a2_var),
-        );
-
-        let serialization = format!(
-            "{{ let (rosy_rkco_c, rosy_rkco_b, rosy_rkco_e, rosy_rkco_a1, rosy_rkco_a2) = rosy_lib::core::rkco::rosy_rkco()?; {c_assign}; {b_assign}; {e_assign}; {a1_assign}; {a2_assign}; }}"
-        );
+        let wrap2 = |name: &str, ty: RosyType| {
+            if ty.is_any() {
+                format!("{name}.into_iter().map(|row| row.into_iter().map(RosyValue::RE).collect::<Vec<_>>()).collect::<Vec<_>>()")
+            } else {
+                name.to_string()
+            }
+        };
+        let c_ty = ty_of(&self.c_var);
+        let cosy_layout = c_ty == RosyType::RE() || (c_ty.is_any() && c_ty.dimensions == 0);
+        let serialization = if cosy_layout {
+            let c_assign = make_lvalue(
+                &c_output.serialization,
+                c_output.value_kind,
+                &wrap1("rosy_rkco_hsqr", c_ty),
+            );
+            let b_assign = make_lvalue(
+                &b_output.serialization,
+                b_output.value_kind,
+                &wrap1("rosy_rkco_a", ty_of(&self.b_var)),
+            );
+            let e_assign = make_lvalue(
+                &e_output.serialization,
+                e_output.value_kind,
+                &wrap2("rosy_rkco_b", ty_of(&self.e_var)),
+            );
+            let a1_assign = make_lvalue(
+                &a1_output.serialization,
+                a1_output.value_kind,
+                &wrap1("rosy_rkco_c", ty_of(&self.a1_var)),
+            );
+            let a2_assign = make_lvalue(
+                &a2_output.serialization,
+                a2_output.value_kind,
+                &wrap1("rosy_rkco_d", ty_of(&self.a2_var)),
+            );
+            format!(
+                "{{ let (rosy_rkco_hsqr, rosy_rkco_a, rosy_rkco_b, rosy_rkco_c, rosy_rkco_d) = rosy_lib::core::rkco::rosy_rkco_cosy()?; {c_assign}; {b_assign}; {e_assign}; {a1_assign}; {a2_assign}; }}"
+            )
+        } else {
+            let wrap = |name: &str, ident: &crate::program::expressions::core::variable_identifier::VariableIdentifier| {
+                wrap1(name, ty_of(ident))
+            };
+            let c_assign = make_lvalue(
+                &c_output.serialization,
+                c_output.value_kind,
+                &wrap("rosy_rkco_c", &self.c_var),
+            );
+            let b_assign = make_lvalue(
+                &b_output.serialization,
+                b_output.value_kind,
+                &wrap("rosy_rkco_b", &self.b_var),
+            );
+            let e_assign = make_lvalue(
+                &e_output.serialization,
+                e_output.value_kind,
+                &wrap("rosy_rkco_e", &self.e_var),
+            );
+            let a1_assign = make_lvalue(
+                &a1_output.serialization,
+                a1_output.value_kind,
+                &wrap("rosy_rkco_a1", &self.a1_var),
+            );
+            let a2_assign = make_lvalue(
+                &a2_output.serialization,
+                a2_output.value_kind,
+                &wrap("rosy_rkco_a2", &self.a2_var),
+            );
+            format!(
+                "{{ let (rosy_rkco_c, rosy_rkco_b, rosy_rkco_e, rosy_rkco_a1, rosy_rkco_a2) = rosy_lib::core::rkco::rosy_rkco()?; {c_assign}; {b_assign}; {e_assign}; {a1_assign}; {a2_assign}; }}"
+            )
+        };
 
         Ok(TranspilationOutput {
             serialization,

@@ -160,7 +160,9 @@ impl Transpile for PolvalStatement {
             .type_of(context)
             .map_err(|e| vec![e.context("...while determining type of A in POLVAL")])?;
 
-        let polval_fn = if a_type.base_type == RosyBaseType::DA && a_type.dimensions > 0 {
+        let polval_fn = if a_type.is_any() {
+            "rosy_polval_any"
+        } else if a_type.base_type == RosyBaseType::DA && a_type.dimensions > 0 {
             "rosy_polval_da"
         } else if a_type.base_type == RosyBaseType::VE && a_type.dimensions > 0 {
             "rosy_polval_ve"

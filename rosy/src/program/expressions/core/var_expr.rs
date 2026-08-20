@@ -404,11 +404,10 @@ impl Transpile for VarExpr {
                         )])?;
                 let var_type = var_data.data.r#type;
 
-                // For indexed access, rosy_get() already returns &T — no
-                // extra reference sigil needed regardless of scope or Copy-ness.
+                // rosy_get() returns an owned cell (clone, or Default on oob).
                 let has_indices = self.identifier.num_index_dimensions() > 0;
                 let (reference, value_kind) = if has_indices {
-                    ("", ValueKind::Ref)
+                    ("", ValueKind::Owned)
                 } else {
                     match var_data.scope {
                         VariableScope::Local => {
@@ -522,14 +521,15 @@ pub fn function_call_transpile_helper(
             if first_occurrence.contains_key(arg_name) {
                 if let Some(var_data) = context.variables.get(arg_name) {
                     let temp_name = format!("__rosy_dup_arg_{}", i);
+                    let rust = context.rust_ident(arg_name);
                     let (value_expr, writeback) = match var_data.scope {
                         VariableScope::Higher | VariableScope::Arg => (
-                            format!("(*{}).clone()", arg_name),
-                            format!("*{} = {};", arg_name, temp_name),
+                            format!("(*{rust}).clone()"),
+                            format!("*{rust} = {temp_name};"),
                         ),
                         VariableScope::Local => (
-                            format!("{}.clone()", arg_name),
-                            format!("{} = {};", arg_name, temp_name),
+                            format!("{rust}.clone()"),
+                            format!("{rust} = {temp_name};"),
                         ),
                     };
                     prelude_decls.push(format!("let mut {} = {};", temp_name, value_expr));
@@ -580,7 +580,7 @@ pub fn function_call_transpile_helper(
                         writeback_decls.push(format!(
                             "{}{} = {};",
                             star,
-                            vname,
+                            context.rust_ident(vname),
                             emit_unwrap_rosy_value(temp_name.clone(), &provided_type)
                         ));
                     }

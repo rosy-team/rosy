@@ -10,6 +10,7 @@
 //! and returns an error for other argument types at runtime.
 
 use crate::taylor::{CD, DA};
+use crate::RosyValue;
 use anyhow::{Result, bail};
 
 #[cfg(feature = "nightly-simd")]
@@ -29,11 +30,123 @@ const LANES: usize = 4;
 /// * `na`       - number of arguments
 /// * `r_array`  - output vector, must be large enough to hold NR results
 /// * `nr`       - number of results to write
+pub trait PolvalAnySrc {
+    fn polval_any_cells(&self) -> Vec<RosyValue>;
+}
+impl PolvalAnySrc for Vec<RosyValue> {
+    fn polval_any_cells(&self) -> Vec<RosyValue> {
+        self.clone()
+    }
+}
+impl PolvalAnySrc for RosyValue {
+    fn polval_any_cells(&self) -> Vec<RosyValue> {
+        match self {
+            RosyValue::Arr(v) => v.clone(),
+            other => vec![other.clone()],
+        }
+    }
+}
+impl PolvalAnySrc for [RosyValue] {
+    fn polval_any_cells(&self) -> Vec<RosyValue> {
+        self.to_vec()
+    }
+}
+
+pub trait PolvalAnyDst {
+    fn store_polval_any(&mut self, v: Vec<RosyValue>);
+}
+impl PolvalAnyDst for Vec<RosyValue> {
+    fn store_polval_any(&mut self, v: Vec<RosyValue>) {
+        if v.len() > self.len() {
+            self.resize(v.len(), RosyValue::RE(0.0));
+        }
+        for (i, x) in v.into_iter().enumerate() {
+            self[i] = x;
+        }
+    }
+}
+impl PolvalAnyDst for RosyValue {
+    fn store_polval_any(&mut self, v: Vec<RosyValue>) {
+        if v.len() == 1 {
+            *self = v.into_iter().next().unwrap();
+        } else {
+            *self = RosyValue::Arr(v);
+        }
+    }
+}
+
+/// Fox ANY arrays: pick DA compose, particle VE, or scalar RE from the first cell.
+pub fn rosy_polval_any(
+    l: impl crate::IntoF64,
+    p_array: &impl crate::PolvalDaSrc,
+    np: impl crate::IntoF64,
+    a_array: &impl PolvalAnySrc,
+    na: impl crate::IntoF64,
+    r_array: &mut impl PolvalAnyDst,
+    nr: impl crate::IntoF64,
+) -> Result<()> {
+    let a_cells = a_array.polval_any_cells();
+    match a_cells.first() {
+        Some(RosyValue::DA(_)) => {
+            let p = p_array.to_da_vec();
+            let a: Vec<DA> = a_cells
+                .iter()
+                .map(|x| x.clone().expect_da().unwrap_or_else(|_| DA::zero()))
+                .collect();
+            let mut out = Vec::new();
+            rosy_polval_da(
+                l.into_f64(),
+                &p,
+                crate::rosy_as_usize(&np.into_f64()),
+                &a,
+                crate::rosy_as_usize(&na.into_f64()),
+                &mut out,
+                crate::rosy_as_usize(&nr.into_f64()),
+            )?;
+            r_array.store_polval_any(out.into_iter().map(RosyValue::DA).collect());
+            Ok(())
+        }
+        Some(RosyValue::Arr(_)) | Some(RosyValue::VE(_)) => {
+            let p = p_array.to_da_vec();
+            let a: Vec<Vec<f64>> = a_cells
+                .iter()
+                .map(|c| match c {
+                    RosyValue::VE(v) => v.clone(),
+                    RosyValue::Arr(v) => v.iter().map(|x| x.as_f64()).collect(),
+                    other => vec![other.as_f64()],
+                })
+                .collect();
+            let mut out: Vec<Vec<f64>> = Vec::new();
+            rosy_polval_ve(
+                l.into_f64(),
+                &p,
+                crate::rosy_as_usize(&np.into_f64()),
+                &a,
+                crate::rosy_as_usize(&na.into_f64()),
+                &mut out,
+                crate::rosy_as_usize(&nr.into_f64()),
+            )?;
+            r_array.store_polval_any(
+                out.into_iter()
+                    .map(|col| RosyValue::Arr(col.into_iter().map(RosyValue::RE).collect()))
+                    .collect(),
+            );
+            Ok(())
+        }
+        _ => {
+            let mut out: Vec<RosyValue> = Vec::new();
+            rosy_polval_re(l, p_array, np, &a_cells, na, &mut out, nr)?;
+            r_array.store_polval_any(out);
+            Ok(())
+        }
+    }
+}
+
 pub fn rosy_polval_re(
     _l: impl crate::IntoF64,
     p_array: &impl crate::PolvalDaSrc,
     np: impl crate::IntoF64,
-    a_array: &impl crate::PolvalReSrc,
+    a_array: &(impl crate::PolvalReSrc + ?Sized),
     na: impl crate::IntoF64,
     r_array: &mut impl crate::PolvalReDst,
     nr: impl crate::IntoF64,

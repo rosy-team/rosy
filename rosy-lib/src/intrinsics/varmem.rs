@@ -72,3 +72,9 @@ impl RosyVARMEM for CD {
         self as *const Self as usize as f64
     }
 }
+
+impl RosyVARMEM for crate::RosyValue {
+    fn rosy_varmem(&self) -> RE {
+        self as *const Self as usize as f64
+    }
+}

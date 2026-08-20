@@ -132,12 +132,12 @@ impl Transpile for ProcedureCallStatement {
                 .get(var)
                 .cloned()
                 .unwrap_or(var_data.data.r#type);
-            let (pre, pass, wb) = emit_pass_as(
-                var,
-                &var_data.data.r#type,
-                &child_ty,
-                var_data.scope.clone(),
-            );
+            let cap_scope = if context.split_rk_h && *var == "H" {
+                VariableScope::Higher
+            } else {
+                var_data.scope.clone()
+            };
+            let (pre, pass, wb) = emit_pass_as(var, &var_data.data.r#type, &child_ty, cap_scope);
             prelude_decls.extend(pre);
             writeback_decls.extend(wb);
             serialized_args.push(pass);

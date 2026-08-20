@@ -41,3 +41,10 @@ impl RosyNORM for CD {
         Ok(self.coeffs_iter().into_iter().map(|(_, c)| c.abs()).fold(0.0f64, f64::max))
     }
 }
+
+impl RosyNORM for crate::RosyValue {
+    type Output = RE;
+    fn rosy_norm(&self) -> anyhow::Result<Self::Output> {
+        self.clone().expect_ve()?.rosy_norm()
+    }
+}

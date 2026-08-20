@@ -282,14 +282,15 @@ impl Transpile for VariableIdentifier {
         }
 
         // Build the serialization: either bare name (no indices) or
-        // nested rosy_get() calls that return &T with 1-based bounds checking.
+        // nested rosy_get() calls that return an owned cell.
+        let rust_name = context.rust_ident(&self.name);
         let serialization = if transpiled_indices.is_empty() {
-            self.name.clone()
+            rust_name
         } else {
-            let mut result = format!("&{}", self.name);
+            let mut result = rust_name;
             for idx_expr in &transpiled_indices {
                 result = format!(
-                    "rosy_get({result}, {expr}, \"{name}\")",
+                    "rosy_get(&({result}), {expr}, \"{name}\")",
                     result = result,
                     expr = idx_expr,
                     name = self.name,

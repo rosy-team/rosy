@@ -1,7 +1,7 @@
 //! # DAPEE Statement
 //!
 //! Returns a coefficient of a DA vector identified by a TRANSPORT notation id.
-//! The id encodes variable exponents as decimal digits (leftmost digit = variable 1).
+//! The id's digits are 1-based variable indices (COSY TRANSPORT). `222` is x₂³.
 //!
 //! ## Syntax
 //!

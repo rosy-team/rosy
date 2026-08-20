@@ -480,17 +480,15 @@ fn flow_impl<T: DACoefficient>(
     if rhs.len() < dim {
         bail!("Flow: rhs array has {} elements but dim={}", rhs.len(), dim);
     }
-    if ic.len() < dim {
-        bail!(
-            "Flow: initial condition has {} elements but dim={}",
-            ic.len(),
-            dim
-        );
+    if ic.is_empty() {
+        bail!("Flow: empty initial condition");
     }
+    // dim sizes the vector field; a scalar/1-cell ic is a single observable (COSY DAFLO).
+    let n_ic = ic.len().min(dim);
 
     const MAX_ITER: usize = 200;
 
-    for i in 0..dim {
+    for i in 0..n_ic {
         let mut term = ic[i].clone();
         let mut sum = term.clone();
 

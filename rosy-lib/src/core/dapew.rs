@@ -17,20 +17,26 @@ use crate::taylor::Monomial;
 // Helpers
 // ============================================================================
 
-/// Decode a TRANSPORT notation id to a fixed-size exponent array.
+/// Decode a COSY TRANSPORT id to exponents.
 ///
-/// Each decimal digit of `id` is the exponent for the corresponding variable
-/// (leftmost digit = variable 1).  For example:
-/// - `id = 133` → `[1, 3, 3, 0, 0, 0]`  (x₁¹ · x₂³ · x₃³)
-/// - `id = 10`  → `[1, 0, 0, 0, 0, 0]`  (x₁¹)
+/// Each decimal digit is a 1-based variable index; 0 is padding.
+/// Counts of digit d become the exponent of variable d.
+/// - `id = 2`    → x₂  (linear; `DAPEE M(I) J` with J=2)
+/// - `id = 10`   → x₁
+/// - `id = 12`   → x₁ x₂
+/// - `id = 222`  → x₂³  (`MA(1,222)` octupole-in-angle)
 fn decode_transport_id(id: u64) -> [u8; MAX_VARS] {
     let mut exponents = [0u8; MAX_VARS];
-    let s = id.to_string();
-    for (i, ch) in s.chars().enumerate() {
-        if i >= MAX_VARS {
-            break;
+    if id == 0 {
+        return exponents;
+    }
+    let mut n = id;
+    while n > 0 {
+        let d = (n % 10) as usize;
+        n /= 10;
+        if d >= 1 && d <= MAX_VARS {
+            exponents[d - 1] = exponents[d - 1].saturating_add(1);
         }
-        exponents[i] = ch.to_digit(10).unwrap_or(0) as u8;
     }
     exponents
 }
@@ -220,6 +226,23 @@ pub fn rosy_dapee(da: &impl crate::AsDaRef, id: impl crate::AsF64, result: &mut 
     let monomial = Monomial::new(exponents);
     result.set_f64(da[0].get_coeff(&monomial));
     Ok(())
+}
+
+#[cfg(test)]
+mod transport_id_tests {
+    use super::decode_transport_id;
+
+    #[test]
+    fn digits_are_variable_indices() {
+        assert_eq!(decode_transport_id(1)[0], 1);
+        assert_eq!(decode_transport_id(2)[1], 1);
+        assert_eq!(decode_transport_id(10)[0], 1);
+        assert_eq!(decode_transport_id(12)[0], 1);
+        assert_eq!(decode_transport_id(12)[1], 1);
+        assert_eq!(decode_transport_id(222)[1], 3);
+        assert_eq!(decode_transport_id(1122)[0], 2);
+        assert_eq!(decode_transport_id(1122)[1], 2);
+    }
 }
 
 // ============================================================================
