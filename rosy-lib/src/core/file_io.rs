@@ -269,7 +269,10 @@ fn rosy_write_to_unit_str(unit: u64, content: &str) -> Result<()> {
     
     writeln!(writer, "{}", content)
         .with_context(|| format!("Failed to write to file on unit {}", unit))?;
-    
+    writer
+        .flush()
+        .with_context(|| format!("Failed to flush file on unit {}", unit))?;
+
     Ok(())
 }
 
