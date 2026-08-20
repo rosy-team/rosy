@@ -89,3 +89,39 @@ pub mod dasgn;
 pub mod datrn;
 pub mod epsmin;
 pub mod mtree;
+
+use crate::program::expressions::Expr;
+use crate::resolve::{ExprRecipe, ResolutionRule, ScopeContext, TypeResolver};
+use crate::syntax_config;
+use crate::transpile::TranspileableExpr;
+use rosy_lib::RosyType;
+
+/// Fox `VARIABLE X mem` is otherwise RE; DA/CD statement dests must be cells.
+pub(crate) fn wire_da_result_cell(
+    dest: &Expr,
+    resolver: &mut TypeResolver,
+    ctx: &mut ScopeContext,
+    stmt: &str,
+) {
+    let Some(name) = dest.as_bare_variable_name() else {
+        return;
+    };
+    let Some(slot) = ctx.variables.get(name).cloned() else {
+        return;
+    };
+    if let Some(node) = resolver.nodes.get_mut(&slot) {
+        if syntax_config::is_cosy_syntax() {
+            node.rule = ResolutionRule::InferredFrom {
+                recipe: ExprRecipe::Literal(RosyType::ANY()),
+                reason: format!("{stmt} dest (COSY cell)"),
+            };
+            node.resolved = Some(RosyType::ANY());
+            node.depends_on.clear();
+        } else if node.resolved.is_none() {
+            node.rule = ResolutionRule::InferredFrom {
+                recipe: ExprRecipe::Literal(RosyType::DA()),
+                reason: format!("{stmt} dest"),
+            };
+        }
+    }
+}

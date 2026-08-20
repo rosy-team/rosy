@@ -20,6 +20,7 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
+    resolve::{ScopeContext, TypeResolver},
     transpile::{
         TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
         add_context_to_all,
@@ -117,4 +118,14 @@ impl Transpile for CdfloStatement {
     }
 }
 
-impl TranspileableStatement for CdfloStatement {}
+impl TranspileableStatement for CdfloStatement {
+    fn wire_inference_edges(
+        &self,
+        resolver: &mut TypeResolver,
+        ctx: &mut ScopeContext,
+        _source_location: crate::program::statements::SourceLocation,
+    ) -> Option<Result<()>> {
+        super::wire_da_result_cell(&self.result, resolver, ctx, "CDFLO");
+        Some(Ok(()))
+    }
+}

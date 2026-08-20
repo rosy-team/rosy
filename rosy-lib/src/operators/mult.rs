@@ -70,6 +70,32 @@ impl RosyMult<&RE> for &VE {
     }
 }
 
+// VE * DA: COSY 1-vector cell times a series
+impl RosyMult<&DA> for &VE {
+    type Output = DA;
+    fn rosy_mult(self, other: &DA) -> Result<Self::Output> {
+        anyhow::ensure!(
+            self.len() == 1,
+            "VE*DA needs length 1, got {}",
+            self.len()
+        );
+        other * self[0]
+    }
+}
+
+// DA * VE
+impl RosyMult<&VE> for &DA {
+    type Output = DA;
+    fn rosy_mult(self, other: &VE) -> Result<Self::Output> {
+        anyhow::ensure!(
+            other.len() == 1,
+            "DA*VE needs length 1, got {}",
+            other.len()
+        );
+        self * other[0]
+    }
+}
+
 // VE * VE
 impl RosyMult<&VE> for &VE {
     type Output = VE;

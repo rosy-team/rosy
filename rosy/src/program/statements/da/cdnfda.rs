@@ -20,6 +20,7 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
+    resolve::{ScopeContext, TypeResolver},
     transpile::{
         TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
         add_context_to_all,
@@ -142,4 +143,14 @@ impl Transpile for CdnfdaStatement {
     }
 }
 
-impl TranspileableStatement for CdnfdaStatement {}
+impl TranspileableStatement for CdnfdaStatement {
+    fn wire_inference_edges(
+        &self,
+        resolver: &mut TypeResolver,
+        ctx: &mut ScopeContext,
+        _source_location: crate::program::statements::SourceLocation,
+    ) -> Option<Result<()>> {
+        super::wire_da_result_cell(&self.result, resolver, ctx, "CDNFDA");
+        Some(Ok(()))
+    }
+}

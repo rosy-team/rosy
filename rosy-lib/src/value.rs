@@ -673,8 +673,22 @@ impl ToRosy for Vec<Vec<RosyValue>> {
     }
 }
 
+fn peel_singleton_arr(v: &RosyValue) -> RosyValue {
+    match v {
+        RosyValue::Arr(items) if items.len() == 1 => peel_singleton_arr(&items[0]),
+        _ => v.clone(),
+    }
+}
+
 fn arr_as_ve(v: &RosyValue) -> RosyValue {
     match v {
+        RosyValue::Arr(items)
+            if items
+                .iter()
+                .any(|x| matches!(x, RosyValue::DA(_) | RosyValue::CD(_))) =>
+        {
+            v.clone()
+        }
         RosyValue::Arr(items) => RosyValue::VE(items.iter().map(|x| x.as_f64()).collect()),
         other => other.clone(),
     }
@@ -728,8 +742,8 @@ fn as_cd_list(v: &RosyValue) -> Option<Vec<CD>> {
 }
 
 pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Result<RosyValue> {
-    let lhs = lhs.to_rosy();
-    let rhs = rhs.to_rosy();
+    let lhs = peel_singleton_arr(&lhs.to_rosy());
+    let rhs = peel_singleton_arr(&rhs.to_rosy());
     let lhs = &lhs;
     let rhs = &rhs;
     match op {
@@ -766,8 +780,8 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
                 &lhs, &rhs, rosy_mult,
                 RE, RE; RE, CM; RE, VE; RE, DA; RE, CD;
                 CM, RE; CM, CM; CM, DA; CM, CD;
-                VE, RE; VE, VE;
-                DA, RE; DA, CM; DA, DA; DA, CD;
+                VE, RE; VE, VE; VE, DA;
+                DA, RE; DA, CM; DA, DA; DA, CD; DA, VE;
                 CD, RE; CD, CM; CD, DA; CD, CD;
                 LO, LO
             )
