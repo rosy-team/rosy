@@ -745,9 +745,10 @@ impl Transpile for AssignStatement {
             // Build nested rosy_get_mut(container, idx, "name") calls.
             // Local scope: owned value, needs &mut to borrow mutably.
             // Arg/Higher scope: already &mut T, pass directly (auto-reborrows).
+            let rust_name = context.rust_ident(&self.identifier.name);
             let mut_ref = match var_scope {
-                VariableScope::Local => format!("&mut {}", self.identifier.name),
-                VariableScope::Arg | VariableScope::Higher => self.identifier.name.clone(),
+                VariableScope::Local => format!("&mut {rust_name}"),
+                VariableScope::Arg | VariableScope::Higher => rust_name,
             };
             let mut result = mut_ref;
             for idx_expr in &idx_exprs {
@@ -816,15 +817,16 @@ fn assignment_append_dest(
     if matches!(scope, Some(VariableScope::Higher)) {
         requested_variables.insert(ident.name.clone());
     }
+    let rust_name = context.rust_ident(&ident.name);
     let dest = if idx_serials.is_empty() {
         match scope {
-            Some(VariableScope::Arg | VariableScope::Higher) => format!("(*{})", ident.name),
-            _ => format!("({})", ident.name),
+            Some(VariableScope::Arg | VariableScope::Higher) => format!("(*{rust_name})"),
+            _ => format!("({rust_name})"),
         }
     } else {
         let mut cell = match scope {
-            Some(VariableScope::Local) | None => format!("&mut {}", ident.name),
-            Some(VariableScope::Arg | VariableScope::Higher) => ident.name.clone(),
+            Some(VariableScope::Local) | None => format!("&mut {rust_name}"),
+            Some(VariableScope::Arg | VariableScope::Higher) => rust_name,
         };
         for idx in &idx_serials {
             cell = format!(
