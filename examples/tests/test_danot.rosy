@@ -2,7 +2,7 @@ BEGIN;
 
 { Test DANOT: set momentary truncation order }
 { Use DAINI with 4 args to avoid pre-existing semicolon parse issue }
-DAINI 5 2 6 1;
+DAINI 5 2 0 0;
 
 { Lower truncation order to 2 }
 DANOT 2;
