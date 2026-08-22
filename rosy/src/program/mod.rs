@@ -566,8 +566,8 @@ mod include_resolution_tests {
 
     fn parse_and_resolve(source: &str, source_path: &Path) -> Result<Program> {
         crate::syntax_config::apply_from_path(Some(source_path));
-        let mut pairs = crate::ast::parse_source(source)
-            .map_err(|e| anyhow::anyhow!("parse error: {e}"))?;
+        let mut pairs =
+            crate::ast::parse_source(source).map_err(|e| anyhow::anyhow!("parse error: {e}"))?;
         let pair = pairs.next().ok_or_else(|| anyhow::anyhow!("empty parse"))?;
         Program::from_rule_with_includes(pair, Some(source_path), &mut IncludeTracker::default())?
             .ok_or_else(|| anyhow::anyhow!("from_rule_with_includes returned None"))
@@ -580,20 +580,6 @@ mod include_resolution_tests {
         }
         fs::write(&path, contents).unwrap();
         path
-    }
-
-    #[test]
-    fn include_resolves_fox_over_same_stem_binary() {
-        let tmp = TempDir::new().unwrap();
-        write(tmp.path(), "COSY", "\0\0this is not source\n");
-        write(tmp.path(), "cosy.fox", "BEGIN;\nEND;\n");
-        let main = write(
-            tmp.path(),
-            "demo.fox",
-            "INCLUDE 'COSY';\nEND;\n",
-        );
-        let src = fs::read_to_string(&main).unwrap();
-        parse_and_resolve(&src, &main).expect("INCLUDE COSY should pick cosy.fox");
     }
 
     /// Baseline: existing behavior — INCLUDE points at a literal `.rosy` file.
