@@ -105,7 +105,7 @@ impl Transpile for ArggetStatement {
         };
 
         let serialization = format!(
-            "{deref}{dest} = std::env::args().nth({src} as usize).unwrap_or_default();",
+            "{deref}{dest} = std::env::args().nth(rosy_as_usize(&({src}))).unwrap_or_default();",
             deref = dereference,
             dest = output_id_output.serialization,
             src = index_output.as_value(),

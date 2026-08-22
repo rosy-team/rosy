@@ -23,6 +23,7 @@
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};
+use rosy_lib::RosyType;
 use std::collections::BTreeSet;
 
 use crate::{
@@ -119,8 +120,18 @@ impl Transpile for IntpolStatement {
         // Grow the vec to n+1 elements if smaller (VARIABLE (VE) starts empty), then write in-place.
         // Parens around `({deref}{dest})` are essential when scope is Arg/Higher: bare
         // `*PN.len()` parses as `*(PN.len())` (deref a usize), not `(*PN).len()`.
+        let dest_ty = context
+            .variables
+            .get(&self.coeff_var.name)
+            .map(|v| v.data.r#type)
+            .unwrap_or_else(RosyType::VE);
+        let (z, o) = if dest_ty.is_any() {
+            ("RosyValue::RE(0.0)", "RosyValue::RE(1.0)")
+        } else {
+            ("0.0_f64", "1.0_f64")
+        };
         let serialization = format!(
-            "{{ let __intpol_n = ({n}) as usize; if ({deref}{dest}).len() < __intpol_n + 1 {{ ({deref}{dest}).resize(__intpol_n + 1, 0.0_f64); }} for __i in 0..(__intpol_n + 1) {{ ({deref}{dest})[__i] = 0.0_f64; }} if !({deref}{dest}).is_empty() {{ ({deref}{dest})[0] = 1.0_f64; }} }}",
+            "{{ let __intpol_n = rosy_as_usize(&({n})); if ({deref}{dest}).len() < __intpol_n + 1 {{ ({deref}{dest}).resize(__intpol_n + 1, {z}); }} for __i in 0..(__intpol_n + 1) {{ ({deref}{dest})[__i] = {z}; }} if !({deref}{dest}).is_empty() {{ ({deref}{dest})[0] = {o}; }} }}",
             n = n_out.as_value(),
             deref = dereference,
             dest = coeff_out.serialization,

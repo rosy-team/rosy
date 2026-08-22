@@ -102,15 +102,22 @@ impl Transpile for VeunitStatement {
             }
         };
 
+        let dest_any = context
+            .variables
+            .get(&self.output_var.name)
+            .map(|v| v.data.r#type.is_any())
+            .unwrap_or(false);
+        let rhs = if dest_any {
+            "RosyValue::from(rosy_lib::rosy_veunit(&__src))"
+        } else {
+            "rosy_lib::rosy_veunit(&__src)"
+        };
         let serialization = format!(
-            "{{\n    \
-                let __rosy_veunit_src = {vec};\n    \
-                let __rosy_veunit_norm = __rosy_veunit_src.iter().map(|x| x * x).sum::<f64>().sqrt();\n    \
-                {deref}{dest} = __rosy_veunit_src.iter().map(|x| x / __rosy_veunit_norm).collect::<Vec<f64>>();\n\
-            }}",
+            "{{ let __src = {vec}; {deref}{dest} = {rhs}; }}",
             vec = vec_output.as_value(),
             deref = dereference,
             dest = output_id_output.serialization,
+            rhs = rhs,
         );
 
         Ok(TranspilationOutput {

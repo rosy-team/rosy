@@ -14,10 +14,13 @@ use anyhow::{Result, bail};
 /// - `alloc_dim`: allocation dimension (used for indexing, 1-based in COSY convention)
 /// - `det`: output determinant value (written in-place)
 pub fn rosy_ldet(
-    matrix: &Vec<Vec<f64>>,
-    n: usize,
-    _alloc_dim: usize,
+    matrix: &impl crate::AsReMat,
+    n: impl crate::IntoF64,
+    _alloc_dim: impl crate::IntoF64,
 ) -> Result<f64> {
+    let matrix = matrix.to_re_mat();
+    let n = crate::rosy_as_usize(&n.into_f64());
+    let _alloc_dim = crate::rosy_as_usize(&_alloc_dim.into_f64());
     if n == 0 {
         return Ok(1.0);
     }

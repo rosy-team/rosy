@@ -100,21 +100,11 @@ impl Transpile for VezeroStatement {
         })?;
         requested_variables.extend(threshold_output.requested_variables.iter().cloned());
 
-        let array_name = array_output.serialization;
-
         let serialization = format!(
-            "{{\n    \
-                let __rosy_vezero_n = {num} as usize;\n    \
-                let __rosy_vezero_thresh = ({thresh} as f64).abs();\n    \
-                for __rosy_vezero_comp in {arr}[..__rosy_vezero_n].iter_mut() {{\n        \
-                    if __rosy_vezero_comp.abs() > __rosy_vezero_thresh {{\n            \
-                        *__rosy_vezero_comp = 0.0;\n        \
-                    }}\n    \
-                }}\n\
-            }}",
+            "rosy_vezero({arr}, {num}, {thresh});",
             num = num_output.as_value(),
             thresh = threshold_output.as_value(),
-            arr = array_name,
+            arr = array_output.as_mut_ref(),
         );
 
         Ok(TranspilationOutput {

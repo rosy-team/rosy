@@ -81,7 +81,7 @@ impl FromRule for LoopStatement {
 
             // Optional step expression
             let step = if let Some(step_pair) = start_loop_inner.next() {
-                if step_pair.as_rule() == Rule::expr {
+                if !matches!(step_pair.as_rule(), Rule::semicolon | Rule::end_loop) {
                     Some(
                         Expr::from_rule(step_pair)
                             .context("Failed to build `step` expression in `loop` statement!")?
@@ -144,11 +144,13 @@ impl TranspileableStatement for LoopStatement {
         let mut inner_ctx = ctx.clone();
         // Loop iterator is always RE
         let iter_slot = TypeSlot::Variable(ctx.scope_path.clone(), self.iterator.clone());
-        resolver.insert_slot(
-            iter_slot.clone(),
-            Some(&RosyType::RE()),
-            Some(source_location),
-        );
+        if !resolver.nodes.contains_key(&iter_slot) {
+            resolver.insert_slot(
+                iter_slot.clone(),
+                Some(&RosyType::RE()),
+                Some(source_location),
+            );
+        }
         inner_ctx.variables.insert(self.iterator.clone(), iter_slot);
         Some(resolver.discover_slots(&self.body, &mut inner_ctx))
     }
@@ -169,15 +171,16 @@ impl Transpile for LoopStatement {
         context: &mut TranspilationInputContext,
     ) -> Result<TranspilationOutput, Vec<Error>> {
         // Verify the start, end, and step expressions are REs
+        let as_re = |t: &RosyType| t == &RosyType::RE() || t.is_any();
         let start_type = self.start.type_of(context).map_err(|e| vec![e])?;
-        if start_type != RosyType::RE() {
+        if !as_re(&start_type) {
             return Err(vec![anyhow!(
                 "Loop start expression must be of type 'RE', found '{}'",
                 start_type
             )]);
         }
         let end_type = self.end.type_of(context).map_err(|e| vec![e])?;
-        if end_type != RosyType::RE() {
+        if !as_re(&end_type) {
             return Err(vec![anyhow!(
                 "Loop end expression must be of type 'RE', found '{}'",
                 end_type
@@ -185,7 +188,7 @@ impl Transpile for LoopStatement {
         }
         if let Some(step_expr) = &self.step {
             let step_type = step_expr.type_of(context).map_err(|e| vec![e])?;
-            if step_type != RosyType::RE() {
+            if !as_re(&step_type) {
                 return Err(vec![anyhow!(
                     "Loop step expression must be of type 'RE', found '{}'",
                     step_type
@@ -200,7 +203,7 @@ impl Transpile for LoopStatement {
         let mut serialized_statements = Vec::new();
         let mut errors = Vec::new();
 
-        // Define the iterator variable (allow reuse of existing variable, as COSY does)
+        let outer = context.variables.get(&self.iterator).cloned();
         inner_context.variables.insert(
             self.iterator.clone(),
             ScopedVariableData {
@@ -258,7 +261,12 @@ impl Transpile for LoopStatement {
             match step_expr.transpile(context) {
                 Ok(output) => {
                     requested_variables.extend(output.requested_variables.iter().cloned());
-                    Some(output.as_value().to_string())
+                    let ty = step_expr.type_of(context).unwrap_or_else(|_| RosyType::RE());
+                    Some(if ty.is_any() {
+                        format!("({}).expect_re()?", output.as_owned(&RosyType::ANY()))
+                    } else {
+                        output.as_value().to_string()
+                    })
                 }
                 Err(vec_err) => {
                     for e in vec_err {
@@ -274,30 +282,48 @@ impl Transpile for LoopStatement {
             None
         };
 
+        let re_val = |out: &TranspilationOutput, ty: &RosyType| {
+            if ty.is_any() {
+                format!("({}).expect_re()?", out.as_owned(&RosyType::ANY()))
+            } else {
+                out.as_value()
+            }
+        };
         let iter = &self.iterator;
-        let start = start_output.as_value();
-        let end = end_output.as_value();
+        let start = re_val(&start_output, &start_type);
+        let end = re_val(&end_output, &end_type);
         let body = indent(serialized_statements.join("\n"));
-        let serialization = if let Some(step) = &step_value {
+        let (it, sync, bump) = if outer.is_some() {
+            let rust_it = format!("__rosy_loop_{iter}");
+            let sync = format!("let mut {iter}: RE = {rust_it};");
+            (rust_it, sync, true)
+        } else {
+            (iter.clone(), String::new(), false)
+        };
+        let loop_core = if let Some(step) = &step_value {
             format!(
-                "let mut {iter}: RE = ({start}) as RE;\n\
-                 let __{iter}_end: RE = ({end}) as RE;\n\
-                 let __{iter}_step: RE = ({step}) as RE;\n\
-                 while (__{iter}_step > 0.0_f64 && {iter} <= __{iter}_end) || (__{iter}_step <= 0.0_f64 && {iter} >= __{iter}_end) {{\n\
+                "let mut {it}: RE = rosy_as_f64(&({start}));\n\
+                 let __{iter}_end: RE = rosy_as_f64(&({end}));\n\
+                 let __{iter}_step: RE = rosy_as_f64(&({step}));\n\
+                 while (__{iter}_step > 0.0_f64 && {it} <= __{iter}_end) || (__{iter}_step <= 0.0_f64 && {it} >= __{iter}_end) {{\n\
+                 {sync}\n\
                  {body}\n\
-                 \t{iter} += __{iter}_step;\n\
+                 \t{it} += __{iter}_step;\n\
                  }}"
             )
         } else {
             format!(
-                "let mut {iter}: RE = ({start}) as RE;\n\
-                 let __{iter}_end: RE = ({end}) as RE;\n\
-                 while {iter} <= __{iter}_end {{\n\
+                "let mut {it}: RE = rosy_as_f64(&({start}));\n\
+                 let __{iter}_end: RE = rosy_as_f64(&({end}));\n\
+                 while {it} <= __{iter}_end {{\n\
+                 {sync}\n\
                  {body}\n\
-                 \t{iter} += 1.0_f64;\n\
+                 \t{it} += 1.0_f64;\n\
                  }}"
             )
         };
+        let _ = bump;
+        let serialization = format!("{{ {loop_core} }}");
         if errors.is_empty() {
             Ok(TranspilationOutput {
                 serialization,

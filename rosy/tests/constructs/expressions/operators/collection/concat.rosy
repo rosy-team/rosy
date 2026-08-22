@@ -2,9 +2,15 @@ BEGIN;
     VARIABLE (VE) V;
     V := 1 & 2 & 3;
     WRITE 6 ST(V);
+
+    VARIABLE (VE 2) A;
+    A(1) := 1 & 2;
+    A(1) := A(1) & 3;
+    WRITE 6 ST(A(1));
 END;
 
 ======= expect
+   1.000000       2.000000       3.000000
    1.000000       2.000000       3.000000
 
 ======= fox
@@ -13,6 +19,11 @@ PROCEDURE RUN;
     VARIABLE V 100;
     V := 1 & 2 & 3;
     WRITE 6 V;
+
+    VARIABLE A 2;
+    A(1) := 1 & 2;
+    A(1) := A(1) & 3;
+    WRITE 6 A(1);
 ENDPROCEDURE;
 RUN;
 END;

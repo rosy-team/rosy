@@ -4,16 +4,21 @@ WHITESPACE = _{ " " | "\t" | NEWLINE }
 // e.g. {LOOP I 1 N; X := {inner comment} 1; ENDLOOP;} is one comment
 COMMENT = _{ "{" ~ (COMMENT | (!("{" | "}") ~ ANY))* ~ "}" }
 
-program = { SOI ~ begin ~ statement* ~ end ~ EOI }
+// Rosy entry: optional leading INCLUDEs, then one BEGIN…END.
+program = { SOI ~ include_stmt* ~ begin ~ statement* ~ end ~ EOI }
+// INCLUDE targets and `.fox` mains (BEGIN/END may live in different files).
+fragment = { SOI ~ include_stmt* ~ begin? ~ statement* ~ end? ~ EOI }
 statement   = _{ 
   var_decl
   | daini
   | daprv
   | darev
   | writeb
+  | writem
   | write
   | reads
   | readb
+  | readm
   | read
   | openfb
   | openf
@@ -27,9 +32,8 @@ statement   = _{
   | ploop
   | procedure
   | ranseed
-  | writem
-  | readm
   | intpol
+  | cpolval
   | procedure_call
   | if_statement
   | break_statement
@@ -80,7 +84,6 @@ statement   = _{
   | velset
   | velget
   | polval
-  | cpolval
   | vedot
   | veunit
   | vezero
@@ -123,29 +126,29 @@ begin = { ^"BEGIN" ~ semicolon }
 end = { ^"END" ~ semicolon }
 
 /// WRITE
-writeb = { ^"WRITEB" ~ expr ~ expr+ ~ semicolon }
-write = { ^"WRITE" ~ expr ~ expr+ ~ semicolon }
-reads = { ^"READS" ~ expr ~ variable_identifier ~ semicolon }
-readb = { ^"READB" ~ expr ~ variable_identifier ~ semicolon }
-read = { ^"READ" ~ expr ~ variable_identifier ~ semicolon }
+writeb = { ^"WRITEB" ~ arg ~ arg+ ~ semicolon }
+write = { ^"WRITE" ~ arg ~ arg+ ~ semicolon }
+reads = { ^"READS" ~ arg ~ variable_identifier ~ semicolon }
+readb = { ^"READB" ~ arg ~ variable_identifier ~ semicolon }
+read = { ^"READ" ~ arg ~ variable_identifier ~ semicolon }
 
 /// FILE I/O
-openfb = { ^"OPENFB" ~ expr ~ expr ~ expr ~ semicolon }
-openf = { ^"OPENF" ~ expr ~ expr ~ expr ~ semicolon }
-closef = { ^"CLOSEF" ~ expr ~ semicolon }
-rewf = { ^"REWF" ~ expr ~ semicolon }
-backf = { ^"BACKF" ~ expr ~ semicolon }
+openfb = { ^"OPENFB" ~ arg ~ arg ~ arg ~ semicolon }
+openf = { ^"OPENF" ~ arg ~ arg ~ arg ~ semicolon }
+closef = { ^"CLOSEF" ~ arg ~ semicolon }
+rewf = { ^"REWF" ~ arg ~ semicolon }
+backf = { ^"BACKF" ~ arg ~ semicolon }
 
 /// VARIABLE
 /// In Rosy mode (default): `VARIABLE (RE) name dim1 dim2 ;` — all trailing exprs are dimensions.
-/// In COSY mode (--cosy-syntax): `VARIABLE name memsize dim1 ;` — first expr is required memory size (discarded).
+/// In COSY mode (`.fox`): `VARIABLE name memsize dim1 ;` — first expr is required memory size (discarded).
 /// Validation of which mode applies is done in AST construction, not grammar.
 var_decl = { ^"VARIABLE" ~ type? ~ variable_name ~ memory_size* ~ semicolon }
 memory_size = { expr }
 
 /// Keywords - define all reserved words (must be followed by a non-identifier character)
 keyword = @{ keyword_raw ~ !(ASCII_ALPHANUMERIC | "_") }
-keyword_raw = { ^"ENDPROCEDURE" | ^"ENDFUNCTION" | ^"ENDWHILE" | ^"ENDLOOP" | ^"ENDPLOOP" | ^"ENDFIT" | ^"ENDIF" | ^"ELSEIF" | ^"ELSE" | ^"BEGIN" | ^"END" | ^"WRITEB" | ^"WRITE" | ^"READS" | ^"READB" | ^"READ" | ^"VARIABLE" | ^"PROCEDURE" | ^"EXP" | ^"TAN" | ^"IF" | ^"WHILE" | ^"TRUE" | ^"FALSE" | ^"DAINI" | ^"DAPRV" | ^"DAREV" | ^"DANOTW" | ^"DANOT" | ^"DAEPSM" | ^"DAEPS" | ^"DATRN" | ^"DASCL" | ^"DASGN" | ^"DADER" | ^"DAINT" | ^"DANORO" | ^"DANORS" | ^"DAREA" | ^"DAPEW" | ^"DAPEE" | ^"DAPEA" | ^"DAPEP" | ^"DAEST" | ^"DAPLU" | ^"DADIU" | ^"DADMU" | ^"DACLIW" | ^"DACQLC" | ^"EPSMIN" | ^"DAFSET" | ^"DAFILT" | ^"DAFLO" | ^"CDFLO" | ^"DAGMD" | ^"DANOW" | ^"CDF2" | ^"CDNFDS" | ^"CDNFDA" | ^"CDNF" | ^"DARAN" | ^"DACODE" | ^"LENGTH" | ^"SINH" | ^"SIN" | ^"COSH" | ^"COS" | ^"ASIN" | ^"ACOS" | ^"ATAN" | ^"TANH" | ^"SQRT" | ^"SQR" | ^"VMAX" | ^"VMIN" | ^"ABS" | ^"NORM" | ^"CONS" | ^"INTPOL" | ^"INT" | ^"NINT" | ^"TYPE" | ^"REAL" | ^"IMAG" | ^"TRIM" | ^"LTRIM" | ^"ISRT3" | ^"ISRT" | ^"CMPLX" | ^"CONJ" | ^"LST" | ^"LCM" | ^"LCD" | ^"LRE" | ^"LLO" | ^"LVE" | ^"LDA" | ^"LOG" | ^"BREAK" | ^"QUIT" | ^"SCRLEN" | ^"CPUSEC" | ^"OS" | ^"LINV" | ^"LDET" | ^"SUBSTR" | ^"VELSET" | ^"VELGET" | ^"INTPOL" | ^"CPOLVAL" | ^"POLVAL" | ^"VEDOT" | ^"VEUNIT" | ^"VEZERO" | ^"STCRE" | ^"RECST" | ^"RERAN" | ^"PWTIME" | ^"PNPRO" | ^"IMUNIT" | ^"LEV" | ^"MBLOCK" | ^"MTREE" | ^"LSLINE" | ^"RKCO" | ^"WRITEM" | ^"READM" | ^"ERF" | ^"WERF" | ^"FIT" | ^"OPENFB" | ^"OPENF" | ^"CLOSEF" | ^"REWF" | ^"BACKF" | ^"FUNCTION" | ^"LOOP" | ^"PLOOP" | ^"VARMEM" | ^"VARPOI" | ^"SLEEPM" | ^"ARGGET" | ^"MEMDPV" | ^"MEMFRE" | ^"MEMALL" | ^"MEMWRT" | ^"LTRUE" | ^"LFALSE" | "rosy_universe" | "rosy_world" | "rosy_size" | "rosy_rank" | ^"AND" | ^"OR" | ^"POSITION" | ^"INCLUDE" | ^"SAVE" | ^"MODULE" }
+keyword_raw = { ^"ENDPROCEDURE" | ^"ENDFUNCTION" | ^"ENDWHILE" | ^"ENDLOOP" | ^"ENDPLOOP" | ^"ENDFIT" | ^"ENDIF" | ^"ELSEIF" | ^"ELSE" | ^"BEGIN" | ^"END" | ^"WRITEB" | ^"WRITE" | ^"READS" | ^"READB" | ^"READ" | ^"VARIABLE" | ^"PROCEDURE" | ^"EXP" | ^"TAN" | ^"IF" | ^"WHILE" | ^"DAINI" | ^"DAPRV" | ^"DAREV" | ^"DANOTW" | ^"DANOT" | ^"DAEPSM" | ^"DAEPS" | ^"DATRN" | ^"DASCL" | ^"DASGN" | ^"DADER" | ^"DAINT" | ^"DANORO" | ^"DANORS" | ^"DAREA" | ^"DAPEW" | ^"DAPEE" | ^"DAPEA" | ^"DAPEP" | ^"DAEST" | ^"DAPLU" | ^"DADIU" | ^"DADMU" | ^"DACLIW" | ^"DACQLC" | ^"EPSMIN" | ^"DAFSET" | ^"DAFILT" | ^"DAFLO" | ^"CDFLO" | ^"DAGMD" | ^"DANOW" | ^"CDF2" | ^"CDNFDS" | ^"CDNFDA" | ^"CDNF" | ^"DARAN" | ^"DACODE" | ^"LENGTH" | ^"SINH" | ^"SIN" | ^"COSH" | ^"COS" | ^"ASIN" | ^"ACOS" | ^"ATAN" | ^"TANH" | ^"SQRT" | ^"SQR" | ^"VMAX" | ^"VMIN" | ^"ABS" | ^"NORM" | ^"CONS" | ^"INTPOL" | ^"INT" | ^"NINT" | ^"TYPE" | ^"REAL" | ^"IMAG" | ^"TRIM" | ^"LTRIM" | ^"ISRT3" | ^"ISRT" | ^"CMPLX" | ^"CONJ" | ^"LST" | ^"LCM" | ^"LCD" | ^"LRE" | ^"LLO" | ^"LVE" | ^"LDA" | ^"LOG" | ^"BREAK" | ^"QUIT" | ^"SCRLEN" | ^"CPUSEC" | ^"OS" | ^"LINV" | ^"LDET" | ^"SUBSTR" | ^"VELSET" | ^"VELGET" | ^"INTPOL" | ^"CPOLVAL" | ^"POLVAL" | ^"VEDOT" | ^"VEUNIT" | ^"VEZERO" | ^"STCRE" | ^"RECST" | ^"RERAN" | ^"PWTIME" | ^"PNPRO" | ^"IMUNIT" | ^"LEV" | ^"MBLOCK" | ^"MTREE" | ^"LSLINE" | ^"RKCO" | ^"WRITEM" | ^"READM" | ^"ERF" | ^"WERF" | ^"FIT" | ^"OPENFB" | ^"OPENF" | ^"CLOSEF" | ^"REWF" | ^"BACKF" | ^"FUNCTION" | ^"LOOP" | ^"PLOOP" | ^"VARMEM" | ^"VARPOI" | ^"SLEEPM" | ^"ARGGET" | ^"MEMDPV" | ^"MEMFRE" | ^"MEMALL" | ^"MEMWRT" | ^"LTRUE" | ^"LFALSE" | "rosy_universe" | "rosy_world" | "rosy_size" | "rosy_rank" | ^"AND" | ^"OR" | ^"POSITION" | ^"INCLUDE" | ^"SAVE" | ^"MODULE" }
 
 /// [ IF / ELSEIF / ELSE / ENDIF ]
 if_statement = { if_clause ~ elseif_clause* ~ else_clause? ~ endif }
@@ -160,12 +163,12 @@ endif = { ^"ENDIF" ~ semicolon }
   /// Container
   procedure = { start_procedure ~ statement* ~ end_procedure }
   /// Calling - ensure the name is not a keyword
-  procedure_call = { procedure_name ~ expr* ~ semicolon }
+  procedure_call = { procedure_name ~ arg* ~ semicolon }
   /// PROCEDURE
   start_procedure = { ^"PROCEDURE" ~ procedure_name ~ procedure_argument_name_and_type* ~ semicolon }
-  procedure_name = @{ !keyword ~ (ASCII_ALPHANUMERIC | "_")+ }
+  procedure_name = @{ !keyword ~ (ASCII_ALPHANUMERIC | "_")+ | ^"CPOLVAL" | ^"NORM" }
   procedure_argument_name_and_type = { procedure_argument_name ~ type? }
-  procedure_argument_name = @{ !keyword ~ (ASCII_ALPHANUMERIC | "_")+ }
+  procedure_argument_name = @{ (ASCII_ALPHANUMERIC | "_")+ }
   /// ENDPROCEDURE
   end_procedure = { ^"ENDPROCEDURE" ~ semicolon }
   ///
@@ -173,12 +176,12 @@ endif = { ^"ENDIF" ~ semicolon }
   /// Container
   function = { start_function ~ statement* ~ end_function }
   /// Calling - ensure the name is not a keyword
-  function_call = { function_name ~ "(" ~ expr ~ ("," ~ expr)* ~ ")"  }
+  function_call = { function_name ~ "(" ~ WHITESPACE* ~ expr ~ (WHITESPACE* ~ "," ~ WHITESPACE* ~ expr)* ~ WHITESPACE* ~ ")"  }
   /// FUNCTION
   start_function = { ^"FUNCTION" ~ type? ~ function_name ~ function_argument_name_and_type+ ~ semicolon }
   function_name = @{ !keyword ~ (ASCII_ALPHANUMERIC | "_")+ }
   function_argument_name_and_type = _{ function_argument_name ~ type? }
-  function_argument_name = @{ !keyword ~ (ASCII_ALPHANUMERIC | "_")+ }
+  function_argument_name = @{ (ASCII_ALPHANUMERIC | "_")+ }
   /// ENDFUNCTION
   end_function = { ^"ENDFUNCTION" ~ semicolon }
 
@@ -186,11 +189,11 @@ endif = { ^"ENDIF" ~ semicolon }
   ///
   /// [ LOOP ]
   loop = { start_loop ~ statement+ ~ end_loop }
-  start_loop = { ^"LOOP" ~ variable_name ~ expr ~ expr ~ expr? ~ semicolon }
+  start_loop = { ^"LOOP" ~ variable_name ~ arg ~ arg ~ arg? ~ semicolon }
   end_loop = { ^"ENDLOOP" ~ semicolon }
   /// [ PLOOP ]
   ploop = { start_ploop ~ statement+ ~ end_ploop }
-  start_ploop = { ^"PLOOP" ~ variable_name ~ expr ~ expr ~ semicolon }
+  start_ploop = { ^"PLOOP" ~ variable_name ~ arg ~ arg ~ semicolon }
   end_ploop = { ^"ENDPLOOP" ~ unit? ~ variable_identifier ~ semicolon }
   /// [ WHILE ]
   while_loop = { start_while ~ statement* ~ end_while }
@@ -199,109 +202,109 @@ endif = { ^"ENDIF" ~ semicolon }
   /// [ FIT ]
   fit_statement = { start_fit ~ statement* ~ end_fit }
   start_fit = { ^"FIT" ~ variable_name+ ~ semicolon }
-  end_fit = { ^"ENDFIT" ~ expr ~ expr ~ expr ~ variable_name+ ~ semicolon }
+  end_fit = { ^"ENDFIT" ~ arg ~ arg ~ arg ~ arg+ ~ semicolon }
 
 /// [ INTRINSIC FUNCTIONS ]
   /// Named call: `SIN(x)`, `POSITION(a, b)`, `DA(n)`, …
   /// `intrinsic_name` is rewritten by rosy/build.rs from `rosy_lib::INTRINSICS` plus DA/CD.
   /// Longer prefixes first so ISRT3/WERF win over ISRT/ERF.
-  builtin_function = { intrinsic_name ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
+  builtin_function = { intrinsic_name ~ "(" ~ WHITESPACE* ~ expr ~ (WHITESPACE* ~ "," ~ WHITESPACE* ~ expr)* ~ WHITESPACE* ~ ")" }
   intrinsic_name = @{ (^"POSITION" | ^"LENGTH" | ^"VARMEM" | ^"VARPOI" | ^"CMPLX" | ^"ISRT3" | ^"LTRIM" | ^"ACOS" | ^"ASIN" | ^"ATAN" | ^"CONJ" | ^"CONS" | ^"COSH" | ^"IMAG" | ^"ISRT" | ^"NINT" | ^"NORM" | ^"REAL" | ^"SINH" | ^"SQRT" | ^"TANH" | ^"TRIM" | ^"TYPE" | ^"VMAX" | ^"VMIN" | ^"WERF" | ^"ABS" | ^"COS" | ^"ERF" | ^"EXP" | ^"INT" | ^"LCD" | ^"LCM" | ^"LDA" | ^"LLO" | ^"LOG" | ^"LRE" | ^"LST" | ^"LVE" | ^"SIN" | ^"SQR" | ^"TAN" | ^"CD" | ^"CM" | ^"DA" | ^"LO" | ^"RE" | ^"ST" | ^"VE") ~ !(ASCII_ALPHANUMERIC | "_") }
 
 /// [ INTRINSIC PROCEDURES ]
   /// [ DA ]
-  daini = { ^"DAINI" ~ expr ~ expr ~ (expr ~ (daini_nm_zero | expr))? ~ semicolon }
+  daini = { ^"DAINI" ~ arg ~ arg ~ (arg ~ (daini_nm_zero | arg))? ~ semicolon }
   daini_nm_zero = @{ "0" ~ !(ASCII_ALPHANUMERIC | "_" | ".") }
-  daprv = { ^"DAPRV" ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  darev = { ^"DAREV" ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  danot = { ^"DANOT" ~ expr ~ semicolon }
-  daeps = { ^"DAEPS" ~ expr ~ semicolon }
-  datrn  = { ^"DATRN"  ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  dascl  = { ^"DASCL"  ~ expr ~ expr ~ semicolon }
-  dasgn  = { ^"DASGN"  ~ expr ~ semicolon }
-  dader  = { ^"DADER"  ~ expr ~ expr ~ semicolon }
-  daint  = { ^"DAINT"  ~ expr ~ expr ~ semicolon }
-  danoro = { ^"DANORO" ~ expr ~ semicolon }
-  danors = { ^"DANORS" ~ expr ~ expr ~ semicolon }
-  daplu  = { ^"DAPLU"  ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  dadiu  = { ^"DADIU"  ~ expr ~ expr ~ expr ~ semicolon }
-  dadmu  = { ^"DADMU"  ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  dacliw = { ^"DACLIW" ~ expr ~ expr ~ expr ~ semicolon }
-  dacqlc = { ^"DACQLC" ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  darea  = { ^"DAREA"  ~ expr ~ expr ~ expr ~ semicolon }
-  dapew  = { ^"DAPEW"  ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  dapee  = { ^"DAPEE"  ~ expr ~ expr ~ expr ~ semicolon }
-  dapea  = { ^"DAPEA"  ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  dapep  = { ^"DAPEP"  ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  daest  = { ^"DAEST"  ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  daepsm = { ^"DAEPSM" ~ expr ~ semicolon }
-  epsmin = { ^"EPSMIN" ~ expr ~ semicolon }
-  dafset = { ^"DAFSET" ~ expr ~ semicolon }
-  dafilt = { ^"DAFILT" ~ expr ~ expr ~ semicolon }
-  danotw = { ^"DANOTW" ~ expr ~ expr ~ semicolon }
-  daflo  = { ^"DAFLO"  ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  cdflo  = { ^"CDFLO"  ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  dagmd  = { ^"DAGMD"  ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  danow   = { ^"DANOW"   ~ expr ~ expr ~ expr ~ semicolon }
-  cdf2    = { ^"CDF2"    ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  cdnfds  = { ^"CDNFDS"  ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  cdnfda  = { ^"CDNFDA"  ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  cdnf    = { ^"CDNF"    ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  daran   = { ^"DARAN"   ~ expr ~ expr ~ semicolon }
-  dacode = { ^"DACODE" ~ expr ~ expr ~ expr ~ semicolon }
+  daprv = { ^"DAPRV" ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  darev = { ^"DAREV" ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  danot = { ^"DANOT" ~ arg ~ semicolon }
+  daeps = { ^"DAEPS" ~ arg ~ semicolon }
+  datrn  = { ^"DATRN"  ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  dascl  = { ^"DASCL"  ~ arg ~ arg ~ semicolon }
+  dasgn  = { ^"DASGN"  ~ arg ~ semicolon }
+  dader  = { ^"DADER"  ~ arg ~ arg ~ semicolon }
+  daint  = { ^"DAINT"  ~ arg ~ arg ~ arg? ~ semicolon }
+  danoro = { ^"DANORO" ~ arg ~ semicolon }
+  danors = { ^"DANORS" ~ arg ~ arg ~ semicolon }
+  daplu  = { ^"DAPLU"  ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  dadiu  = { ^"DADIU"  ~ arg ~ arg ~ arg ~ semicolon }
+  dadmu  = { ^"DADMU"  ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  dacliw = { ^"DACLIW" ~ arg ~ arg ~ arg ~ semicolon }
+  dacqlc = { ^"DACQLC" ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  darea  = { ^"DAREA"  ~ arg ~ arg ~ arg ~ semicolon }
+  dapew  = { ^"DAPEW"  ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  dapee  = { ^"DAPEE"  ~ arg ~ arg ~ arg ~ semicolon }
+  dapea  = { ^"DAPEA"  ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  dapep  = { ^"DAPEP"  ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  daest  = { ^"DAEST"  ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  daepsm = { ^"DAEPSM" ~ arg ~ semicolon }
+  epsmin = { ^"EPSMIN" ~ arg ~ semicolon }
+  dafset = { ^"DAFSET" ~ arg ~ semicolon }
+  dafilt = { ^"DAFILT" ~ arg ~ arg ~ semicolon }
+  danotw = { ^"DANOTW" ~ arg ~ arg ~ semicolon }
+  daflo  = { ^"DAFLO"  ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  cdflo  = { ^"CDFLO"  ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  dagmd  = { ^"DAGMD"  ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  danow   = { ^"DANOW"   ~ arg ~ arg ~ arg ~ semicolon }
+  cdf2    = { ^"CDF2"    ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  cdnfds  = { ^"CDNFDS"  ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  cdnfda  = { ^"CDNFDA"  ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  cdnf    = { ^"CDNF"    ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  daran   = { ^"DARAN"   ~ arg ~ arg ~ semicolon }
+  dacode = { ^"DACODE" ~ arg ~ arg ~ arg ~ semicolon }
   /// [ CORE ]
-  scrlen = { ^"SCRLEN" ~ expr ~ semicolon }
-  save_stmt = { ^"SAVE" ~ expr ~ semicolon }
-  quit = { ^"QUIT" ~ expr ~ semicolon }
-  os_call = { ^"OS" ~ expr ~ semicolon }
-  substr = { ^"SUBSTR" ~ expr ~ expr ~ expr ~ variable_identifier ~ semicolon }
-  velset = { ^"VELSET" ~ variable_identifier ~ expr ~ expr ~ semicolon }
+  scrlen = { ^"SCRLEN" ~ arg ~ semicolon }
+  save_stmt = { ^"SAVE" ~ arg ~ semicolon }
+  quit = { ^"QUIT" ~ arg ~ semicolon }
+  os_call = { ^"OS" ~ arg ~ semicolon }
+  substr = { ^"SUBSTR" ~ arg ~ arg ~ arg ~ variable_identifier ~ semicolon }
+  velset = { ^"VELSET" ~ variable_identifier ~ arg ~ arg ~ semicolon }
   /// [ TIMING ]
   cpusec = { ^"CPUSEC" ~ variable_identifier ~ semicolon }
   /// [ VECTOR ACCESS ]
-  velget = { ^"VELGET" ~ expr ~ expr ~ variable_identifier ~ semicolon }
+  velget = { ^"VELGET" ~ arg ~ arg ~ variable_identifier ~ semicolon }
   /// [ VECTOR MATH ]
-  vedot = { ^"VEDOT" ~ expr ~ expr ~ variable_identifier ~ semicolon }
-  veunit = { ^"VEUNIT" ~ expr ~ variable_identifier ~ semicolon }
-  vezero = { ^"VEZERO" ~ variable_identifier ~ expr ~ expr ~ semicolon }
+  vedot = { ^"VEDOT" ~ arg ~ arg ~ variable_identifier ~ semicolon }
+  veunit = { ^"VEUNIT" ~ arg ~ variable_identifier ~ semicolon }
+  vezero = { ^"VEZERO" ~ variable_identifier ~ arg ~ arg ~ semicolon }
   /// [ TYPE CONVERSION ]
-  stcre = { ^"STCRE" ~ expr ~ variable_identifier ~ semicolon }
-  recst = { ^"RECST" ~ expr ~ expr ~ variable_identifier ~ semicolon }
+  stcre = { ^"STCRE" ~ arg ~ variable_identifier ~ semicolon }
+  recst = { ^"RECST" ~ arg ~ arg ~ variable_identifier ~ semicolon }
   /// [ RANDOM ]
   reran = { ^"RERAN" ~ variable_identifier ~ semicolon }
-  ranseed = { ^"RANSEED" ~ expr ~ semicolon }
+  ranseed = { ^"RANSEED" ~ arg ~ semicolon }
   /// [ SYSTEM / UTILITY ]
   pwtime = { ^"PWTIME" ~ variable_identifier ~ semicolon }
   pnpro = { ^"PNPRO" ~ variable_identifier ~ semicolon }
   imunit = { ^"IMUNIT" ~ variable_identifier ~ semicolon }
   /// [ MATH ]
-  linv = { ^"LINV" ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  ldet = { ^"LDET" ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  intpol = { ^"INTPOL" ~ variable_identifier ~ expr ~ semicolon }
-  polval = { ^"POLVAL" ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  cpolval = { ^"CPOLVAL" ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
+  linv = { ^"LINV" ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  ldet = { ^"LDET" ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  intpol = { ^"INTPOL" ~ variable_identifier ~ arg ~ semicolon }
+  polval = { ^"POLVAL" ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  cpolval = { ^"CPOLVAL" ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
   /// [ LINEAR ALGEBRA ]
-  lev = { ^"LEV" ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
-  mblock = { ^"MBLOCK" ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
+  lev = { ^"LEV" ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  mblock = { ^"MBLOCK" ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
   /// [ DA EVALUATION ]
-  mtree = { ^"MTREE" ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
+  mtree = { ^"MTREE" ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
   /// [ SYSTEM UTILITIES ]
-  sleepm = { ^"SLEEPM" ~ expr ~ semicolon }
-  argget = { ^"ARGGET" ~ expr ~ variable_identifier ~ semicolon }
-  memdpv = { ^"MEMDPV" ~ expr ~ expr ~ semicolon }
+  sleepm = { ^"SLEEPM" ~ arg ~ semicolon }
+  argget = { ^"ARGGET" ~ arg ~ variable_identifier ~ semicolon }
+  memdpv = { ^"MEMDPV" ~ arg ~ arg ~ semicolon }
   memfre = { ^"MEMFRE" ~ variable_identifier ~ semicolon }
   memall = { ^"MEMALL" ~ variable_identifier ~ semicolon }
-  memwrt = { ^"MEMWRT" ~ expr ~ semicolon }
+  memwrt = { ^"MEMWRT" ~ arg ~ semicolon }
   ltrue  = { ^"LTRUE"  ~ variable_identifier ~ semicolon }
   lfalse = { ^"LFALSE" ~ variable_identifier ~ semicolon }
   /// [ NUMERICAL / INTEGRATION ]
-  lsline = { ^"LSLINE" ~ expr ~ expr ~ expr ~ variable_identifier ~ variable_identifier ~ semicolon }
+  lsline = { ^"LSLINE" ~ arg ~ arg ~ arg ~ variable_identifier ~ variable_identifier ~ semicolon }
   rkco = { ^"RKCO" ~ variable_identifier ~ variable_identifier ~ variable_identifier ~ variable_identifier ~ variable_identifier ~ semicolon }
   /// [ MEMORY SERIALIZATION ]
   /// WRITEM( c v c v v v ) — serialize variable into arrays
-  writem = { ^"WRITEM" ~ expr ~ variable_identifier ~ expr ~ variable_identifier ~ variable_identifier ~ variable_identifier ~ semicolon }
+  writem = { ^"WRITEM" ~ arg ~ variable_identifier ~ arg ~ variable_identifier ~ variable_identifier ~ variable_identifier ~ semicolon }
   /// READM( v c c c c c ) — deserialize variable from arrays
-  readm = { ^"READM" ~ variable_identifier ~ expr ~ expr ~ expr ~ expr ~ expr ~ semicolon }
+  readm = { ^"READM" ~ variable_identifier ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
 /// [ INTRINSIC TYPES ]
   type = { "(" ~ inner_type ~ expr* ~ ")"}
   inner_type = {
@@ -315,10 +318,37 @@ endif = { ^"ENDIF" ~ semicolon }
 
 /// Assignment — RHS can be an expression or `.` (clear/reset)
 assignment  = { variable_identifier ~ ":=" ~ (empty_literal | expr) ~ semicolon }
-empty_literal = { "." }
+empty_literal = @{ "." ~ !ASCII_DIGIT }
 
 // Expression parsing using Pratt parser
-expr = { term ~ (infix_op ~ term)* }
+expr = { term ~ (WHITESPACE* ~ infix_op ~ WHITESPACE* ~ term)* }
+// Space-separated command args.
+// Glued (`N-1`, `-4*D`) is one arg. Spaced infix (`1 + 1`, `T2 - T1`) is one arg.
+// `4 -3` is two args (unary minus glued to 3). Never wrap `expr` in an atomic rule.
+arg = { "(" ~ expr ~ ")" ~ glued_tail | bare_arg ~ spaced_infix* }
+// Atomic so `) /H -SIN` cannot glue `-SIN` onto the paren arg.
+glued_tail = ${ glued_op_arg* }
+bare_arg = ${ atom_bare ~ glued_op_arg* }
+// `$` so `) /H -SIN` does not glue `-SIN` onto the previous arg.
+// Not `@{ }` — we need the op/atom children for Pratt.
+glued_op_arg = ${
+    (derive | extract | pow | mult | div | add | sub | concat
+        | eq | neq | lte | gte | lt | gt | and_op | or_op)
+    ~ atom_arg
+}
+// Space after the op is required so `4 -3` stays two args.
+arg_sp = @{ (" " | "\t" | NEWLINE)+ }
+spaced_infix = ${ infix_op ~ arg_sp ~ atom_arg ~ glued_tail }
+atom_arg = { "(" ~ WHITESPACE* ~ expr ~ WHITESPACE* ~ ")" | atom_bare }
+atom_bare = _{
+    not_expr |
+    neg_expr |
+    builtin_function |
+    boolean |
+    number |
+    string |
+    variable_identifier
+}
 term = _{ 
     not_expr |
     neg_expr |
@@ -327,7 +357,7 @@ term = _{
     number | 
     string |
     variable_identifier |
-    "(" ~ expr ~ ")" }
+    "(" ~ WHITESPACE* ~ expr ~ WHITESPACE* ~ ")" }
 
 // Unary negation (prefix minus). Binds to a single term so that `-A*B + C`
 // parses as `(-A)*B + C`, matching standard math precedence and COSY
@@ -342,7 +372,7 @@ boolean = { ^"TRUE" | ^"FALSE" }
 
 // NOT expression (prefix unary operator) - ROSY extension
 // Use `!` directly adjacent to operand
-not_expr = { "!" ~ (boolean | variable_identifier | "(" ~ expr ~ ")") }
+not_expr = { ("!" | ^"NOT") ~ (boolean | variable_identifier | "(" ~ WHITESPACE* ~ expr ~ WHITESPACE* ~ ")") }
 
 // Infix operators
 // Note: lte/gte must come before lt/gt to avoid `<=` being parsed as `<` then `=`
@@ -371,14 +401,14 @@ and_op      = @{ ^"AND" ~ !(ASCII_ALPHANUMERIC | "_") }
 or_op       = @{ ^"OR"  ~ !(ASCII_ALPHANUMERIC | "_") }
 
 variable_identifier = { variable_name ~ paren_group* ~ bracket_index* }
-paren_group = { "(" ~ expr ~ ("," ~ expr)* ~ ")" }
-bracket_index = { "[" ~ expr ~ ("," ~ expr)* ~ "]" }
-variable_name  = @{ !keyword ~ (ASCII_ALPHANUMERIC | "_")+ }
+paren_group = { "(" ~ WHITESPACE* ~ expr ~ (WHITESPACE* ~ "," ~ WHITESPACE* ~ expr)* ~ WHITESPACE* ~ ")" }
+bracket_index = { "[" ~ WHITESPACE* ~ expr ~ (WHITESPACE* ~ "," ~ WHITESPACE* ~ expr)* ~ WHITESPACE* ~ "]" }
+variable_name  = @{ (ASCII_ALPHANUMERIC | "_")+ }
 /// Numeric literal — integer, fractional, and optional decimal exponent.
 /// Both `e/E` (modern) and `d/D` (Fortran double-precision, used by
 /// cosy.fox) are accepted as the exponent marker.
 /// Examples: 42  -7  3.14  1.23E-4  1e5  -2.5e+10  1.66053873D-27
-number      = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? ~ (("e" | "E" | "d" | "D") ~ ("+" | "-")? ~ ASCII_DIGIT+)? }
+number      = @{ ("+" | "-")? ~ (ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT*)? | "." ~ ASCII_DIGIT+) ~ (("e" | "E" | "d" | "D") ~ ("+" | "-")? ~ ASCII_DIGIT+)? }
 unit        = @{ ASCII_DIGIT+ }
 constant    = @{ ASCII_DIGIT+ }
 string      = { new_string | old_string }

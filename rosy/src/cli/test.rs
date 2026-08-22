@@ -93,11 +93,13 @@ fn discover_case_files_recursive(root: &Path, dir: &Path, results: &mut Vec<(Str
         let path = entry.path();
         if path.is_dir() {
             discover_case_files_recursive(root, &path, results);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rosy") {
+        } else if matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("rosy") | Some("fox")
+        ) {
             let name = path
                 .strip_prefix(root)
                 .unwrap_or(&path)
-                .with_extension("")
                 .to_string_lossy()
                 .to_string();
             results.push((name, path));

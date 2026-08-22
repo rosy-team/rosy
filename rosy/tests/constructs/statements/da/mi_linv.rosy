@@ -1,0 +1,23 @@
+BEGIN;
+    DAINI 2 2 0 0;
+    VARIABLE (DA 1) M;
+    VARIABLE (VE) CL;
+    VARIABLE (RE 2 2) AL;
+    VARIABLE (RE 2 2) AI;
+    VARIABLE (RE) ERR;
+    M(1) := DA(1);
+    DACLIW M 2 CL;
+    AL(1)(1) := CL(1);
+    AL(1)(2) := CL(2);
+    M(1) := DA(2);
+    DACLIW M 2 CL;
+    AL(2)(1) := CL(1);
+    AL(2)(2) := CL(2);
+    LINV AL AI 2 2 ERR;
+    WRITE 6 ERR;
+    WRITE 6 AI(1)(1);
+END;
+
+======= expect
+ 0.000000000000000
+ 1.000000000000000

@@ -61,7 +61,7 @@ impl Transpile for DanotStatement {
         })?;
 
         let serialization = format!(
-            "taylor::set_truncation_order({} as u32)?;",
+            "taylor::set_truncation_order(rosy_as_u32(&({})))?;",
             order_output.as_value()
         );
 

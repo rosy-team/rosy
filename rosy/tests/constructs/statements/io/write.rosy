@@ -1,19 +1,31 @@
 BEGIN;
     VARIABLE (RE) X;
+    VARIABLE (RE) T1;
+    VARIABLE (RE) T2;
     X := 42;
+    T1 := 1;
+    T2 := 4;
     WRITE 6 'Value: ' X;
+    WRITE 6 'CPUSEC: ' T2 - T1;
 END;
 
 ======= expect
 Value: 
  42.00000000000000
+CPUSEC: 
+ 3.000000000000000
 
 ======= fox
 BEGIN;
 PROCEDURE RUN;
     VARIABLE X 1;
+    VARIABLE T1 1;
+    VARIABLE T2 1;
     X := 42;
+    T1 := 1;
+    T2 := 4;
     WRITE 6 'Value: ' X;
+    WRITE 6 'CPUSEC: ' T2 - T1;
 ENDPROCEDURE;
 RUN;
 END;

@@ -108,7 +108,7 @@ impl Transpile for DadmuStatement {
         requested_variables.extend(result_output.requested_variables.clone());
 
         let serialization = format!(
-            "rosy_lib::core::daprv::rosy_dadmu({} as usize, {} as usize, {}, {})?;",
+            "rosy_lib::core::daprv::rosy_dadmu(rosy_as_usize(&({})), rosy_as_usize(&({})), {}, {})?;",
             var_i_output.as_value(),
             var_j_output.as_value(),
             da_in_output.as_ref(),

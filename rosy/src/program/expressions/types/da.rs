@@ -87,7 +87,7 @@ impl Transpile for DAExpr {
         })?;
 
         // Use DA::variable(usize) to create a DA differential variable
-        let serialization = format!("DA::variable({} as usize)?", index_output.as_value());
+        let serialization = format!("DA::variable(rosy_as_usize(&({})))?", index_output.as_value());
 
         Ok(TranspilationOutput {
             serialization,

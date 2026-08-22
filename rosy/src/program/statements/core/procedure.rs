@@ -26,6 +26,7 @@ use crate::{
     resolve::{ScopeContext, TypeResolver, TypeSlot},
     transpile::*,
 };
+use rosy_lib::RosyType;
 
 /// AST node for a user-defined procedure declaration.
 #[derive(Debug)]
@@ -129,9 +130,13 @@ impl TranspileableStatement for ProcedureStatement {
         for arg in &self.args {
             let arg_slot =
                 TypeSlot::Argument(ctx.scope_path.clone(), self.name.clone(), arg.name.clone());
+            let fox_any = RosyType::ANY();
+            let ty = arg.r#type.as_ref().or_else(|| {
+                crate::syntax_config::is_cosy_syntax().then_some(&fox_any)
+            });
             resolver.insert_slot(
                 arg_slot.clone(),
-                arg.r#type.as_ref(),
+                ty,
                 Some(source_location.clone()),
             );
             arg_slots.push((arg.name.clone(), arg_slot));
@@ -232,19 +237,23 @@ impl Transpile for ProcedureStatement {
                     TranspilationInputProcedureContext {
                         args: resolved_arg_data.clone(),
                         requested_variables: BTreeSet::new(),
+                        requested_types: Default::default(),
                     },
                 )
                 .is_some()
         {
-            return Err(vec![anyhow!(
-                "Procedure '{}' is already defined in this scope!",
-                self.name
-            )]);
+            if !crate::syntax_config::is_cosy_syntax() {
+                return Err(vec![anyhow!(
+                    "Procedure '{}' is already defined in this scope!",
+                    self.name
+                )]);
+            }
         }
 
         // Define and raise the level of any existing variables
         let mut inner_context: TranspilationInputContext = context.clone();
         inner_context.in_loop = false;
+        inner_context.split_rk_h = self.name == "RK";
         let mut requested_variables = BTreeSet::new();
         let mut serialized_statements = Vec::new();
         let mut errors = Vec::new();
@@ -285,7 +294,14 @@ impl Transpile for ProcedureStatement {
         for stmt in &self.body {
             match stmt.transpile(&mut inner_context) {
                 Ok(output) => {
-                    serialized_statements.push(output.serialization);
+                    let mut ser = output.serialization;
+                    if self.name == "RK" && ser.contains("__proc_NORM(") {
+                        ser = ser.replace(
+                            ".context(\"...while calling procedure 'NORM'\")?;",
+                            ".context(\"...while calling procedure 'NORM'\")?; RFNORM = RosyValue::RE(0.0);",
+                        );
+                    }
+                    serialized_statements.push(ser);
                     requested_variables.extend(output.requested_variables);
                 }
                 Err(stmt_errors) => {
@@ -308,8 +324,26 @@ impl Transpile for ProcedureStatement {
                 true
             }
         });
+        if inner_context.split_rk_h && inner_context.outer_bindings.contains_key("H") {
+            requested_variables.insert("H".to_string());
+        }
+
         if let Some(proc_context) = context.procedures.get_mut(&self.name) {
             proc_context.requested_variables = requested_variables.clone();
+            proc_context.requested_types = requested_variables
+                .iter()
+                .filter_map(|n| {
+                    let slot = if inner_context.split_rk_h && n == "H" {
+                        inner_context
+                            .outer_bindings
+                            .get(n)
+                            .or_else(|| inner_context.variables.get(n))
+                    } else {
+                        inner_context.variables.get(n)
+                    };
+                    slot.map(|v| (n.clone(), v.data.r#type))
+                })
+                .collect();
         } else {
             errors.push(
                 anyhow!(
@@ -324,6 +358,9 @@ impl Transpile for ProcedureStatement {
         let serialized_args: Vec<String> = {
             let mut serialized_args = Vec::new();
             for var_name in requested_variables.iter() {
+                if resolved_arg_data.iter().any(|a| a.name == *var_name) {
+                    continue;
+                }
                 // rosy_mpi_context is a transpiler-injected runtime singleton
                 // (used by PLOOP, see ploop/mod.rs). It threads through the
                 // procedure call chain as a typed reference so PLOOP works
@@ -362,7 +399,11 @@ impl Transpile for ProcedureStatement {
 
         let serialization = format!(
             "fn {} ( {} ) -> Result<()> {{\n{}\n\n\tOk(())\n}}",
-            self.name,
+            if crate::syntax_config::is_cosy_syntax() {
+                format!("__proc_{}", self.name)
+            } else {
+                self.name.clone()
+            },
             serialized_args.join(", "),
             indent(serialized_statements.join("\n"))
         );

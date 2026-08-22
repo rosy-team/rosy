@@ -9,7 +9,7 @@
 *                                                                             *
 ******************************************************************************}
 BEGIN ;
-VARIABLE NO ; VARIABLE NV ; VARIABLE LX ;
+VARIABLE NO ; VARIABLE NV ; VARIABLE LX ; VARIABLE NM ;
 
 PROCEDURE RUN ;
    VARIABLE A ; VARIABLE B ;

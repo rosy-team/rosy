@@ -87,7 +87,7 @@ impl Transpile for CDExpr {
         })?;
 
         // Use CD::variable(usize) to create a CD differential variable
-        let serialization = format!("CD::variable({} as usize)?", index_output.as_value());
+        let serialization = format!("CD::variable(rosy_as_usize(&({})))?", index_output.as_value());
 
         Ok(TranspilationOutput {
             serialization,

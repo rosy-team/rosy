@@ -168,19 +168,27 @@ impl Transpile for CpolvalStatement {
         let a_ref = a_out.as_ref();
         let p_ref = p_out.as_ref();
         let r_strip = r_mut.trim_start_matches("&mut ");
+        let clone_ref = |r: &str| {
+            let inner = r.trim_start_matches('&');
+            if inner.starts_with('*') {
+                format!("&({}).clone()", inner)
+            } else {
+                format!("&{}.clone()", inner)
+            }
+        };
         let a_arg = if a_ref.trim_start_matches('&') == r_strip {
-            format!("&{}.clone()", a_ref.trim_start_matches('&'))
+            clone_ref(&a_ref)
         } else {
             a_ref
         };
         let p_arg = if p_ref.trim_start_matches('&') == r_strip {
-            format!("&{}.clone()", p_ref.trim_start_matches('&'))
+            clone_ref(&p_ref)
         } else {
             p_ref
         };
 
         let serialization = format!(
-            "rosy_lib::core::polval::rosy_polval_cd({}, {}, {} as usize, {}, {} as usize, {}, {} as usize)?;",
+            "rosy_lib::core::polval::rosy_polval_cd({}, {}, rosy_as_usize(&({})), {}, rosy_as_usize(&({})), {}, rosy_as_usize(&({})))?;",
             l_out.as_value(),
             p_arg,
             np_out.as_value(),

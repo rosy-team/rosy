@@ -64,7 +64,7 @@ impl Transpile for DaepsStatement {
         })?;
 
         let serialization = format!(
-            "taylor::set_epsilon({} as f64)?;",
+            "taylor::set_epsilon(rosy_as_f64(&({})))?;",
             epsilon_output.as_value()
         );
 

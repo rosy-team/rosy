@@ -68,3 +68,9 @@ impl RosyVARPOI for CD {
         self as *const Self as usize as f64
     }
 }
+
+impl RosyVARPOI for crate::RosyValue {
+    fn rosy_varpoi(&self) -> RE {
+        self as *const Self as usize as f64
+    }
+}

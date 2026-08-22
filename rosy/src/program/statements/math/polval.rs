@@ -160,7 +160,9 @@ impl Transpile for PolvalStatement {
             .type_of(context)
             .map_err(|e| vec![e.context("...while determining type of A in POLVAL")])?;
 
-        let polval_fn = if a_type.base_type == RosyBaseType::DA && a_type.dimensions > 0 {
+        let polval_fn = if a_type.is_any() {
+            "rosy_polval_any"
+        } else if a_type.base_type == RosyBaseType::DA && a_type.dimensions > 0 {
             "rosy_polval_da"
         } else if a_type.base_type == RosyBaseType::VE && a_type.dimensions > 0 {
             "rosy_polval_ve"
@@ -174,19 +176,27 @@ impl Transpile for PolvalStatement {
         let a_ref = a_out.as_ref();
         let p_ref = p_out.as_ref();
         let r_strip = r_mut.trim_start_matches("&mut ");
+        let clone_ref = |r: &str| {
+            let inner = r.trim_start_matches('&');
+            if inner.starts_with('*') {
+                format!("&({}).clone()", inner)
+            } else {
+                format!("&{}.clone()", inner)
+            }
+        };
         let a_arg = if a_ref.trim_start_matches('&') == r_strip {
-            format!("&{}.clone()", a_ref.trim_start_matches('&'))
+            clone_ref(&a_ref)
         } else {
             a_ref
         };
         let p_arg = if p_ref.trim_start_matches('&') == r_strip {
-            format!("&{}.clone()", p_ref.trim_start_matches('&'))
+            clone_ref(&p_ref)
         } else {
             p_ref
         };
 
         let serialization = format!(
-            "rosy_lib::core::polval::{}({}, {}, {} as usize, {}, {} as usize, {}, {} as usize)?;",
+            "rosy_lib::core::polval::{}({}, {}, rosy_as_usize(&({})), {}, rosy_as_usize(&({})), {}, rosy_as_usize(&({})))?;",
             polval_fn,
             l_out.as_value(),
             p_arg,

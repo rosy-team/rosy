@@ -135,9 +135,41 @@ impl TranspileableStatement for AssignStatement {
                 } else {
                     explicit_type.dimensions = explicit_type.dimensions.saturating_sub(num_indices);
                 }
+                if explicit_type.is_any() {
+                    return Some(Ok(()));
+                }
+                if crate::syntax_config::is_cosy_syntax() {
+                    let differs = resolver
+                        .evaluate_recipe(&recipe)
+                        .map(|t| t != explicit_type)
+                        .unwrap_or(true);
+                    if differs {
+                        if let Some(node) = resolver.nodes.get_mut(&var_slot) {
+                            node.rule = ResolutionRule::InferredFrom {
+                                recipe: ExprRecipe::Literal(RosyType::ANY()),
+                                reason: "reused as multiple types".to_string(),
+                            };
+                            node.resolved = Some(RosyType::ANY());
+                            node.depends_on.clear();
+                        }
+                        return Some(Ok(()));
+                    }
+                }
                 if let Ok(new_type) = resolver.evaluate_recipe(&recipe)
                     && new_type != explicit_type
+                    && !new_type.is_any()
                 {
+                    if crate::syntax_config::is_cosy_syntax() {
+                        if let Some(node) = resolver.nodes.get_mut(&var_slot) {
+                            node.rule = ResolutionRule::InferredFrom {
+                                recipe: ExprRecipe::Literal(RosyType::ANY()),
+                                reason: "reused as multiple types".to_string(),
+                            };
+                            node.resolved = Some(RosyType::ANY());
+                            node.depends_on.clear();
+                        }
+                        return Some(Ok(()));
+                    }
                     let scope_str = if ctx.scope_path.is_empty() {
                         "global scope".to_string()
                     } else {
@@ -327,9 +359,27 @@ impl TranspileableStatement for AssignStatement {
                     }
                 }
 
-                if let (Ok(old_type), Ok(new_type)) = (old_type_result, new_type_result)
-                    && old_type != new_type
-                {
+                if let (Ok(old_type), Ok(new_type)) = (old_type_result, new_type_result) {
+                    if old_type != new_type {
+                    // Cosy cells are untyped. Rosy ANY only for 0-d base conflicts.
+                    let any_ok = crate::syntax_config::is_cosy_syntax()
+                        || (old_type.dimensions == 0 && new_type.dimensions == 0);
+                    if any_ok
+                        && (crate::syntax_config::is_cosy_syntax()
+                            || old_type.is_any()
+                            || new_type.is_any()
+                            || old_type.base_type != new_type.base_type)
+                    {
+                        if let Some(node) = resolver.nodes.get_mut(&var_slot) {
+                            node.rule = ResolutionRule::InferredFrom {
+                                recipe: ExprRecipe::Literal(RosyType::ANY()),
+                                reason: "reused as multiple types".to_string(),
+                            };
+                            node.resolved = Some(RosyType::ANY());
+                            node.depends_on.clear();
+                        }
+                        return Some(Ok(()));
+                    }
                     let scope_str = if ctx.scope_path.is_empty() {
                         "global scope".to_string()
                     } else {
@@ -399,6 +449,17 @@ impl TranspileableStatement for AssignStatement {
                         ve_hint,
                     );
                     return Some(Err(RosyError::at(source_location.clone(), msg).into()));
+                    }
+                } else if crate::syntax_config::is_cosy_syntax() {
+                    if let Some(node) = resolver.nodes.get_mut(&var_slot) {
+                        node.rule = ResolutionRule::InferredFrom {
+                            recipe: ExprRecipe::Literal(RosyType::ANY()),
+                            reason: "reused, later assignment not yet typed".to_string(),
+                        };
+                        node.resolved = Some(RosyType::ANY());
+                        node.depends_on.clear();
+                    }
+                    return Some(Ok(()));
                 }
             }
 
@@ -522,7 +583,10 @@ impl Transpile for AssignStatement {
         let value_type = value.type_of(context).map_err(|e| {
             vec![e.context("...while determining type of value expression for assignment")]
         })?;
-        if variable_type != value_type {
+        if variable_type != value_type
+            && !variable_type.is_any()
+            && !value_type.is_any()
+        {
             return Err(vec![anyhow!(
                 "Cannot assign value of type '{}' to variable '{}' of type '{}'!",
                 value_type,
@@ -531,13 +595,23 @@ impl Transpile for AssignStatement {
             )]);
         }
 
-        // Optimization: detect `X := X & expr` and generate in-place append
-        if self.identifier.num_index_dimensions() == 0
-            && let Some(result) = value
-                .inner
-                .try_inplace_append(&self.identifier.name, context)
+        // `X := X & expr` / `X(I) := X(I) & expr` → push/extend on the cell
+        if let Ok((dest, idx_serials, mut dest_vars)) =
+            assignment_append_dest(&self.identifier, context)
+            && let Some(result) = value.inner.try_inplace_append(
+                &self.identifier.name,
+                &idx_serials,
+                &dest,
+                context,
+            )
         {
-            return result;
+            return match result {
+                Ok(mut out) => {
+                    out.requested_variables.append(&mut dest_vars);
+                    Ok(out)
+                }
+                Err(e) => Err(e),
+            };
         }
 
         let mut requested_variables = BTreeSet::new();
@@ -574,7 +648,42 @@ impl Transpile for AssignStatement {
         };
         requested_variables.extend(value_output.requested_variables.iter().cloned());
 
-        let serialized_value = value_output.as_owned(&variable_type);
+        let num_indices = self.identifier.num_index_dimensions();
+        let container_ty = context
+            .variables
+            .get(&self.identifier.name)
+            .map(|v| v.data.r#type);
+        let container_rosyvalue = container_ty
+            .as_ref()
+            .map(|t| t.is_any() || t.as_rust_type().contains("RosyValue"))
+            .unwrap_or(false);
+        let serialized_value = if (variable_type.is_any()
+            || (num_indices > 0 && container_rosyvalue))
+            && !value_type.is_any()
+        {
+            format!("RosyValue::from({})", value_output.as_owned(&value_type))
+        } else if (variable_type.is_any() || (num_indices > 0 && container_rosyvalue))
+            && value_type.is_any()
+        {
+            let owned = value_output.as_owned(&value_type);
+            if owned.contains("RosyValue") {
+                owned
+            } else {
+                format!("RosyValue::from({owned})")
+            }
+        } else if !variable_type.is_any() && value_type.is_any() {
+            format!(
+                "({}).expect_{}()?",
+                value_output.as_owned(&value_type),
+                variable_type.base_type.to_string().to_lowercase()
+            )
+        } else if variable_type == RosyType::RE() && value_type != RosyType::RE() {
+            format!("rosy_as_f64(&({}))", value_output.as_owned(&value_type))
+        } else if variable_type == RosyType::ST() && value_type != RosyType::ST() {
+            format!("RosyST::rosy_to_string(&{})", value_output.as_ref())
+        } else {
+            value_output.as_owned(&variable_type)
+        };
 
         // Serialize the entire assignment
         let var_scope = context
@@ -611,7 +720,6 @@ impl Transpile for AssignStatement {
         // Local `T` LHS no aliasing exists, so we skip the wrap.
         let needs_self_ref_temp = !dereference.is_empty();
 
-        let num_indices = self.identifier.num_index_dimensions();
         let serialization = if num_indices > 0 {
             // Indexed assignment: build a rosy_get_mut() chain.
             // The mutable borrow is passed into the function, avoiding
@@ -637,9 +745,10 @@ impl Transpile for AssignStatement {
             // Build nested rosy_get_mut(container, idx, "name") calls.
             // Local scope: owned value, needs &mut to borrow mutably.
             // Arg/Higher scope: already &mut T, pass directly (auto-reborrows).
+            let rust_name = context.rust_ident(&self.identifier.name);
             let mut_ref = match var_scope {
-                VariableScope::Local => format!("&mut {}", self.identifier.name),
-                VariableScope::Arg | VariableScope::Higher => self.identifier.name.clone(),
+                VariableScope::Local => format!("&mut {rust_name}"),
+                VariableScope::Arg | VariableScope::Higher => rust_name,
             };
             let mut result = mut_ref;
             for idx_expr in &idx_exprs {
@@ -652,12 +761,12 @@ impl Transpile for AssignStatement {
             }
             if needs_self_ref_temp {
                 format!(
-                    "{{ let __rosy_self_ref_tmp = {value}; *{lhs} = __rosy_self_ref_tmp; }}",
+                    "{{ let __rosy_self_ref_tmp = {value}; *{lhs} = (__rosy_self_ref_tmp).into(); }}",
                     value = serialized_value,
                     lhs = result,
                 )
             } else {
-                format!("*{} = {};", result, serialized_value)
+                format!("*{} = ({}).into();", result, serialized_value)
             }
         } else if needs_self_ref_temp {
             format!(
@@ -682,4 +791,50 @@ impl Transpile for AssignStatement {
             Err(errors)
         }
     }
+}
+
+fn assignment_append_dest(
+    ident: &VariableIdentifier,
+    context: &mut TranspilationInputContext,
+) -> Result<(String, Vec<String>, BTreeSet<String>), Vec<Error>> {
+    let mut requested_variables = BTreeSet::new();
+    let mut idx_serials = Vec::new();
+    for index_expr in ident.flat_indices() {
+        let output = index_expr.transpile(context).map_err(|e| {
+            e.into_iter()
+                .map(|err| {
+                    err.context(format!(
+                        "...while transpiling index expression for assignment to '{}'",
+                        ident.name
+                    ))
+                })
+                .collect::<Vec<Error>>()
+        })?;
+        requested_variables.extend(output.requested_variables.iter().cloned());
+        idx_serials.push(output.as_value());
+    }
+    let scope = context.variables.get(&ident.name).map(|v| v.scope.clone());
+    if matches!(scope, Some(VariableScope::Higher)) {
+        requested_variables.insert(ident.name.clone());
+    }
+    let rust_name = context.rust_ident(&ident.name);
+    let dest = if idx_serials.is_empty() {
+        match scope {
+            Some(VariableScope::Arg | VariableScope::Higher) => format!("(*{rust_name})"),
+            _ => format!("({rust_name})"),
+        }
+    } else {
+        let mut cell = match scope {
+            Some(VariableScope::Local) | None => format!("&mut {rust_name}"),
+            Some(VariableScope::Arg | VariableScope::Higher) => rust_name,
+        };
+        for idx in &idx_serials {
+            cell = format!(
+                "rosy_get_mut({cell}, {idx}, \"{name}\")",
+                name = ident.name
+            );
+        }
+        cell
+    };
+    Ok((dest, idx_serials, requested_variables))
 }

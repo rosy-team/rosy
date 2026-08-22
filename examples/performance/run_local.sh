@@ -21,6 +21,18 @@ TIER_FILTER=""
 OPTIMIZED=false
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 T4_TIMEOUT=30
+# GNU timeout is missing on stock macOS; gtimeout (coreutils) or perl alarm.
+run_timeout() {
+    local secs="$1"
+    shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$secs" "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        gtimeout "$secs" "$@"
+    else
+        perl -e 'alarm shift; exec @ARGV' "$secs" "$@"
+    fi
+}
 
 # ── Parse Arguments ───────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -51,6 +63,11 @@ if [[ -n "$COSY_BIN" ]]; then
 fi
 if [[ -n "$COSY_BIN" ]] && [[ -x "$COSY_BIN" ]]; then
     HAS_COSY=true
+    if strings "$COSY_BIN" 2>/dev/null | grep -q rosy_lib; then
+        echo "WARNING: $COSY_BIN looks like a Rosy binary (contains rosy_lib), not the COSY INFINITY interpreter."
+        echo "Times from this binary are not COSY. Pass the Fortran COSY executable to --cosy."
+        HAS_COSY=false
+    fi
 elif [[ -n "$COSY_BIN" ]]; then
     echo "WARNING: COSY binary not found/executable at '$COSY_BIN'"
     echo "Running Rosy-only benchmarks."
@@ -143,7 +160,7 @@ for dir in "$SCRIPT_DIR"/non_mpi/*/; do
         # ── Run Rosy (T4 gets timeout) ────────────────────────────────
         rosy_start=$(date +%s%N)
         if [[ "$tier" == "4" ]]; then
-            timeout $T4_TIMEOUT "$dir/bench_rosy_t${tier}" > "$dir/rosy_t${tier}_output.txt" 2>&1 || true
+            run_timeout $T4_TIMEOUT "$dir/bench_rosy_t${tier}" > "$dir/rosy_t${tier}_output.txt" 2>&1 || true
         else
             "$dir/bench_rosy_t${tier}" > "$dir/rosy_t${tier}_output.txt" 2>&1 || true
         fi
@@ -158,7 +175,7 @@ for dir in "$SCRIPT_DIR"/non_mpi/*/; do
             cosy_fox_base="bench_t${tier}"
             cosy_start=$(date +%s%N)
             if [[ "$tier" == "4" ]]; then
-                (cd "$dir" && echo "$cosy_fox_base" | timeout $T4_TIMEOUT "$COSY_BIN") > "$dir/cosy_t${tier}_output.txt" 2>&1 || true
+                (cd "$dir" && echo "$cosy_fox_base" | run_timeout $T4_TIMEOUT "$COSY_BIN") > "$dir/cosy_t${tier}_output.txt" 2>&1 || true
             else
                 (cd "$dir" && echo "$cosy_fox_base" | "$COSY_BIN") > "$dir/cosy_t${tier}_output.txt" 2>&1 || true
             fi
@@ -166,7 +183,7 @@ for dir in "$SCRIPT_DIR"/non_mpi/*/; do
             cosy_ms=$(awk "BEGIN { printf \"%.2f\", ($cosy_end - $cosy_start) / 1000000 }")
 
             # Check if COSY reported errors (compilation or runtime)
-            if grep -qE "### ERROR|ERROR OCCURED" "$dir/cosy_t${tier}_output.txt" 2>/dev/null; then
+            if [[ ! -s "$dir/cosy_t${tier}_output.txt" ]] || grep -qE "### ERROR|ERROR OCCURED|cannot execute|Exec format error|No such file" "$dir/cosy_t${tier}_output.txt" 2>/dev/null; then
                 printf "\r%80s\r" "" >&2
                 printf "%-28s %-4s %11.2f %11s %10s\n" "$name" "$tier_label" "$rosy_ms" "COSY ERR" "N/A"
             else

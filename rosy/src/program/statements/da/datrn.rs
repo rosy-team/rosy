@@ -136,7 +136,7 @@ impl Transpile for DatrnStatement {
         requested_variables.extend(out_output.requested_variables.clone());
 
         let serialization = format!(
-            "rosy_lib::core::daprv::rosy_datrn({}, {}, {}, {} as usize, {} as usize, {})?;",
+            "rosy_lib::core::daprv::rosy_datrn({}, {}, {}, rosy_as_usize(&({})), rosy_as_usize(&({})), {})?;",
             input_output.as_ref(),
             scales_output.as_ref(),
             shifts_output.as_ref(),

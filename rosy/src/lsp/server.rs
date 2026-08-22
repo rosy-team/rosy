@@ -27,8 +27,6 @@ pub struct RosyLanguageServer {
 
 impl RosyLanguageServer {
     pub fn new(client: Client) -> Self {
-        crate::syntax_config::set_cosy_syntax(false);
-
         RosyLanguageServer {
             client,
             documents: Mutex::new(HashMap::new()),

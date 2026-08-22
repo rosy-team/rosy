@@ -16,7 +16,7 @@ use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::{
-    ast::{CosyParser, FromRule, Rule},
+    ast::{FromRule, Rule},
     program::statements::Statement,
     transpile::*,
 };
@@ -27,8 +27,6 @@ pub mod statements;
 pub mod syntax_config;
 use anyhow::{Context, Error, Result, bail};
 use manifest::RosyToml;
-use pest::Parser;
-
 /// Discriminator for the `MODULE` statement's source-type literal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModuleSourceType {
@@ -124,43 +122,7 @@ impl Program {
                     base.join(&include_path)
                 };
 
-                // Resolve to a concrete `mod.rosy` file:
-                //   (1) `resolved` is a regular file        → use it (current behavior)
-                //   (2) `resolved` is a directory           → look for `<dir>/mod.rosy`
-                //   (3) `resolved` doesn't exist            → still try `<resolved>/mod.rosy`
-                //                                             (so `INCLUDE 'libcosy';` works
-                //                                              before any `libcosy.rosy` exists)
-                let canonical = match std::fs::canonicalize(&resolved) {
-                    Ok(p) if p.is_file() => p,
-                    Ok(p) if p.is_dir() => {
-                        let mod_path = p.join("mod.rosy");
-                        std::fs::canonicalize(&mod_path).with_context(|| {
-                            format!(
-                                "INCLUDE '{}' resolved to directory '{}' but no 'mod.rosy' was found inside.\n\
-                                 Hint: create '{}/mod.rosy' or include a specific .rosy file.",
-                                include_path,
-                                p.display(),
-                                p.display(),
-                            )
-                        })?
-                    }
-                    Ok(p) => bail!(
-                        "INCLUDE '{}' resolved to '{}' which is neither a regular file nor a directory",
-                        include_path,
-                        p.display(),
-                    ),
-                    Err(_) => {
-                        let mod_path = resolved.join("mod.rosy");
-                        std::fs::canonicalize(&mod_path).with_context(|| {
-                            format!(
-                                "Failed to resolve INCLUDE path '{}' — tried '{}' (file) and '{}/mod.rosy' (directory module)",
-                                include_path,
-                                resolved.display(),
-                                resolved.display(),
-                            )
-                        })?
-                    }
-                };
+                let canonical = Self::resolve_include_file(&resolved, &include_path)?;
 
                 Self::splice_resolved_file(canonical, &mut statements, tracker)?;
             } else if stmt.as_rule() == Rule::module_stmt {
@@ -176,6 +138,58 @@ impl Program {
         }
 
         Ok(Some(Program { statements }))
+    }
+
+    fn is_include_source(path: &Path) -> bool {
+        match path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.to_ascii_lowercase())
+        {
+            Some(ext) if ext == "fox" || ext == "rosy" => true,
+            Some(_) => false,
+            None => false,
+        }
+    }
+
+    /// Prefer `.fox` / `.rosy` over a same-stem binary (`INCLUDE 'COSY'` vs `./cosy`).
+    fn resolve_include_file(resolved: &Path, include_path: &str) -> Result<PathBuf> {
+        let mut candidates = Vec::new();
+        if Self::is_include_source(resolved) {
+            candidates.push(resolved.to_path_buf());
+        }
+        if let Some(parent) = resolved.parent() {
+            if let Some(stem) = resolved.file_name() {
+                for ext in [".fox", ".FOX", ".rosy", ".ROSY"] {
+                    candidates.push(parent.join(format!("{}{ext}", stem.to_string_lossy())));
+                }
+            }
+        }
+        if resolved.is_file() {
+            candidates.push(resolved.to_path_buf());
+        }
+        candidates.push(resolved.join("mod.rosy"));
+
+        let mut seen = HashSet::new();
+        for cand in candidates {
+            if !seen.insert(cand.clone()) {
+                continue;
+            }
+            if cand.is_file() && (Self::is_include_source(&cand) || cand.ends_with("mod.rosy")) {
+                return std::fs::canonicalize(&cand).with_context(|| {
+                    format!("Failed to canonicalize INCLUDE '{}'", cand.display())
+                });
+            }
+        }
+
+        bail!(
+            "Failed to resolve INCLUDE path '{}' — tried '{}', '{}.fox', '{}.rosy', and '{}/mod.rosy'",
+            include_path,
+            resolved.display(),
+            resolved.display(),
+            resolved.display(),
+            resolved.display(),
+        )
     }
 
     /// Read, parse, and splice a resolved canonical file into `statements`,
@@ -212,16 +226,16 @@ impl Program {
         let included_source = std::fs::read_to_string(&canonical)
             .with_context(|| format!("Failed to read included file '{}'", canonical.display()))?;
 
-        let mut pairs = CosyParser::parse(Rule::program, &included_source)
-            .with_context(|| format!("Failed to parse included file '{}'", canonical.display()))?;
-
-        let program_pair = pairs
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("Empty parse result for '{}'", canonical.display()))?;
-
         tracker.in_progress.insert(canonical.clone());
-        let included_program =
-            Program::from_rule_with_includes(program_pair, Some(&canonical), tracker)?;
+        let included_program = crate::syntax_config::with_path(Some(&canonical), || {
+            let mut pairs = crate::ast::parse_include(&included_source).with_context(|| {
+                format!("Failed to parse included file '{}'", canonical.display())
+            })?;
+            let program_pair = pairs.next().ok_or_else(|| {
+                anyhow::anyhow!("Empty parse result for '{}'", canonical.display())
+            })?;
+            Program::from_rule_with_includes(program_pair, Some(&canonical), tracker)
+        })?;
         tracker.in_progress.remove(&canonical);
         tracker.completed.insert(canonical.clone());
 
@@ -551,8 +565,9 @@ mod include_resolution_tests {
     use tempfile::TempDir;
 
     fn parse_and_resolve(source: &str, source_path: &Path) -> Result<Program> {
-        let mut pairs = CosyParser::parse(Rule::program, source)
-            .map_err(|e| anyhow::anyhow!("parse error: {e}"))?;
+        crate::syntax_config::apply_from_path(Some(source_path));
+        let mut pairs =
+            crate::ast::parse_source(source).map_err(|e| anyhow::anyhow!("parse error: {e}"))?;
         let pair = pairs.next().ok_or_else(|| anyhow::anyhow!("empty parse"))?;
         Program::from_rule_with_includes(pair, Some(source_path), &mut IncludeTracker::default())?
             .ok_or_else(|| anyhow::anyhow!("from_rule_with_includes returned None"))

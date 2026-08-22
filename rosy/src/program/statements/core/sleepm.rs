@@ -64,7 +64,7 @@ impl Transpile for SleepmStatement {
         requested_variables.extend(duration_output.requested_variables.iter().cloned());
 
         let serialization = format!(
-            "std::thread::sleep(std::time::Duration::from_millis({} as u64));",
+            "std::thread::sleep(std::time::Duration::from_millis(rosy_as_u64(&({}))));",
             duration_output.as_value(),
         );
 

@@ -19,3 +19,9 @@ impl RosyTRIM for ST {
         Ok(self.trim_end_matches(' ').to_string())
     }
 }
+
+impl RosyTRIM for crate::RosyValue {
+    fn rosy_trim(&self) -> anyhow::Result<ST> {
+        self.clone().expect_st()?.rosy_trim()
+    }
+}

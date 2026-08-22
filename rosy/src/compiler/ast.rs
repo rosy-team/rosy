@@ -29,14 +29,31 @@
 //! parse pair.
 
 use crate::program::expressions::Expr;
+use crate::program::syntax_config;
 use anyhow::{Context, Result, ensure};
+use pest::iterators::Pairs;
 use pest::pratt_parser::PrattParser;
+use pest::Parser as _;
 use pest_derive::Parser;
 use rosy_lib::{RosyBaseType, RosyType};
 
 #[derive(Parser)]
 #[grammar = "../assets/rosy.pest"]
 pub struct CosyParser;
+
+/// Rosy sources must be `BEGIN…END`. COSY mains and INCLUDE bodies are fragments.
+pub fn parse_source(source: &str) -> Result<Pairs<'_, Rule>, pest::error::Error<Rule>> {
+    let rule = if syntax_config::is_cosy_syntax() {
+        Rule::fragment
+    } else {
+        Rule::program
+    };
+    CosyParser::parse(rule, source)
+}
+
+pub fn parse_include(source: &str) -> Result<Pairs<'_, Rule>, pest::error::Error<Rule>> {
+    CosyParser::parse(Rule::fragment, source)
+}
 
 // Create a static PrattParser for expressions
 pub static PRATT_PARSER: std::sync::LazyLock<PrattParser<Rule>> = std::sync::LazyLock::new(|| {

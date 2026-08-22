@@ -88,7 +88,7 @@ impl Transpile for DaderStatement {
         let da_mut = da_output.as_mut_ref();
 
         let serialization = format!(
-            "rosy_lib::core::da_ops::rosy_dader({}, {} as usize)?;",
+            "rosy_lib::core::da_ops::rosy_dader({}, rosy_as_usize(&({})))?;",
             da_mut,
             index_output.as_value(),
         );

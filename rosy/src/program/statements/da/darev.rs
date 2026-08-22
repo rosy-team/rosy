@@ -124,7 +124,7 @@ impl Transpile for DarevStatement {
         requested_variables.extend(unit_output.requested_variables.iter().cloned());
 
         let serialization = format!(
-            "rosy_lib::core::daprv::rosy_darev({}, {} as usize, {} as usize, {} as usize, {} as u64)?;",
+            "rosy_lib::core::daprv::rosy_darev({}, rosy_as_usize(&({})), rosy_as_usize(&({})), rosy_as_usize(&({})), rosy_as_u64(&({})))?;",
             array_output.as_mut_ref(),
             num_comp_output.as_value(),
             max_vars_output.as_value(),

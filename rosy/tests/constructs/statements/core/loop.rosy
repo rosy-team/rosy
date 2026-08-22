@@ -1,7 +1,7 @@
 BEGIN;
     VARIABLE (RE) SUM;
     SUM := 0;
-    LOOP I 1 5;
+    LOOP I 1 + 0 5;
         SUM := SUM + I;
     ENDLOOP;
     WRITE 6 SUM;
@@ -16,7 +16,7 @@ PROCEDURE RUN;
     VARIABLE I 1;
     VARIABLE SUM 1;
     SUM := 0;
-    LOOP I 1 5;
+    LOOP I 1 + 0 5;
         SUM := SUM + I;
     ENDLOOP;
     WRITE 6 SUM;

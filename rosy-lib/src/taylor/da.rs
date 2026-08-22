@@ -165,13 +165,25 @@ impl<T: DACoefficient> Clone for DA<T> {
             return Self { coeffs: Vec::new(), nonzero: Vec::new() };
         }
         let mut coeffs = T::pool_alloc(n);
-        for &i in &self.nonzero {
-            coeffs[i as usize] = self.coeffs[i as usize];
+        let mut nonzero = Vec::with_capacity(self.nonzero.len());
+        if let Ok(rt) = get_runtime() {
+            let max_o = rt.config.max_order;
+            let orders = &rt.monomial_orders;
+            for &i in &self.nonzero {
+                let iu = i as usize;
+                if iu < orders.len() && orders[iu] as u32 > max_o {
+                    continue;
+                }
+                coeffs[iu] = self.coeffs[iu];
+                nonzero.push(i);
+            }
+        } else {
+            for &i in &self.nonzero {
+                coeffs[i as usize] = self.coeffs[i as usize];
+                nonzero.push(i);
+            }
         }
-        Self {
-            coeffs,
-            nonzero: self.nonzero.clone(),
-        }
+        Self { coeffs, nonzero }
     }
 }
 

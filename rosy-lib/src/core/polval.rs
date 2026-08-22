@@ -10,6 +10,7 @@
 //! and returns an error for other argument types at runtime.
 
 use crate::taylor::{CD, DA};
+use crate::RosyValue;
 use anyhow::{Result, bail};
 
 #[cfg(feature = "nightly-simd")]
@@ -29,30 +30,163 @@ const LANES: usize = 4;
 /// * `na`       - number of arguments
 /// * `r_array`  - output vector, must be large enough to hold NR results
 /// * `nr`       - number of results to write
-pub fn rosy_polval_re(
-    _l: f64,
-    p_array: &[DA],
-    np: usize,
-    a_array: &[f64],
-    na: usize,
-    r_array: &mut Vec<f64>,
-    nr: usize,
+pub trait PolvalAnySrc {
+    fn polval_any_cells(&self) -> Vec<RosyValue>;
+}
+impl PolvalAnySrc for Vec<RosyValue> {
+    fn polval_any_cells(&self) -> Vec<RosyValue> {
+        self.clone()
+    }
+}
+impl PolvalAnySrc for RosyValue {
+    fn polval_any_cells(&self) -> Vec<RosyValue> {
+        match self {
+            RosyValue::Arr(v) => v.clone(),
+            other => vec![other.clone()],
+        }
+    }
+}
+impl PolvalAnySrc for [RosyValue] {
+    fn polval_any_cells(&self) -> Vec<RosyValue> {
+        self.to_vec()
+    }
+}
+
+pub trait PolvalAnyDst {
+    fn store_polval_any(&mut self, v: Vec<RosyValue>);
+}
+impl PolvalAnyDst for Vec<RosyValue> {
+    fn store_polval_any(&mut self, v: Vec<RosyValue>) {
+        if v.len() > self.len() {
+            self.resize(v.len(), RosyValue::RE(0.0));
+        }
+        for (i, x) in v.into_iter().enumerate() {
+            self[i] = x;
+        }
+    }
+}
+impl PolvalAnyDst for RosyValue {
+    fn store_polval_any(&mut self, v: Vec<RosyValue>) {
+        if v.len() == 1 {
+            *self = v.into_iter().next().unwrap();
+        } else {
+            *self = RosyValue::Arr(v);
+        }
+    }
+}
+
+fn rosy_value_is_cd(v: &RosyValue) -> bool {
+    match v {
+        RosyValue::CD(_) | RosyValue::CM(_) => true,
+        RosyValue::Arr(xs) => xs.iter().any(rosy_value_is_cd),
+        _ => false,
+    }
+}
+
+/// Fox ANY arrays: pick DA compose, CD compose, particle VE, or scalar RE.
+pub fn rosy_polval_any(
+    l: impl crate::IntoF64,
+    p_array: &(impl crate::PolvalDaSrc + PolvalAnySrc),
+    np: impl crate::IntoF64,
+    a_array: &impl PolvalAnySrc,
+    na: impl crate::IntoF64,
+    r_array: &mut impl PolvalAnyDst,
+    nr: impl crate::IntoF64,
 ) -> Result<()> {
+    let a_cells = a_array.polval_any_cells();
+    let p_cells = p_array.polval_any_cells();
+    if p_cells.iter().any(rosy_value_is_cd) || a_cells.iter().any(rosy_value_is_cd) {
+        let mut out: Vec<CD> = Vec::new();
+        rosy_polval_cd(l, &p_cells, np, &a_cells, na, &mut out, nr)?;
+        r_array.store_polval_any(out.into_iter().map(RosyValue::CD).collect());
+        return Ok(());
+    }
+    match a_cells.first() {
+        Some(RosyValue::DA(_)) => {
+            let p = p_array.to_da_vec();
+            let a: Vec<DA> = a_cells
+                .iter()
+                .map(|x| x.clone().expect_da().unwrap_or_else(|_| DA::zero()))
+                .collect();
+            let mut out = Vec::new();
+            rosy_polval_da(
+                l.into_f64(),
+                &p,
+                crate::rosy_as_usize(&np.into_f64()),
+                &a,
+                crate::rosy_as_usize(&na.into_f64()),
+                &mut out,
+                crate::rosy_as_usize(&nr.into_f64()),
+            )?;
+            r_array.store_polval_any(out.into_iter().map(RosyValue::DA).collect());
+            Ok(())
+        }
+        Some(RosyValue::Arr(_)) | Some(RosyValue::VE(_)) => {
+            let p = p_array.to_da_vec();
+            let a: Vec<Vec<f64>> = a_cells
+                .iter()
+                .map(|c| match c {
+                    RosyValue::VE(v) => v.clone(),
+                    RosyValue::Arr(v) => v.iter().map(|x| x.as_f64()).collect(),
+                    other => vec![other.as_f64()],
+                })
+                .collect();
+            let mut out: Vec<Vec<f64>> = Vec::new();
+            rosy_polval_ve(
+                l.into_f64(),
+                &p,
+                crate::rosy_as_usize(&np.into_f64()),
+                &a,
+                crate::rosy_as_usize(&na.into_f64()),
+                &mut out,
+                crate::rosy_as_usize(&nr.into_f64()),
+            )?;
+            r_array.store_polval_any(
+                out.into_iter()
+                    .map(|col| RosyValue::Arr(col.into_iter().map(RosyValue::RE).collect()))
+                    .collect(),
+            );
+            Ok(())
+        }
+        _ => {
+            let mut out: Vec<RosyValue> = Vec::new();
+            rosy_polval_re(l, p_array, np, &a_cells, na, &mut out, nr)?;
+            r_array.store_polval_any(out);
+            Ok(())
+        }
+    }
+}
+
+pub fn rosy_polval_re(
+    _l: impl crate::IntoF64,
+    p_array: &impl crate::PolvalDaSrc,
+    np: impl crate::IntoF64,
+    a_array: &(impl crate::PolvalReSrc + ?Sized),
+    na: impl crate::IntoF64,
+    r_array: &mut impl crate::PolvalReDst,
+    nr: impl crate::IntoF64,
+) -> Result<()> {
+    let p_array = p_array.to_da_vec();
+    let a_array = a_array.to_re_vec();
+    let np = crate::rosy_as_usize(&np.into_f64());
+    let na = crate::rosy_as_usize(&na.into_f64());
+    let nr = crate::rosy_as_usize(&nr.into_f64());
     if np < nr {
         bail!("POLVAL: NP ({}) must be >= NR ({})", np, nr);
     }
 
-    // Ensure result vector is large enough
-    while r_array.len() < nr {
-        r_array.push(0.0);
+    let mut out = r_array.load_re_vec();
+    while out.len() < nr {
+        out.push(0.0);
     }
 
     for i in 0..nr {
         if i >= p_array.len() {
             bail!("POLVAL: polynomial array too short at index {}", i);
         }
-        r_array[i] = evaluate_da_at_re(&p_array[i], a_array, na)?;
+        out[i] = evaluate_da_at_re(&p_array[i], &a_array, na)?;
     }
+    r_array.store_re_vec(out);
 
     Ok(())
 }
@@ -340,14 +474,19 @@ fn evaluate_da_at_da(poly: &DA, args: &[DA], na: usize) -> Result<DA> {
 /// `Complex64` implements that trait, so the same `*` / `+` / `clone()`
 /// API works through the type alias.
 pub fn rosy_polval_cd(
-    _l: f64,
-    p_array: &[CD],
-    np: usize,
-    a_array: &[CD],
-    na: usize,
-    r_array: &mut Vec<CD>,
-    nr: usize,
+    _l: impl crate::IntoF64,
+    p_array: &impl crate::AsCdRef,
+    np: impl crate::IntoF64,
+    a_array: &impl crate::AsCdRef,
+    na: impl crate::IntoF64,
+    r_array: &mut impl crate::AsCdDst,
+    nr: impl crate::IntoF64,
 ) -> Result<()> {
+    let p_array = p_array.as_cd_vec();
+    let a_array = a_array.as_cd_vec();
+    let np = crate::rosy_as_usize(&np.into_f64());
+    let na = crate::rosy_as_usize(&na.into_f64());
+    let nr = crate::rosy_as_usize(&nr.into_f64());
     if np < nr {
         bail!("CPOLVAL: NP ({}) must be >= NR ({})", np, nr);
     }
@@ -359,16 +498,18 @@ pub fn rosy_polval_cd(
         );
     }
 
-    while r_array.len() < nr {
-        r_array.push(CD::zero());
+    let mut out = r_array.load_cd_vec();
+    while out.len() < nr {
+        out.push(CD::zero());
     }
 
     for i in 0..nr {
         if i >= p_array.len() {
             bail!("CPOLVAL: polynomial array too short at index {}", i);
         }
-        r_array[i] = evaluate_cd_at_cd(&p_array[i], a_array, na)?;
+        out[i] = evaluate_cd_at_cd(&p_array[i], &a_array, na)?;
     }
+    r_array.store_cd_vec(out);
 
     Ok(())
 }
@@ -516,4 +657,37 @@ fn evaluate_da_at_re(poly: &DA, args: &[f64], na: usize) -> Result<f64> {
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::RosyValue;
+
+    #[serial_test::serial]
+    #[test]
+    fn polval_any_composes_da_map_on_cd_args() -> anyhow::Result<()> {
+        crate::taylor::cleanup_taylor();
+        crate::taylor::init_taylor(2, 2)?;
+        let p = vec![RosyValue::DA(DA::variable(1)?)];
+        let a = vec![
+            RosyValue::CD(CD::from_da(&DA::variable(2)?)),
+            RosyValue::CD(CD::from_da(&DA::variable(1)?)),
+        ];
+        let mut out = RosyValue::RE(0.0);
+        rosy_polval_any(1f64, &p, 1f64, &a, 2f64, &mut out, 1f64)?;
+        let RosyValue::CD(cd) = out else {
+            panic!("expected CD");
+        };
+        // P = x1, A = (x2, x1) as CD → result is the CD for x2
+        let mut x2_coeff = 0.0;
+        for (mono, c) in cd.real_part().coeffs_iter() {
+            if mono.exponents.get(1).copied() == Some(1) && mono.total_order == 1 {
+                x2_coeff = c;
+            }
+        }
+        assert!((x2_coeff - 1.0).abs() < 1e-12, "x2 coeff {x2_coeff}");
+        crate::taylor::cleanup_taylor();
+        Ok(())
+    }
 }

@@ -131,6 +131,11 @@ impl TranspileableExpr for VariableIdentifier {
 
         let num_indices = self.num_index_dimensions();
         let mut var_type = var_data.data.r#type;
+        if var_type.is_any() {
+            let peel = num_indices.min(var_type.dimensions);
+            var_type.dimensions -= peel;
+            return Ok(var_type);
+        }
 
         // Apply indices in cascade: each index peels one declared dimension
         // first, then if any indices remain and the base type is VE with
@@ -225,7 +230,10 @@ impl Transpile for VariableIdentifier {
                 ))]
             })?;
             let expected_type = RosyType::RE();
-            if index_expr_type != expected_type {
+            if index_expr_type != expected_type
+                && !index_expr_type.is_any()
+                && index_expr_type != RosyType::ST()
+            {
                 return Err(vec![anyhow::anyhow!(
                     "Indexing expression {i} when indexing {name} was {index_expr_type}, when it should be {expected_type}!"
                 )]);
@@ -234,7 +242,17 @@ impl Transpile for VariableIdentifier {
             // Transpile it
             match index_expr.transpile(context) {
                 Ok(output) => {
-                    transpiled_indices.push(output.as_value());
+                    let idx = if index_expr_type.is_any() {
+                        format!("({}).expect_re()?", output.as_owned(&RosyType::ANY()))
+                    } else if index_expr_type == RosyType::ST() {
+                        format!(
+                            "<f64 as rosy_lib::intrinsics::from_st::RosyFromST>::rosy_from_st({})?",
+                            output.as_owned(&RosyType::ST())
+                        )
+                    } else {
+                        output.as_value()
+                    };
+                    transpiled_indices.push(idx);
                     requested_variables.extend(output.requested_variables);
                 }
                 Err(vec_err) => {
@@ -264,14 +282,15 @@ impl Transpile for VariableIdentifier {
         }
 
         // Build the serialization: either bare name (no indices) or
-        // nested rosy_get() calls that return &T with 1-based bounds checking.
+        // nested rosy_get() calls that return an owned cell.
+        let rust_name = context.rust_ident(&self.name);
         let serialization = if transpiled_indices.is_empty() {
-            self.name.clone()
+            rust_name
         } else {
-            let mut result = format!("&{}", self.name);
+            let mut result = rust_name;
             for idx_expr in &transpiled_indices {
                 result = format!(
-                    "rosy_get({result}, {expr}, \"{name}\")",
+                    "rosy_get(&({result}), {expr}, \"{name}\")",
                     result = result,
                     expr = idx_expr,
                     name = self.name,
@@ -279,11 +298,21 @@ impl Transpile for VariableIdentifier {
             }
             result
         };
+        let value_kind = match context
+            .variables
+            .get(&self.name)
+            .map(|v| v.scope.clone())
+        {
+            Some(VariableScope::Arg | VariableScope::Higher) if transpiled_indices.is_empty() => {
+                ValueKind::Ref
+            }
+            _ => ValueKind::Owned,
+        };
         if errors.is_empty() {
             Ok(TranspilationOutput {
                 serialization,
                 requested_variables,
-                ..Default::default()
+                value_kind,
             })
         } else {
             Err(errors)

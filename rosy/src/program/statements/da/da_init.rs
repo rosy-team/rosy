@@ -23,7 +23,8 @@ use crate::{
     program::expressions::Expr,
     syntax_config,
     transpile::{
-        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement, ValueKind,
     },
 };
 
@@ -72,19 +73,16 @@ impl FromRule for DAInitStatement {
         let mut output_unit = None;
         let mut num_monomials_out = None;
 
-        if let Some(third_pair) = inner.next().filter(|p| p.as_rule() == Rule::expr) {
+        if let Some(third_pair) = inner.next().filter(|p| p.as_rule() != Rule::semicolon) {
             let third_expr = Expr::from_rule(third_pair)
                 .context("Failed to build 3rd expression in DAINI statement!")?;
             output_unit = third_expr;
 
-            // Parse 4th argument: either `daini_nm_zero` (literal 0, no writeback)
-            // or `expr` (variable to receive monomial count)
-            if let Some(fourth_pair) = inner.next() {
+            // 4th: `daini_nm_zero` (literal 0, no writeback) or an arg/expr
+            if let Some(fourth_pair) = inner.next().filter(|p| p.as_rule() != Rule::semicolon) {
                 match fourth_pair.as_rule() {
-                    Rule::daini_nm_zero => {
-                        // Literal 0 — no writeback needed
-                    }
-                    Rule::expr => {
+                    Rule::daini_nm_zero => {}
+                    Rule::expr | Rule::arg => {
                         let fourth_expr = Expr::from_rule(fourth_pair)
                             .context("Failed to build 4th expression in DAINI statement!")?;
                         num_monomials_out = fourth_expr;
@@ -98,14 +96,14 @@ impl FromRule for DAInitStatement {
                 anyhow::bail!(
                     "COSY syntax mode requires all 4 arguments in DAINI statements.\n\
                      Expected: DAINI <order> <nvars> <output_unit> <num_monomials> ;\n\
-                     Hint: If you intended to use Rosy syntax, remove the `--cosy-syntax` flag."
+                     Hint: Rosy files (`.rosy`) use DAINI with 2 or 3 arguments."
                 );
             }
         } else if syntax_config::is_cosy_syntax() {
             anyhow::bail!(
                 "COSY syntax mode requires all 4 arguments in DAINI statements.\n\
                  Expected: DAINI <order> <nvars> <output_unit> <num_monomials> ;\n\
-                 Hint: If you intended to use Rosy syntax, remove the `--cosy-syntax` flag."
+                 Hint: Rosy files (`.rosy`) use DAINI with 2 or 3 arguments."
             );
         }
 
@@ -146,7 +144,7 @@ impl Transpile for DAInitStatement {
 
         // Base: init DA and capture monomial count
         let mut serialization = format!(
-            "taylor::cleanup_taylor();\n\t\tlet __daini_nm = taylor::init_taylor({} as u32, {} as usize)?;",
+            "taylor::cleanup_taylor();\n\t\tlet __daini_nm = taylor::init_taylor(rosy_as_u32(&({})), rosy_as_usize(&({})))?;",
             order_output.as_value(),
             num_vars_output.as_value()
         );
@@ -173,7 +171,28 @@ impl Transpile for DAInitStatement {
                     .collect::<Vec<_>>()
             })?;
             requested_variables.extend(nm_o.requested_variables.iter().cloned());
-            serialization.push_str(&format!("\n\t\t{} = __daini_nm as f64;", nm_o.as_value()));
+            let dest = match nm_o.value_kind {
+                ValueKind::Owned => nm_o.serialization.clone(),
+                ValueKind::Ref => {
+                    if let Some(inner) = nm_o.serialization.strip_prefix('&') {
+                        inner.to_string()
+                    } else {
+                        format!("*{}", nm_o.serialization)
+                    }
+                }
+            };
+            let rhs = if self
+                .num_monomials_out
+                .as_ref()
+                .and_then(|e| e.type_of(context).ok())
+                .map(|t| t.is_any())
+                .unwrap_or(false)
+            {
+                "RosyValue::from(__daini_nm as f64)"
+            } else {
+                "__daini_nm as f64"
+            };
+            serialization.push_str(&format!("\n\t\t{dest} = {rhs};"));
         }
 
         Ok(TranspilationOutput {

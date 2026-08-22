@@ -24,6 +24,7 @@ use crate::{
     program::expressions::{Expr, core::variable_identifier::VariableIdentifier},
     transpile::*,
 };
+use rosy_lib::RosyType;
 
 #[derive(Debug)]
 pub struct StcreStatement {
@@ -102,11 +103,22 @@ impl Transpile for StcreStatement {
             }
         };
 
+        let dest_ty = context
+            .variables
+            .get(&self.output_var.name)
+            .map(|v| v.data.r#type)
+            .unwrap_or_else(RosyType::RE);
+        let rhs = format!("rosy_as_f64(&({}))", string_output.as_value());
+        let rhs = if dest_ty.is_any() {
+            format!("RosyValue::from({rhs})")
+        } else {
+            rhs
+        };
         let serialization = format!(
-            "{deref}{dest} = {src}.trim().parse::<f64>().expect(\"STCRE: failed to parse string as real number\");",
+            "{deref}{dest} = {rhs};",
             deref = dereference,
             dest = output_id_output.serialization,
-            src = string_output.as_value(),
+            rhs = rhs,
         );
 
         Ok(TranspilationOutput {

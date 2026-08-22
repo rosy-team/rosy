@@ -17,13 +17,18 @@ use crate::taylor::Monomial;
 /// - `current_vars`: current number of main variables
 /// - `unit`: output unit number (6 = stdout, otherwise file unit)
 pub fn rosy_daprv(
-    array: &Vec<DA>,
-    num_components: usize,
-    _max_vars: usize,
-    current_vars: usize,
-    unit: u64,
+    array: &impl crate::AsDaRef,
+    num_components: impl crate::IntoF64,
+    _max_vars: impl crate::IntoF64,
+    current_vars: impl crate::IntoF64,
+    unit: impl crate::AsF64,
 ) -> Result<()> {
-    let output = format_daprv(array, num_components, _max_vars, current_vars)?;
+    let array = array.as_da_vec();
+    let num_components = crate::rosy_as_usize(&num_components.into_f64());
+    let _max_vars = crate::rosy_as_usize(&_max_vars.into_f64());
+    let current_vars = crate::rosy_as_usize(&current_vars.into_f64());
+    let unit = crate::rosy_as_u64(&unit);
+    let output = format_daprv(&array, num_components, _max_vars, current_vars)?;
 
     if unit == 6 {
         print!("{}", output);
@@ -109,12 +114,18 @@ fn format_daprv(
 /// - `current_vars`: current number of main variables  
 /// - `unit`: input unit number
 pub fn rosy_darev(
-    array: &mut Vec<DA>,
-    num_components: usize,
-    _max_vars: usize,
-    current_vars: usize,
-    unit: u64,
+    array: &mut impl crate::AsDaDst,
+    num_components: impl crate::IntoF64,
+    _max_vars: impl crate::IntoF64,
+    current_vars: impl crate::IntoF64,
+    unit: impl crate::AsF64,
 ) -> Result<()> {
+    let num_components = crate::rosy_as_usize(&num_components.into_f64());
+    let _max_vars = crate::rosy_as_usize(&_max_vars.into_f64());
+    let current_vars = crate::rosy_as_usize(&current_vars.into_f64());
+    let unit = crate::rosy_as_u64(&unit);
+    let dest = array;
+    let mut array = dest.load_da_vec();
     // Ensure array is big enough and zeroed
     while array.len() < num_components {
         array.push(DA::zero());
@@ -158,6 +169,7 @@ pub fn rosy_darev(
             }
         }
     }
+    dest.store_da_vec(array);
 
     Ok(())
 }
@@ -263,9 +275,17 @@ pub fn rosy_datrn(
 /// - `var_idx`: 1-based index of the variable to substitute
 /// - `c`:       constant value to substitute for xᵢ
 /// - `result`:  output DA array
-pub fn rosy_daplu(da_in: &Vec<DA>, var_idx: usize, c: f64, result: &mut Vec<DA>) -> Result<()> {
+pub fn rosy_daplu(
+    da_in: &impl crate::AsDaRef,
+    var_idx: impl crate::IntoF64,
+    c: impl crate::AsF64,
+    result: &mut impl crate::AsDaDst,
+) -> Result<()> {
     use rustc_hash::FxHashMap;
-    
+    let da_in = da_in.as_da_vec();
+    let var_idx = crate::rosy_as_usize(&var_idx.into_f64());
+    let c = c.as_f64_val();
+    let mut out = result.load_da_vec();
 
     let config = get_config().context("DAPLU requires DA to be initialized (call OV first)")?;
     let var_0idx = var_idx
@@ -275,7 +295,7 @@ pub fn rosy_daplu(da_in: &Vec<DA>, var_idx: usize, c: f64, result: &mut Vec<DA>)
         bail!("DAPLU: var_idx {} out of range [1, {}]", var_idx, config.num_vars);
     }
 
-    result.resize_with(da_in.len(), DA::zero);
+    out.resize_with(da_in.len(), DA::zero);
 
     for (comp_idx, da) in da_in.iter().enumerate() {
         let mut accum: FxHashMap<Monomial, f64> = FxHashMap::default();
@@ -295,8 +315,9 @@ pub fn rosy_daplu(da_in: &Vec<DA>, var_idx: usize, c: f64, result: &mut Vec<DA>)
             *accum.entry(new_mono).or_insert(0.0) += contribution;
         }
 
-        result[comp_idx] = DA::from_coeffs(accum);
+        out[comp_idx] = DA::from_coeffs(accum);
     }
+    result.store_da_vec(out);
 
     Ok(())
 }
@@ -310,8 +331,15 @@ pub fn rosy_daplu(da_in: &Vec<DA>, var_idx: usize, c: f64, result: &mut Vec<DA>)
 /// - `var_idx`: 1-based index of the variable to divide by
 /// - `da_in`:   source DA array
 /// - `result`:  output DA array
-pub fn rosy_dadiu(var_idx: usize, da_in: &Vec<DA>, result: &mut Vec<DA>) -> Result<()> {
+pub fn rosy_dadiu(
+    var_idx: impl crate::IntoF64,
+    da_in: &impl crate::AsDaRef,
+    result: &mut impl crate::AsDaDst,
+) -> Result<()> {
     use rustc_hash::FxHashMap;
+    let var_idx = crate::rosy_as_usize(&var_idx.into_f64());
+    let da_in = da_in.as_da_vec();
+    let mut out = result.load_da_vec();
 
     let config = get_config().context("DADIU requires DA to be initialized (call OV first)")?;
     let var_0idx = var_idx
@@ -321,7 +349,7 @@ pub fn rosy_dadiu(var_idx: usize, da_in: &Vec<DA>, result: &mut Vec<DA>) -> Resu
         bail!("DADIU: var_idx {} out of range [1, {}]", var_idx, config.num_vars);
     }
 
-    result.resize_with(da_in.len(), DA::zero);
+    out.resize_with(da_in.len(), DA::zero);
 
     for (comp_idx, da) in da_in.iter().enumerate() {
         let mut accum: FxHashMap<Monomial, f64> = FxHashMap::default();
@@ -340,8 +368,9 @@ pub fn rosy_dadiu(var_idx: usize, da_in: &Vec<DA>, result: &mut Vec<DA>) -> Resu
             *accum.entry(new_mono).or_insert(0.0) += coeff;
         }
 
-        result[comp_idx] = DA::from_coeffs(accum);
+        out[comp_idx] = DA::from_coeffs(accum);
     }
+    result.store_da_vec(out);
 
     Ok(())
 }
@@ -411,21 +440,35 @@ pub fn rosy_dadmu(var_i: usize, var_j: usize, da_in: &Vec<DA>, result: &mut Vec<
 /// - `da`:     source DA array (first component used)
 /// - `n`:      number of linear coefficients to extract
 /// - `linear`: output vector of size n
-pub fn rosy_dacliw(da: &Vec<DA>, n: usize, linear: &mut Vec<f64>) -> Result<()> {
+pub fn rosy_dacliw(
+    da: &impl crate::AsDaRef,
+    n: impl crate::IntoF64,
+    linear: &mut impl crate::PolvalReDst,
+) -> Result<()> {
     let config = get_config().context("DACLIW requires DA to be initialized (call OV first)")?;
+    let da = da.as_da_vec();
+    let n = crate::rosy_as_usize(&n.into_f64());
+    let zero;
+    let da_ref = match da.first() {
+        Some(d) => d,
+        None => {
+            zero = DA::zero();
+            &zero
+        }
+    };
 
-    let da_ref = da.first().context("DACLIW: DA vector is empty")?;
-
-    linear.resize(n, 0.0);
+    let mut out = linear.load_re_vec();
+    out.resize(n, 0.0);
 
     for i in 0..n {
         if i < config.num_vars {
             let mono = Monomial::variable(i);
-            linear[i] = da_ref.get_coeff(&mono);
+            out[i] = da_ref.get_coeff(&mono);
         } else {
-            linear[i] = 0.0;
+            out[i] = 0.0;
         }
     }
+    linear.store_re_vec(out);
 
     Ok(())
 }

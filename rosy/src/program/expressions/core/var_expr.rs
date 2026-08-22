@@ -36,6 +36,7 @@ use crate::program::expressions::Expr;
 use crate::transpile::TranspileableExpr;
 use crate::transpile::{
     TranspilationInputContext, TranspilationOutput, Transpile, ValueKind, VariableScope,
+    emit_unwrap_rosy_value, needs_box_as_any, types_compatible,
 };
 use anyhow::{Context, Error, Result, anyhow};
 use rosy_lib::RosyType;
@@ -110,10 +111,13 @@ impl VarExpr {
                             && num_args <= v.data.r#type.dimensions
                     };
 
+                    // COSY: a same-named array in scope shadows a function.
+                    // BM's MA(I,J) is the local Jacobian, not FUNCTION MA.
                     let route_as_call = match (func_accepts, var_accepts) {
-                        (true, _) => true,                    // function arity matches — prefer call
-                        (false, true) => false, // only variable fits — multi-dim index
-                        (false, false) => is_func || !is_var, // surface the more informative error downstream
+                        (true, true) => false,
+                        (true, false) => true,
+                        (false, true) => false,
+                        (false, false) => is_func || !is_var,
                     };
 
                     if route_as_call {
@@ -149,8 +153,10 @@ impl VarExpr {
                             // parentheses must be a function call (e.g. recursion where
                             // the function name doubles as the return variable).
                             let var_data = context.variables.get(&ident.name).unwrap();
-                            if var_data.data.r#type.dimensions > 0 {
-                                // Variable is an array — prefer indexing
+                            if var_data.data.r#type.dimensions > 0
+                                || var_data.data.r#type.is_any()
+                            {
+                                // Array or untyped COSY cell — prefer indexing
                                 Ok(VarExprKind::Variable)
                             } else {
                                 // Variable is a scalar — can't index, must be a function call
@@ -401,11 +407,10 @@ impl Transpile for VarExpr {
                         )])?;
                 let var_type = var_data.data.r#type;
 
-                // For indexed access, rosy_get() already returns &T — no
-                // extra reference sigil needed regardless of scope or Copy-ness.
+                // rosy_get() returns an owned cell (clone, or Default on oob).
                 let has_indices = self.identifier.num_index_dimensions() > 0;
                 let (reference, value_kind) = if has_indices {
-                    ("", ValueKind::Ref)
+                    ("", ValueKind::Owned)
                 } else {
                     match var_data.scope {
                         VariableScope::Local => {
@@ -462,6 +467,9 @@ pub fn function_call_transpile_helper(
     let mut serialized_args = Vec::new();
     // Serialize the requested variables from the function context
     for var in &func_context.requested_variables {
+        if func_context.args.iter().any(|a| a.name == *var) {
+            continue;
+        }
         let var_data = context.variables.get(var).ok_or(vec![anyhow!(
             "Could not find variable '{}' requested by function '{}'",
             var,
@@ -506,20 +514,25 @@ pub fn function_call_transpile_helper(
     // landed in the second occurrence.
     let mut writeback_decls: Vec<String> = Vec::new();
 
+    for var in &func_context.requested_variables {
+        first_occurrence.insert(var.clone(), usize::MAX);
+    }
+
     // Pass 1 — record (a) bare-variable duplicates.
     for (i, arg_expr) in args.iter().enumerate() {
         if let Some(arg_name) = arg_expr.as_bare_variable_name() {
             if first_occurrence.contains_key(arg_name) {
                 if let Some(var_data) = context.variables.get(arg_name) {
                     let temp_name = format!("__rosy_dup_arg_{}", i);
+                    let rust = context.rust_ident(arg_name);
                     let (value_expr, writeback) = match var_data.scope {
                         VariableScope::Higher | VariableScope::Arg => (
-                            format!("(*{}).clone()", arg_name),
-                            format!("*{} = {};", arg_name, temp_name),
+                            format!("(*{rust}).clone()"),
+                            format!("*{rust} = {temp_name};"),
                         ),
                         VariableScope::Local => (
-                            format!("{}.clone()", arg_name),
-                            format!("{} = {};", arg_name, temp_name),
+                            format!("{rust}.clone()"),
+                            format!("{rust} = {temp_name};"),
                         ),
                     };
                     prelude_decls.push(format!("let mut {} = {};", temp_name, value_expr));
@@ -548,11 +561,42 @@ pub fn function_call_transpile_helper(
                         args.len()
                     )])?
                     .r#type;
-                if provided_type != expected_type {
+                if !types_compatible(&provided_type, &expected_type) {
                     errors.push(anyhow!(
                         "Function '{}' expects argument {} ('{}') to be of type '{}', but type '{}' was provided!",
                         name, i+1, func_context.args[i].name, expected_type, provided_type
                     ));
+                } else if needs_box_as_any(&provided_type, &expected_type) {
+                    let temp_name = format!("__rosy_any_arg_{}", i);
+                    let owned = arg_output.as_owned(&provided_type);
+                    prelude_decls.push(format!(
+                        "let mut {} = RosyValue::from({});",
+                        temp_name, owned
+                    ));
+                    serialized_args.push(format!("&mut {}", temp_name));
+                    requested_variables.extend(arg_output.requested_variables);
+                    if let Some(vname) = arg_expr.as_bare_variable_name() {
+                        let star = match context.variables.get(vname).map(|v| v.scope.clone()) {
+                            Some(VariableScope::Local) | None => "",
+                            Some(VariableScope::Arg | VariableScope::Higher) => "*",
+                        };
+                        writeback_decls.push(format!(
+                            "{}{} = {};",
+                            star,
+                            context.rust_ident(vname),
+                            emit_unwrap_rosy_value(temp_name.clone(), &provided_type)
+                        ));
+                    }
+                } else if provided_type.is_any() && !expected_type.is_any() {
+                    let temp_name = format!("__rosy_unany_arg_{}", i);
+                    let owned = arg_output.as_owned(&provided_type);
+                    prelude_decls.push(format!(
+                        "let mut {} = {};",
+                        temp_name,
+                        emit_unwrap_rosy_value(owned, &expected_type)
+                    ));
+                    serialized_args.push(format!("&mut {}", temp_name));
+                    requested_variables.extend(arg_output.requested_variables);
                 } else if let Some(override_serialization) = prelude_overrides.remove(&i) {
                     // (a) bare-variable duplicate: use the pre-staged temp.
                     serialized_args.push(override_serialization);
@@ -594,32 +638,24 @@ pub fn function_call_transpile_helper(
     // Uses the `__fn_` prefix to match the generated Rust function name
     // (the prefix avoids shadowing by the implicit return variable).
     let rust_fn_name = format!("__fn_{}", name);
-    let serialization = if prelude_decls.is_empty() && writeback_decls.is_empty() {
-        format!(
-            "({}({})? as {})",
-            rust_fn_name,
-            serialized_args.join(", "),
-            func_context.return_type.as_rust_type()
-        )
-    } else if writeback_decls.is_empty() {
-        // Wrap in a block so the temp locals don't leak into the surrounding scope.
-        format!(
-            "{{ {} ({}({})? as {}) }}",
-            prelude_decls.join(" "),
-            rust_fn_name,
-            serialized_args.join(", "),
-            func_context.return_type.as_rust_type()
-        )
+    let raw_call = format!(
+        "{}({})?",
+        rust_fn_name,
+        serialized_args.join(", ")
+    );
+    let call = if func_context.return_type.is_any() {
+        format!("RosyValue::from({raw_call})")
     } else {
-        // Capture the return value, run writebacks, then yield the value.
-        // The trailing expression (no semicolon) makes the block evaluate to
-        // __rosy_fn_ret, preserving the function-call-as-expression semantics.
+        raw_call
+    };
+    let serialization = if prelude_decls.is_empty() && writeback_decls.is_empty() {
+        format!("({call})")
+    } else if writeback_decls.is_empty() {
+        format!("{{ {} {call} }}", prelude_decls.join(" "))
+    } else {
         format!(
-            "{{ {} let __rosy_fn_ret = ({}({})? as {}); {} __rosy_fn_ret }}",
+            "{{ {} let __rosy_fn_ret = {call}; {} __rosy_fn_ret }}",
             prelude_decls.join(" "),
-            rust_fn_name,
-            serialized_args.join(", "),
-            func_context.return_type.as_rust_type(),
             writeback_decls.join(" "),
         )
     };

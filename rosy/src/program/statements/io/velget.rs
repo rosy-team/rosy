@@ -124,19 +124,29 @@ impl Transpile for VelgetStatement {
             }
         };
 
+        let dest_any = context
+            .variables
+            .get(&self.output_var.name)
+            .map(|v| v.data.r#type.is_any())
+            .unwrap_or(false);
+        let rhs = if dest_any {
+            format!(
+                "RosyValue::from(rosy_velget(&({}), {})?)",
+                vec_output.as_value(),
+                component_output.as_value()
+            )
+        } else {
+            format!(
+                "rosy_velget(&({}), {})?",
+                vec_output.as_value(),
+                component_output.as_value()
+            )
+        };
         let serialization = format!(
-            "{{\n    \
-                let __rosy_velget_vec = {vec};\n    \
-                let __rosy_velget_component = ({component}) as isize;\n    \
-                if __rosy_velget_component < 1 || __rosy_velget_component as usize > __rosy_velget_vec.len() {{\n        \
-                    bail!(\"VELGET: component index {{}} is out of bounds for vector of length {{}}\", __rosy_velget_component, __rosy_velget_vec.len());\n    \
-                }}\n    \
-                {deref}{dest} = __rosy_velget_vec[(__rosy_velget_component - 1) as usize];\n\
-            }}",
-            component = component_output.as_value(),
+            "{deref}{dest} = {rhs};",
             deref = dereference,
             dest = output_id_output.serialization,
-            vec = vec_output.as_value(),
+            rhs = rhs,
         );
 
         Ok(TranspilationOutput {

@@ -26,8 +26,8 @@ use crate::{
     ast::*,
     program::expressions::Expr,
     transpile::{
-        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
-        ValueKind, add_context_to_all,
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement, ValueKind, add_context_to_all,
     },
 };
 
@@ -136,19 +136,39 @@ impl Transpile for LinvStatement {
                 format!("*{ser} = {rhs}")
             }
         }
+        let inv_rhs = if self
+            .inverse_expr
+            .type_of(context)
+            .map(|t| t.is_any())
+            .unwrap_or(false)
+        {
+            "RosyValue::from(rosy_linv_inv).expect_arr2()?"
+        } else {
+            "rosy_linv_inv"
+        };
         let inverse_assign = make_lvalue(
             &inverse_output.serialization,
             inverse_output.value_kind,
-            "rosy_linv_inv",
+            inv_rhs,
         );
+        let err_rhs = if self
+            .error_flag_expr
+            .type_of(context)
+            .map(|t| t.is_any())
+            .unwrap_or(false)
+        {
+            "RosyValue::from(rosy_linv_err)"
+        } else {
+            "rosy_linv_err"
+        };
         let error_assign = make_lvalue(
             &error_flag_output.serialization,
             error_flag_output.value_kind,
-            "rosy_linv_err",
+            err_rhs,
         );
 
         let serialization = format!(
-            "{{ let (rosy_linv_inv, rosy_linv_err) = rosy_lib::core::linv::rosy_linv({matrix}, {n} as usize, {alloc_dim} as usize)?; {inverse_assign}; {error_assign}; }}",
+            "{{ let (rosy_linv_inv, rosy_linv_err) = rosy_lib::core::linv::rosy_linv({matrix}, rosy_as_usize(&({n})), rosy_as_usize(&({alloc_dim})))?; {inverse_assign}; {error_assign}; }}",
             matrix = matrix_output.as_ref(),
             n = n_output.as_value(),
             alloc_dim = alloc_dim_output.as_value(),

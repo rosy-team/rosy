@@ -1,0 +1,14 @@
+BEGIN;
+    VARIABLE X;
+    X := 'hi';
+    WRITE 6 X;
+    X := LO(1);
+    WRITE 6 ST(X);
+    X := 3&4;
+    WRITE 6 X|1;
+END;
+
+======= expect
+hi
+TRUE
+ 3.000000000000000

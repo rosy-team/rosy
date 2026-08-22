@@ -38,13 +38,21 @@ fn ensure_registry() {
 ///   - `'old'`: open existing file for reading
 ///   - `'new'`: create new file for writing, error if it already exists
 ///   - `'replace'`: create or truncate, then open for writing
-pub fn rosy_openf(unit: f64, filename: &str, status: &str) -> Result<()> {
-    open_file_impl(unit, filename, status, false)
+pub fn rosy_openf(
+    unit: impl crate::IntoF64,
+    filename: impl crate::RecstFmt,
+    status: impl crate::RecstFmt,
+) -> Result<()> {
+    open_file_impl(unit.into_f64(), &filename.recst_fmt(), &status.recst_fmt(), false)
 }
 
 /// Open a file for binary I/O (OPENFB).
-pub fn rosy_openfb(unit: f64, filename: &str, status: &str) -> Result<()> {
-    open_file_impl(unit, filename, status, true)
+pub fn rosy_openfb(
+    unit: impl crate::IntoF64,
+    filename: impl crate::RecstFmt,
+    status: impl crate::RecstFmt,
+) -> Result<()> {
+    open_file_impl(unit.into_f64(), &filename.recst_fmt(), &status.recst_fmt(), true)
 }
 
 fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> Result<()> {
@@ -161,7 +169,8 @@ pub fn rosy_rewf(unit: f64) -> Result<()> {
 /// Seeks the BufReader back to the start of the previous line.
 /// All seeks go through the BufReader (not get_mut()) so its internal
 /// buffer is flushed and the logical position stays consistent.
-pub fn rosy_backf(unit: f64) -> Result<()> {
+pub fn rosy_backf(unit: impl crate::IntoF64) -> Result<()> {
+    let unit = unit.into_f64();
     ensure_registry();
     let unit_num = unit as u64;
 
@@ -240,7 +249,13 @@ pub fn rosy_closef(unit: f64) -> Result<()> {
 }
 
 /// Write a string to a file unit (ASCII WRITE to file).
-pub fn rosy_write_to_unit(unit: u64, content: &str) -> Result<()> {
+pub fn rosy_write_to_unit(unit: impl crate::AsF64, content: impl crate::RecstFmt) -> Result<()> {
+    let unit = crate::rosy_as_u64(&unit);
+    let content = content.recst_fmt();
+    rosy_write_to_unit_str(unit, &content)
+}
+
+fn rosy_write_to_unit_str(unit: u64, content: &str) -> Result<()> {
     ensure_registry();
     
     let mut reg = FILE_REGISTRY.lock().unwrap();
@@ -254,7 +269,10 @@ pub fn rosy_write_to_unit(unit: u64, content: &str) -> Result<()> {
     
     writeln!(writer, "{}", content)
         .with_context(|| format!("Failed to write to file on unit {}", unit))?;
-    
+    writer
+        .flush()
+        .with_context(|| format!("Failed to flush file on unit {}", unit))?;
+
     Ok(())
 }
 

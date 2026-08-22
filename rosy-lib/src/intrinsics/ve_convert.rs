@@ -36,3 +36,9 @@ impl RosyVEConvert for VE {
         Ok(self.clone())
     }
 }
+
+impl RosyVEConvert for crate::RosyValue {
+    fn rosy_ve_convert(&self) -> anyhow::Result<VE> {
+        self.clone().expect_ve()
+    }
+}

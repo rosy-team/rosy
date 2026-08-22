@@ -1,7 +1,7 @@
 //! # DAPEE Statement
 //!
 //! Returns a coefficient of a DA vector identified by a TRANSPORT notation id.
-//! The id encodes variable exponents as decimal digits (leftmost digit = variable 1).
+//! The id's digits are 1-based variable indices (COSY TRANSPORT). `222` is x₂³.
 //!
 //! ## Syntax
 //!
@@ -91,7 +91,7 @@ impl Transpile for DapeeStatement {
         requested_variables.extend(result_output.requested_variables.iter().cloned());
 
         let serialization = format!(
-            "rosy_lib::core::dapew::rosy_dapee({}, {} as u64, {})?;",
+            "rosy_lib::core::dapew::rosy_dapee({}, rosy_as_u64(&({})), {})?;",
             da_var_output.as_ref(),
             id_output.as_value(),
             result_output.as_mut_ref(),

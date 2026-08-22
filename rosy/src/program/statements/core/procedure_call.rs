@@ -75,6 +75,13 @@ impl Transpile for ProcedureCallStatement {
         let proc_context = match context.procedures.get(&self.name) {
             Some(ctx) => ctx,
             None => {
+                if crate::syntax_config::is_cosy_syntax() {
+                    // COSY graphics / system procs we don't have yet.
+                    return Ok(TranspilationOutput {
+                        serialization: format!("/* unimplemented COSY proc {} */", self.name),
+                        ..Default::default()
+                    });
+                }
                 let hint = context.procedure_hint(&self.name);
                 return Err(vec![anyhow!(
                     "procedure '{}' is not defined in this scope!{}",
@@ -97,8 +104,13 @@ impl Transpile for ProcedureCallStatement {
         let mut errors = Vec::new();
         let mut requested_variables = BTreeSet::new();
         let mut serialized_args = Vec::new();
+        let mut prelude_decls: Vec<String> = Vec::new();
+        let mut writeback_decls: Vec<String> = Vec::new();
         // Serialize the requested variables from the procedure context
         for var in &proc_context.requested_variables {
+            if proc_context.args.iter().any(|a| a.name == *var) {
+                continue;
+            }
             // rosy_mpi_context is the same `&mut RosyMPIContext` shape at
             // top-level (via the template's indirection) and inside procedure
             // bodies (as a parameter). Pass the binding bare and let Rust
@@ -115,12 +127,20 @@ impl Transpile for ProcedureCallStatement {
                 self.name
             )])?;
 
-            let serialized_arg = match var_data.scope {
-                VariableScope::Higher => var.to_string(),
-                VariableScope::Arg => var.to_string(),
-                VariableScope::Local => format!("&mut {}", var),
+            let child_ty = proc_context
+                .requested_types
+                .get(var)
+                .cloned()
+                .unwrap_or(var_data.data.r#type);
+            let cap_scope = if context.split_rk_h && *var == "H" {
+                VariableScope::Higher
+            } else {
+                var_data.scope.clone()
             };
-            serialized_args.push(serialized_arg);
+            let (pre, pass, wb) = emit_pass_as(var, &var_data.data.r#type, &child_ty, cap_scope);
+            prelude_decls.extend(pre);
+            writeback_decls.extend(wb);
+            serialized_args.push(pass);
         }
 
         // See expressions/core/var_expr/mod.rs for the symmetric design rationale.
@@ -131,16 +151,14 @@ impl Transpile for ProcedureCallStatement {
         //       overlapping a `&*X` baked into another arg's expression)
         let mut first_occurrence: std::collections::HashMap<String, usize> =
             std::collections::HashMap::new();
-        let mut prelude_decls: Vec<String> = Vec::new();
         let mut prelude_overrides: std::collections::HashMap<usize, String> =
             std::collections::HashMap::new();
-        // Writebacks — one entry per duplicated bare-variable arg. After the
-        // call, copy each clone temp back into its source variable so the
-        // procedure's mutation lands in the caller's binding (matching COSY's
-        // pass-by-reference convention where later args are typically
-        // outputs — e.g. `ANM N M O` called as `ANM A B B` writes the result
-        // into B). Without this, dup-arg clones silently swallow the writes.
-        let mut writeback_decls: Vec<String> = Vec::new();
+
+        // Captured globals already occupy a mut slot. An explicit arg
+        // with the same name is a duplicate (LINE(..., PLOC, ..., PLOC)).
+        for var in &proc_context.requested_variables {
+            first_occurrence.insert(var.clone(), usize::MAX);
+        }
 
         // Pass 1 — record (a) bare-variable duplicates.
         for (i, arg_expr) in self.args.iter().enumerate() {
@@ -184,11 +202,72 @@ impl Transpile for ProcedureCallStatement {
                             self.args.len()
                         )])?
                         .r#type;
-                    if provided_type != expected_type {
-                        errors.push(anyhow!(
+                    if !types_compatible(&provided_type, &expected_type) {
+                        if crate::syntax_config::is_cosy_syntax() {
+                            if let Some(name) = arg_expr.as_bare_variable_name() {
+                                let scope = context
+                                    .variables
+                                    .get(name)
+                                    .map(|v| v.scope.clone())
+                                    .unwrap_or(VariableScope::Local);
+                                let (pre, pass, wb) = emit_pass_as(
+                                    name,
+                                    &provided_type,
+                                    &expected_type,
+                                    scope,
+                                );
+                                prelude_decls.extend(pre);
+                                writeback_decls.extend(wb);
+                                serialized_args.push(pass);
+                                requested_variables.extend(arg_output.requested_variables);
+                            } else {
+                                let temp_name = format!("__rosy_arg_tmp_{}", i);
+                                prelude_decls.push(format!(
+                                    "let mut {} = {};",
+                                    temp_name,
+                                    arg_output.as_owned(&provided_type)
+                                ));
+                                serialized_args.push(format!("&mut {}", temp_name));
+                                requested_variables.extend(arg_output.requested_variables);
+                            }
+                        } else {
+                            errors.push(anyhow!(
                             "procedure '{}' expects argument {} ('{}') to be of type '{}', but type '{}' was provided!",
                             self.name, i+1, proc_context.args[i].name, expected_type, provided_type
                         ));
+                        }
+                    } else if needs_box_as_any(&provided_type, &expected_type) {
+                        let temp_name = format!("__rosy_any_arg_{}", i);
+                        let owned = arg_output.as_owned(&provided_type);
+                        prelude_decls.push(format!(
+                            "let mut {} = RosyValue::from({});",
+                            temp_name, owned
+                        ));
+                        serialized_args.push(format!("&mut {}", temp_name));
+                        requested_variables.extend(arg_output.requested_variables);
+                        if let Some(name) = arg_expr.as_bare_variable_name() {
+                            let star = match context.variables.get(name).map(|v| v.scope.clone())
+                            {
+                                Some(VariableScope::Local) | None => "",
+                                Some(VariableScope::Arg | VariableScope::Higher) => "*",
+                            };
+                            writeback_decls.push(format!(
+                                "{}{} = {};",
+                                star,
+                                name,
+                                emit_unwrap_rosy_value(temp_name.clone(), &provided_type)
+                            ));
+                        }
+                    } else if provided_type.is_any() && !expected_type.is_any() {
+                        let temp_name = format!("__rosy_unany_arg_{}", i);
+                        let owned = arg_output.as_owned(&provided_type);
+                        prelude_decls.push(format!(
+                            "let mut {} = {};",
+                            temp_name,
+                            emit_unwrap_rosy_value(owned, &expected_type)
+                        ));
+                        serialized_args.push(format!("&mut {}", temp_name));
+                        requested_variables.extend(arg_output.requested_variables);
                     } else if let Some(override_serialization) = prelude_overrides.remove(&i) {
                         // (a) bare-variable duplicate.
                         serialized_args.push(override_serialization);
@@ -226,9 +305,14 @@ impl Transpile for ProcedureCallStatement {
         // temps are needed so they're scoped to this single call). Writebacks
         // run *after* the call to copy duplicate-arg clones back into their
         // source variables (see writeback_decls comment above).
+        let rust_name = if crate::syntax_config::is_cosy_syntax() {
+            format!("__proc_{}", self.name)
+        } else {
+            self.name.clone()
+        };
         let call = format!(
             "{}({}).context(\"...while calling procedure '{}'\")?;",
-            self.name,
+            rust_name,
             serialized_args.join(", "),
             self.name
         );

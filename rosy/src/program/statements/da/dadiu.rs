@@ -25,6 +25,7 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
+    resolve::{ScopeContext, TypeResolver},
     transpile::{
         TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
         add_context_to_all,
@@ -95,7 +96,7 @@ impl Transpile for DadiuStatement {
         requested_variables.extend(result_output.requested_variables.clone());
 
         let serialization = format!(
-            "rosy_lib::core::daprv::rosy_dadiu({} as usize, {}, {})?;",
+            "rosy_lib::core::daprv::rosy_dadiu(rosy_as_usize(&({})), {}, {})?;",
             var_idx_output.as_value(),
             da_in_output.as_ref(),
             result_output.as_mut_ref(),
@@ -109,4 +110,14 @@ impl Transpile for DadiuStatement {
     }
 }
 
-impl TranspileableStatement for DadiuStatement {}
+impl TranspileableStatement for DadiuStatement {
+    fn wire_inference_edges(
+        &self,
+        resolver: &mut TypeResolver,
+        ctx: &mut ScopeContext,
+        _source_location: crate::program::statements::SourceLocation,
+    ) -> Option<Result<()>> {
+        super::wire_da_result_cell(&self.result_expr, resolver, ctx, "DADIU");
+        Some(Ok(()))
+    }
+}

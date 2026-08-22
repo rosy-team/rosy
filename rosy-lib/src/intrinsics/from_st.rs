@@ -12,6 +12,7 @@ pub fn can_be_obtained ( input: &RosyType ) -> bool {
         RosyType::ST(),
         RosyType::LO(),
         RosyType::VE(),
+        RosyType::ANY(),
     ]);
     registry.contains(input)
 }
@@ -87,6 +88,12 @@ impl RosyFromST for bool {
             "FALSE" => Ok(false),
             _ => Err(anyhow::anyhow!("Failed to parse `ST` to `LO`!"))
         }
+    }
+}
+
+impl RosyFromST for crate::RosyValue {
+    fn rosy_from_st(st: String) -> Result<Self> {
+        Ok(crate::RosyValue::RE(f64::rosy_from_st(st)?))
     }
 }
 

@@ -17,20 +17,26 @@ use crate::taylor::Monomial;
 // Helpers
 // ============================================================================
 
-/// Decode a TRANSPORT notation id to a fixed-size exponent array.
+/// Decode a COSY TRANSPORT id to exponents.
 ///
-/// Each decimal digit of `id` is the exponent for the corresponding variable
-/// (leftmost digit = variable 1).  For example:
-/// - `id = 133` → `[1, 3, 3, 0, 0, 0]`  (x₁¹ · x₂³ · x₃³)
-/// - `id = 10`  → `[1, 0, 0, 0, 0, 0]`  (x₁¹)
+/// Each decimal digit is a 1-based variable index; 0 is padding.
+/// Counts of digit d become the exponent of variable d.
+/// - `id = 2`    → x₂  (linear; `DAPEE M(I) J` with J=2)
+/// - `id = 10`   → x₁
+/// - `id = 12`   → x₁ x₂
+/// - `id = 222`  → x₂³  (`MA(1,222)` octupole-in-angle)
 fn decode_transport_id(id: u64) -> [u8; MAX_VARS] {
     let mut exponents = [0u8; MAX_VARS];
-    let s = id.to_string();
-    for (i, ch) in s.chars().enumerate() {
-        if i >= MAX_VARS {
-            break;
+    if id == 0 {
+        return exponents;
+    }
+    let mut n = id;
+    while n > 0 {
+        let d = (n % 10) as usize;
+        n /= 10;
+        if d >= 1 && d <= MAX_VARS {
+            exponents[d - 1] = exponents[d - 1].saturating_add(1);
         }
-        exponents[i] = ch.to_digit(10).unwrap_or(0) as u8;
     }
     exponents
 }
@@ -47,14 +53,21 @@ fn decode_transport_id(id: u64) -> [u8; MAX_VARS] {
 /// - `unit`: unit number to read from
 /// - `da`: DA array — element 0 is overwritten with the data read
 /// - `num_vars`: number of independent variables
-pub fn rosy_darea(unit: u64, da: &mut Vec<DA>, num_vars: usize) -> Result<()> {
+pub fn rosy_darea(
+    unit: impl crate::AsF64,
+    da: &mut impl crate::AsDaDst,
+    num_vars: impl crate::IntoF64,
+) -> Result<()> {
     use crate::core::file_io::rosy_read_from_unit;
+    let unit = crate::rosy_as_u64(&unit);
+    let num_vars = crate::rosy_as_usize(&num_vars.into_f64());
+    let mut out = da.load_da_vec();
 
     // Ensure the output array has at least one element and is zeroed
-    while da.is_empty() {
-        da.push(DA::zero());
+    while out.is_empty() {
+        out.push(DA::zero());
     }
-    da[0] = DA::zero();
+    out[0] = DA::zero();
 
     let nv = num_vars.min(MAX_VARS);
 
@@ -89,8 +102,9 @@ pub fn rosy_darea(unit: u64, da: &mut Vec<DA>, num_vars: usize) -> Result<()> {
         }
 
         let monomial = Monomial::new(exponents);
-        da[0].set_coeff(monomial, coeff);
+        out[0].set_coeff(monomial, coeff);
     }
+    da.store_da_vec(out);
 
     Ok(())
 }
@@ -108,7 +122,16 @@ pub fn rosy_darea(unit: u64, da: &mut Vec<DA>, num_vars: usize) -> Result<()> {
 /// - `da`: DA array — operates on element 0
 /// - `var_i`: 1-based variable index (0 = filter by total order)
 /// - `order_n`: the target order/exponent value
-pub fn rosy_dapew(unit: u64, da: &Vec<DA>, var_i: usize, order_n: u32) -> Result<()> {
+pub fn rosy_dapew(
+    unit: impl crate::AsF64,
+    da: &impl crate::AsDaRef,
+    var_i: impl crate::IntoF64,
+    order_n: impl crate::IntoF64,
+) -> Result<()> {
+    let unit = crate::rosy_as_u64(&unit);
+    let da = da.as_da_vec();
+    let var_i = crate::rosy_as_usize(&var_i.into_f64());
+    let order_n = crate::rosy_as_u32(&order_n.into_f64());
     use crate::core::file_io::rosy_write_to_unit;
 
     if da.is_empty() {
@@ -192,15 +215,34 @@ pub fn rosy_dapew(unit: u64, da: &Vec<DA>, var_i: usize, order_n: u32) -> Result
 /// - `da`: DA array — operates on element 0
 /// - `id`: TRANSPORT notation integer
 /// - `result`: written with the extracted coefficient
-pub fn rosy_dapee(da: &Vec<DA>, id: u64, result: &mut f64) -> Result<()> {
+pub fn rosy_dapee(da: &impl crate::AsDaRef, id: impl crate::AsF64, result: &mut impl crate::SetF64) -> Result<()> {
+    let da = da.as_da_vec();
+    let id = crate::rosy_as_u64(&id);
     if da.is_empty() {
-        *result = 0.0;
+        result.set_f64(0.0);
         return Ok(());
     }
     let exponents = decode_transport_id(id);
     let monomial = Monomial::new(exponents);
-    *result = da[0].get_coeff(&monomial);
+    result.set_f64(da[0].get_coeff(&monomial));
     Ok(())
+}
+
+#[cfg(test)]
+mod transport_id_tests {
+    use super::decode_transport_id;
+
+    #[test]
+    fn digits_are_variable_indices() {
+        assert_eq!(decode_transport_id(1)[0], 1);
+        assert_eq!(decode_transport_id(2)[1], 1);
+        assert_eq!(decode_transport_id(10)[0], 1);
+        assert_eq!(decode_transport_id(12)[0], 1);
+        assert_eq!(decode_transport_id(12)[1], 1);
+        assert_eq!(decode_transport_id(222)[1], 3);
+        assert_eq!(decode_transport_id(1122)[0], 2);
+        assert_eq!(decode_transport_id(1122)[1], 2);
+    }
 }
 
 // ============================================================================
@@ -214,9 +256,17 @@ pub fn rosy_dapee(da: &Vec<DA>, id: u64, result: &mut f64) -> Result<()> {
 /// - `exps`: array of exponents (RE values, cast to u8)
 /// - `size`: number of exponents to use (at most MAX_VARS)
 /// - `result`: written with the extracted coefficient
-pub fn rosy_dapea(da: &Vec<DA>, exps: &Vec<f64>, size: usize, result: &mut f64) -> Result<()> {
+pub fn rosy_dapea(
+    da: &impl crate::AsDaRef,
+    exps: &impl crate::PolvalReSrc,
+    size: impl crate::IntoF64,
+    result: &mut impl crate::SetF64,
+) -> Result<()> {
+    let da = da.as_da_vec();
+    let exps = exps.to_re_vec();
+    let size = crate::rosy_as_usize(&size.into_f64());
     if da.is_empty() {
-        *result = 0.0;
+        result.set_f64(0.0);
         return Ok(());
     }
     let mut exponents = [0u8; MAX_VARS];
@@ -226,7 +276,7 @@ pub fn rosy_dapea(da: &Vec<DA>, exps: &Vec<f64>, size: usize, result: &mut f64) 
         }
     }
     let monomial = Monomial::new(exponents);
-    *result = da[0].get_coeff(&monomial);
+    result.set_f64(da[0].get_coeff(&monomial));
     Ok(())
 }
 
@@ -248,14 +298,23 @@ pub fn rosy_dapea(da: &Vec<DA>, exps: &Vec<f64>, size: usize, result: &mut f64) 
 /// - `id`: TRANSPORT notation id for the first `m` variables
 /// - `m`: number of main variables to match
 /// - `result`: DA array written with the extracted component (element 0)
-pub fn rosy_dapep(da: &Vec<DA>, id: u64, m: usize, result: &mut Vec<DA>) -> Result<()> {
-    // Ensure result has at least one element
-    while result.is_empty() {
-        result.push(DA::zero());
+pub fn rosy_dapep(
+    da: &impl crate::AsDaRef,
+    id: impl crate::AsF64,
+    m: impl crate::IntoF64,
+    result: &mut impl crate::AsDaDst,
+) -> Result<()> {
+    let da = da.as_da_vec();
+    let id = crate::rosy_as_u64(&id);
+    let m = crate::rosy_as_usize(&m.into_f64());
+    let mut out = result.load_da_vec();
+    while out.is_empty() {
+        out.push(DA::zero());
     }
-    result[0] = DA::zero();
+    out[0] = DA::zero();
 
     if da.is_empty() {
+        result.store_da_vec(out);
         return Ok(());
     }
 
@@ -278,10 +337,11 @@ pub fn rosy_dapep(da: &Vec<DA>, id: u64, m: usize, result: &mut Vec<DA>) -> Resu
                 new_exps[i] = 0;
             }
             let new_monomial = Monomial::new(new_exps);
-            let existing = result[0].get_coeff(&new_monomial);
-            result[0].set_coeff(new_monomial, existing + coeff);
+            let existing = out[0].get_coeff(&new_monomial);
+            out[0].set_coeff(new_monomial, existing + coeff);
         }
     }
+    result.store_da_vec(out);
 
     Ok(())
 }

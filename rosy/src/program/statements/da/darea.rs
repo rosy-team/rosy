@@ -93,7 +93,7 @@ impl Transpile for DareaStatement {
         requested_variables.extend(num_vars_output.requested_variables.iter().cloned());
 
         let serialization = format!(
-            "rosy_lib::core::dapew::rosy_darea({} as u64, {}, {} as usize)?;",
+            "rosy_lib::core::dapew::rosy_darea(rosy_as_u64(&({})), {}, rosy_as_usize(&({})))?;",
             unit_output.as_value(),
             da_var_output.as_mut_ref(),
             num_vars_output.as_value(),

@@ -35,7 +35,14 @@ pub enum BinaryOp {
 impl BinaryOp {
     /// Result type of `lhs op rhs`, or `None` if the pair is illegal.
     pub fn return_type(self, lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
-        match self {
+        if lhs.is_any() || rhs.is_any() {
+            return Some(match self {
+                Self::Eq | Self::Neq | Self::Lt | Self::Gt | Self::Lte | Self::Gte
+                | Self::And | Self::Or => RosyType::LO(),
+                _ => RosyType::ANY(),
+            });
+        }
+        let direct = match self {
             Self::Add => operators::add::get_return_type(lhs, rhs),
             Self::Sub => operators::sub::get_return_type(lhs, rhs),
             Self::Mult => operators::mult::get_return_type(lhs, rhs),
@@ -56,7 +63,31 @@ impl BinaryOp {
                 t if t == RosyType::CD() => Some(RosyType::CD()),
                 _ => None,
             },
+        };
+        if direct.is_some() {
+            return direct;
         }
+        // Scalar vs array: same op on the 0-d bases, keep the array rank.
+        if matches!(
+            self,
+            Self::Add | Self::Sub | Self::Mult | Self::Div | Self::Pow
+        ) {
+            if lhs.dimensions > 0 && rhs.dimensions == 0 {
+                let l0 = RosyType::new(lhs.base_type, 0);
+                if let Some(mut t) = self.return_type(&l0, rhs) {
+                    t.dimensions = lhs.dimensions;
+                    return Some(t);
+                }
+            }
+            if rhs.dimensions > 0 && lhs.dimensions == 0 {
+                let r0 = RosyType::new(rhs.base_type, 0);
+                if let Some(mut t) = self.return_type(lhs, &r0) {
+                    t.dimensions = rhs.dimensions;
+                    return Some(t);
+                }
+            }
+        }
+        None
     }
 
     /// Trait method the transpiler emits, e.g. `RosyAdd::rosy_add`.
@@ -94,7 +125,7 @@ impl UnaryOp {
         match self {
             Self::Not => operators::not::get_return_type(operand),
             // Unary minus is typed as `0 - operand`.
-            Self::Neg => operators::sub::get_return_type(&RosyType::RE(), operand),
+            Self::Neg => BinaryOp::Sub.return_type(&RosyType::RE(), operand),
         }
     }
 
@@ -128,6 +159,19 @@ pub struct Intrinsic {
 
 impl Intrinsic {
     pub fn unary_return_type(self, input: &RosyType) -> Option<RosyType> {
+        if input.is_any() {
+            return Some(match self.name {
+                "ST" => RosyType::ST(),
+                "LO" => RosyType::LO(),
+                "CM" => RosyType::CM(),
+                "RE" => RosyType::RE(),
+                "VE" => RosyType::VE(),
+                "LENGTH" | "TYPE" | "NINT" | "INT" | "ABS" | "NORM" | "CONS" => {
+                    RosyType::RE()
+                }
+                _ => RosyType::ANY(),
+            });
+        }
         match self.typing {
             IntrinsicTyping::Unary(f) => f(input),
             IntrinsicTyping::Binary(_) => None,
@@ -135,6 +179,9 @@ impl Intrinsic {
     }
 
     pub fn binary_return_type(self, lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
+        if lhs.is_any() || rhs.is_any() {
+            return Some(RosyType::ANY());
+        }
         match self.typing {
             IntrinsicTyping::Binary(f) => f(lhs, rhs),
             IntrinsicTyping::Unary(_) => None,

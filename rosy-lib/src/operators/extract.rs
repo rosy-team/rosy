@@ -10,6 +10,7 @@ pub fn get_return_type(base: &RosyType, index: &RosyType) -> Option<RosyType> {
     use RosyBaseType::*;
     match crate::operators::dim0(base, index)? {
         (ST, RE) | (ST, VE) => Some(RosyType::ST()),
+        (RE, RE) | (RE, VE) => Some(RosyType::RE()),
         (CM, RE) | (VE, RE) | (DA, RE) | (DA, VE) => Some(RosyType::RE()),
         (VE, VE) => Some(RosyType::VE()),
         (CD, RE) | (CD, VE) => Some(RosyType::CM()),
@@ -61,6 +62,25 @@ impl RosyExtract<&VE> for &ST {
         let substring: String = self.chars().skip(start - 1).take(end - start + 1).collect();
         
         Ok(substring)
+    }
+}
+
+// RE | RE -> RE (COSY sometimes indexes a 0-d cell as a 1-vector)
+impl RosyExtract<&RE> for &RE {
+    type Output = RE;
+    fn rosy_extract(self, index: &RE) -> Result<Self::Output> {
+        if index.round() == 1.0 {
+            Ok(*self)
+        } else {
+            Ok(0.0)
+        }
+    }
+}
+
+impl RosyExtract<&VE> for &RE {
+    type Output = RE;
+    fn rosy_extract(self, _index: &VE) -> Result<Self::Output> {
+        Ok(*self)
     }
 }
 

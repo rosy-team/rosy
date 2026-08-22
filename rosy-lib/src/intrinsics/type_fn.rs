@@ -75,6 +75,7 @@ mod tests {
     use super::RosyTYPE;
     use crate::{CM, CD, DA, LO, RE, ST, VE};
 
+    #[serial_test::serial]
     #[test]
     fn type_codes_match_cosy_order_for_supported_types() -> anyhow::Result<()> {
         crate::taylor::cleanup_taylor();

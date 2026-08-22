@@ -1,0 +1,17 @@
+BEGIN;
+    FUNCTION (RE) ADD A B;
+        ADD := A + B;
+    ENDFUNCTION;
+    VARIABLE (RE) X;
+    VARIABLE (VE) V;
+    X := 10;
+    V := 3 & 4;
+    WRITE 6 ST(X);
+    WRITE 6 ST(ADD(1, 2));
+    WRITE 6 ST(ADD(V|2, V|1));
+END;
+
+======= expect
+ 10.00000000000000
+ 3.000000000000000
+ 7.000000000000000

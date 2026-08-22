@@ -1,0 +1,39 @@
+BEGIN;
+    { fox CDNFDA dest is a mem cell; input may still be DA }
+    VARIABLE (DA) A;
+    VARIABLE (CD) T;
+    VARIABLE (VE) moduli;
+    VARIABLE (VE) args;
+    DAINI 3 4 0 0;
+    A := DA(2);
+    moduli := 1&1&1&1;
+    args := 0.1&0.2&0.3&0.4;
+    CDNFDA A moduli args 1 4 0.001 T;
+    WRITE 6 REAL(T);
+END;
+
+======= expect
+     I  COEFFICIENT            ORDER EXPONENTS
+     1   1.495004165278031       1   0 1  0 0
+     ----------------------------------------
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    VARIABLE A 2000;
+    VARIABLE T 2000;
+    VARIABLE R 1 4;
+    VARIABLE PHI 1 4;
+    VARIABLE I 1;
+    DAINI 3 4 0 NM;
+    A := DA(2);
+    LOOP I 1 4;
+        R(I) := 1;
+        PHI(I) := 0.1 * I;
+    ENDLOOP;
+    CDNFDA A R PHI 1 4 0.001 T;
+    WRITE 6 REAL(T);
+ENDPROCEDURE;
+RUN;
+END;

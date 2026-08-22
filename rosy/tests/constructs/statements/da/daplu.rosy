@@ -4,11 +4,13 @@ BEGIN;
     VARIABLE (DA 1) OUTPUT;
     INPUT(1) := DA(1);
     DAPLU INPUT 1 2.0 OUTPUT;
-    WRITE 6 'daplu ok';
+    WRITE 6 OUTPUT(1);
 END;
 
 ======= expect
-daplu ok
+     I  COEFFICIENT            ORDER EXPONENTS
+     1   2.000000000000000       0   0 0
+     -----------------------------------
 
 ======= fox
 BEGIN;

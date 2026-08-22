@@ -17,10 +17,13 @@ use anyhow::Result;
 ///
 /// Uses the same Hessenberg + Francis QR infrastructure as LEV.
 pub fn rosy_mblock(
-    matrix: &Vec<Vec<f64>>,
-    n: usize,
-    alloc_dim: usize,
+    matrix: &impl crate::AsReMat,
+    n: impl crate::IntoF64,
+    alloc_dim: impl crate::IntoF64,
 ) -> Result<(Vec<Vec<f64>>, Vec<Vec<f64>>)> {
+    let matrix = matrix.to_re_mat();
+    let n = crate::rosy_as_usize(&n.into_f64());
+    let alloc_dim = crate::rosy_as_usize(&alloc_dim.into_f64());
     if n == 0 {
         let empty = vec![vec![0.0; alloc_dim]; alloc_dim];
         return Ok((empty.clone(), empty));
@@ -46,6 +49,30 @@ pub fn rosy_mblock(
 
     // 2. Francis QR iteration → quasi-upper-triangular (real Schur) form
     super::lev::francis_qr_pub(&mut h, &mut q, n)?;
+
+    // COSY plane orientation: each 2×2 block should have T[i,i+1] ≥ 0
+    // so COEF(map_i, p_i) matches the usual rotation sense (else TS yields 1-ν).
+    let mut k = 0;
+    while k + 1 < n {
+        let is_pair = h[k + 1][k].abs() > 1e-12 || h[k][k + 1].abs() > 1e-12;
+        if is_pair {
+            if h[k][k + 1] < 0.0 {
+                let j = k + 1;
+                for i in 0..n {
+                    q[i][j] = -q[i][j];
+                }
+                for i in 0..n {
+                    if i != j {
+                        h[i][j] = -h[i][j];
+                        h[j][i] = -h[j][i];
+                    }
+                }
+            }
+            k += 2;
+        } else {
+            k += 1;
+        }
+    }
 
     // Q is the transformation matrix: Q^T * A * Q = T (block-diagonal)
     // Q^{-1} = Q^T for orthogonal Q

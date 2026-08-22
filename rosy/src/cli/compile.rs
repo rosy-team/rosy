@@ -1,5 +1,4 @@
 use anyhow::{Context, Result, anyhow};
-use pest::Parser;
 use rosy::{ast, embedded, program::Program, resolve, transpile::*};
 use std::{
     fs::write,
@@ -75,7 +74,8 @@ pub(crate) fn compile_source(
         step(2, 6, "Parsing");
     }
     let t = Instant::now();
-    let program = ast::CosyParser::parse(ast::Rule::program, raw_script)
+    rosy::syntax_config::apply_from_path(script_path);
+    let program = ast::parse_source(raw_script)
         .context("Couldn't parse!")?
         .next()
         .context("Expected a program")?;
@@ -179,7 +179,7 @@ pub(crate) fn compile_source(
         eprintln!();
         eprintln!("  This is a bug in the Rosy transpiler, not in your code.");
         eprintln!("  Please report it at: {BOLD}https://github.com/rosy-team/rosy/issues{RESET}");
-        eprintln!("  Include your {BOLD}.rosy{RESET} file and the error output above.");
+        eprintln!("  Include your {BOLD}source{RESET} files and the error output above.");
         anyhow::bail!(
             "Internal transpiler error: generated code failed to compile (exit code {:?})",
             output.status.code()

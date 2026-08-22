@@ -86,7 +86,15 @@ pub fn rosy_dader(da: &mut Vec<DA>, var_index: usize) -> Result<()> {
 /// For each monomial m_k with coefficient c_k, the integral contributes
 /// `c_k / (e_v + 1)` to the monomial with exponent v incremented by 1.
 /// Terms that would exceed the truncation order are dropped.
-pub fn rosy_daint(da: &mut Vec<DA>, var_index: usize) -> Result<()> {
+pub fn rosy_daint(da: &mut impl crate::AsDaDst, var_index: impl crate::IntoF64) -> Result<()> {
+    let var_index = crate::rosy_as_usize(&var_index.into_f64());
+    let mut da_vec = da.load_da_vec();
+    rosy_daint_inner(&mut da_vec, var_index)?;
+    da.store_da_vec(da_vec);
+    Ok(())
+}
+
+fn rosy_daint_inner(da: &mut Vec<DA>, var_index: usize) -> Result<()> {
     // Acquire tables and release lock before building new DAs
     let (epsilon, _num_vars, integ_target_v, deriv_exp_v) = {
         let rt = get_runtime().context("DAINT requires DA to be initialized (call DAINI first)")?;
@@ -472,17 +480,15 @@ fn flow_impl<T: DACoefficient>(
     if rhs.len() < dim {
         bail!("Flow: rhs array has {} elements but dim={}", rhs.len(), dim);
     }
-    if ic.len() < dim {
-        bail!(
-            "Flow: initial condition has {} elements but dim={}",
-            ic.len(),
-            dim
-        );
+    if ic.is_empty() {
+        bail!("Flow: empty initial condition");
     }
+    // dim sizes the vector field; a scalar/1-cell ic is a single observable (COSY DAFLO).
+    let n_ic = ic.len().min(dim);
 
     const MAX_ITER: usize = 200;
 
-    for i in 0..dim {
+    for i in 0..n_ic {
         let mut term = ic[i].clone();
         let mut sum = term.clone();
 
@@ -531,32 +537,57 @@ fn flow_impl<T: DACoefficient>(
 /// - `ic`: initial condition DA array (dim components)
 /// - `result`: output DA array (dim components)
 /// - `dim`: dimension of the system
-pub fn rosy_daflo(rhs: &Vec<DA>, ic: &Vec<DA>, result: &mut Vec<DA>, dim: usize) -> Result<()> {
-    flow_impl(rhs, ic, result, dim)
+pub fn rosy_daflo(
+    rhs: &impl crate::AsDaRef,
+    ic: &impl crate::AsDaRef,
+    result: &mut impl crate::AsDaDst,
+    dim: impl crate::IntoF64,
+) -> Result<()> {
+    let rhs = rhs.as_da_vec();
+    let ic = ic.as_da_vec();
+    let dim = crate::rosy_as_usize(&dim.into_f64());
+    let mut out = result.load_da_vec();
+    flow_impl(&rhs, &ic, &mut out, dim)?;
+    result.store_da_vec(out);
+    Ok(())
 }
 
 /// CDFLO: Compute the complex DA flow of x' = f(x) for time step 1.
 ///
 /// Same as DAFLO but with complex DA (CD) coefficients.
-pub fn rosy_cdflo(rhs: &Vec<CD>, ic: &Vec<CD>, result: &mut Vec<CD>, dim: usize) -> Result<()> {
-    flow_impl(rhs, ic, result, dim)
+pub fn rosy_cdflo(
+    rhs: &impl crate::AsCdRef,
+    ic: &impl crate::AsCdRef,
+    result: &mut impl crate::AsCdDst,
+    dim: impl crate::IntoF64,
+) -> Result<()> {
+    let rhs = rhs.as_cd_vec();
+    let ic = ic.as_cd_vec();
+    let dim = crate::rosy_as_usize(&dim.into_f64());
+    let mut out = result.load_cd_vec();
+    flow_impl(&rhs, &ic, &mut out, dim)?;
+    result.store_cd_vec(out);
+    Ok(())
 }
 
 /// DANOW: Compute the order-weighted max norm of a DA variable.
 ///
 /// For each monomial of order k with coefficient c, computes |c| * weight^k.
 /// Returns the maximum over all monomials.
-pub fn rosy_danow(da: &DA, weight: f64, result: &mut f64) -> Result<()> {
-    *result = 0.0;
-
-    for (monomial, coeff) in da.coeffs_iter() {
-        let order = monomial.total_order as f64;
-        let weighted = coeff.abs() * weight.powf(order);
-        if weighted > *result {
-            *result = weighted;
+pub fn rosy_danow(da: &impl crate::AsDaRef, weight: impl crate::AsF64, result: &mut impl crate::SetF64) -> Result<()> {
+    let da = da.as_da_vec();
+    let weight = weight.as_f64_val();
+    let mut best = 0.0;
+    if let Some(da) = da.first() {
+        for (monomial, coeff) in da.coeffs_iter() {
+            let order = monomial.total_order as f64;
+            let weighted = coeff.abs() * weight.powf(order);
+            if weighted > best {
+                best = weighted;
+            }
         }
     }
-
+    result.set_f64(best);
     Ok(())
 }
 
@@ -709,14 +740,21 @@ pub fn rosy_cdnf(
 /// Like CDNF but eigenvalues have |lambda| != 1. Uses separate moduli and arguments.
 /// denominator = prod_k(lambda_k^{e_k}) - lambda_coord
 pub fn rosy_cdnfda(
-    input: &Vec<CD>,
-    moduli: &Vec<f64>,
-    arguments: &Vec<f64>,
-    coord: usize,
-    total: usize,
-    epsilon: f64,
-    result: &mut Vec<CD>,
+    input: &impl crate::AsCdRef,
+    moduli: &impl crate::PolvalReSrc,
+    arguments: &impl crate::PolvalReSrc,
+    coord: impl crate::IntoF64,
+    total: impl crate::IntoF64,
+    epsilon: impl crate::AsF64,
+    result: &mut impl crate::AsCdDst,
 ) -> Result<()> {
+    let input = input.as_cd_vec();
+    let moduli = moduli.to_re_vec();
+    let arguments = arguments.to_re_vec();
+    let coord = crate::rosy_as_usize(&coord.into_f64());
+    let total = crate::rosy_as_usize(&total.into_f64());
+    let epsilon = epsilon.as_f64_val();
+    let mut out = result.load_cd_vec();
     let rt = get_runtime().context("CDNFDA requires DA to be initialized (call DAINI first)")?;
     let num_vars = rt.config.num_vars;
 
@@ -737,8 +775,11 @@ pub fn rosy_cdnfda(
         Complex64::new(1.0, 0.0)
     };
 
+    while out.len() < input.len() {
+        out.push(CD::zero());
+    }
     for (idx, cd_in) in input.iter().enumerate() {
-        if idx >= result.len() {
+        if idx >= out.len() {
             break;
         }
         let mut cd_out = CD::zero();
@@ -766,8 +807,9 @@ pub fn rosy_cdnfda(
             cd_out.set_coeff(monomial, new_coeff);
         }
 
-        result[idx] = cd_out;
+        out[idx] = cd_out;
     }
+    result.store_cd_vec(out);
 
     Ok(())
 }
@@ -776,21 +818,31 @@ pub fn rosy_cdnfda(
 ///
 /// Like CDNFDA but the target eigenvalue is lambda_spin = exp(i * spin_argument).
 pub fn rosy_cdnfds(
-    input: &Vec<CD>,
-    moduli: &Vec<f64>,
-    arguments: &Vec<f64>,
-    spin_arg: f64,
-    total: usize,
-    epsilon: f64,
-    result: &mut Vec<CD>,
+    input: &impl crate::AsCdRef,
+    moduli: &impl crate::PolvalReSrc,
+    arguments: &impl crate::PolvalReSrc,
+    spin_arg: impl crate::AsF64,
+    total: impl crate::IntoF64,
+    epsilon: impl crate::AsF64,
+    result: &mut impl crate::AsCdDst,
 ) -> Result<()> {
+    let input = input.as_cd_vec();
+    let moduli = moduli.to_re_vec();
+    let arguments = arguments.to_re_vec();
+    let spin_arg = spin_arg.as_f64_val();
+    let total = crate::rosy_as_usize(&total.into_f64());
+    let epsilon = epsilon.as_f64_val();
+    let mut out = result.load_cd_vec();
     let rt = get_runtime().context("CDNFDS requires DA to be initialized (call DAINI first)")?;
     let num_vars = rt.config.num_vars;
 
     let lambda_spin = Complex64::new(spin_arg.cos(), spin_arg.sin());
 
+    while out.len() < input.len() {
+        out.push(CD::zero());
+    }
     for (idx, cd_in) in input.iter().enumerate() {
-        if idx >= result.len() {
+        if idx >= out.len() {
             break;
         }
         let mut cd_out = CD::zero();
@@ -817,8 +869,9 @@ pub fn rosy_cdnfds(
             cd_out.set_coeff(monomial, new_coeff);
         }
 
-        result[idx] = cd_out;
+        out[idx] = cd_out;
     }
+    result.store_cd_vec(out);
 
     Ok(())
 }

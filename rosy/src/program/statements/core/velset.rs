@@ -122,7 +122,7 @@ impl Transpile for VelsetStatement {
             VariableScope::Arg | VariableScope::Higher => vec_name.clone(),
         };
         let serialization = format!(
-            "*rosy_get_mut({mut_ref}, {comp}, \"{vec_name}\") = {val};",
+            "*rosy_get_mut({mut_ref}, {comp}, \"{vec_name}\") = ({val}).into();",
             mut_ref = mut_ref,
             comp = component_output.as_value(),
             vec_name = vec_name,

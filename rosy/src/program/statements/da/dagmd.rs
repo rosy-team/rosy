@@ -110,7 +110,7 @@ impl Transpile for DagmdStatement {
         let result_ref = result_output.as_mut_ref();
 
         let serialization = format!(
-            "rosy_lib::core::da_ops::rosy_dagmd({}, {}, {result_ref}, {} as usize)?;",
+            "rosy_lib::core::da_ops::rosy_dagmd({}, {}, {result_ref}, rosy_as_usize(&({})))?;",
             g_output.as_ref(),
             f_output.as_ref(),
             dim_output.as_value(),

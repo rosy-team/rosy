@@ -25,6 +25,7 @@ use std::collections::BTreeSet;
 use crate::{
     ast::*,
     program::expressions::Expr,
+    resolve::{ScopeContext, TypeResolver},
     transpile::{
         TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
         add_context_to_all,
@@ -114,13 +115,18 @@ impl Transpile for DapluStatement {
         let da_in_ref = da_in_output.as_ref();
         let result_strip = result_ref.trim_start_matches("&mut ");
         let da_in_arg = if da_in_ref.trim_start_matches('&') == result_strip {
-            format!("&{}.clone()", da_in_ref.trim_start_matches('&'))
+            let inner = da_in_ref.trim_start_matches('&');
+            if inner.starts_with('*') {
+                format!("&({}).clone()", inner)
+            } else {
+                format!("&{}.clone()", inner)
+            }
         } else {
             da_in_ref
         };
 
         let serialization = format!(
-            "rosy_lib::core::daprv::rosy_daplu({}, {} as usize, {} as f64, {})?;",
+            "rosy_lib::core::daprv::rosy_daplu({}, rosy_as_usize(&({})), rosy_as_f64(&({})), {})?;",
             da_in_arg,
             var_idx_output.as_value(),
             c_output.as_value(),
@@ -135,4 +141,14 @@ impl Transpile for DapluStatement {
     }
 }
 
-impl TranspileableStatement for DapluStatement {}
+impl TranspileableStatement for DapluStatement {
+    fn wire_inference_edges(
+        &self,
+        resolver: &mut TypeResolver,
+        ctx: &mut ScopeContext,
+        _source_location: crate::program::statements::SourceLocation,
+    ) -> Option<Result<()>> {
+        super::wire_da_result_cell(&self.result_expr, resolver, ctx, "DAPLU");
+        Some(Ok(()))
+    }
+}

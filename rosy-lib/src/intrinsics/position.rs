@@ -25,3 +25,9 @@ impl RosyPOSITION for ST {
             .unwrap_or(0.0)
     }
 }
+
+impl RosyPOSITION for crate::RosyValue {
+    fn rosy_position(&self, needle: &ST) -> RE {
+        self.clone().expect_st().map(|s| s.rosy_position(needle)).unwrap_or(0.0)
+    }
+}

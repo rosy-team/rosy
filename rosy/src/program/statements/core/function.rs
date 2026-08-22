@@ -161,9 +161,13 @@ impl TranspileableStatement for FunctionStatement {
     ) -> Option<Result<()>> {
         // Return type slot
         let ret_slot = TypeSlot::FunctionReturn(ctx.scope_path.clone(), self.name.clone());
+        let fox_ret = RosyType::ANY();
+        let ret_ty = self.return_type.as_ref().or_else(|| {
+            crate::syntax_config::is_cosy_syntax().then_some(&fox_ret)
+        });
         resolver.insert_slot(
             ret_slot.clone(),
-            self.return_type.as_ref(),
+            ret_ty,
             Some(source_location.clone()),
         );
 
@@ -172,9 +176,13 @@ impl TranspileableStatement for FunctionStatement {
         for arg in &self.args {
             let arg_slot =
                 TypeSlot::Argument(ctx.scope_path.clone(), self.name.clone(), arg.name.clone());
+            let fox_any = RosyType::ANY();
+            let ty = arg.r#type.as_ref().or_else(|| {
+                crate::syntax_config::is_cosy_syntax().then_some(&fox_any)
+            });
             resolver.insert_slot(
                 arg_slot.clone(),
-                arg.r#type.as_ref(),
+                ty,
                 Some(source_location.clone()),
             );
             arg_slots.push((arg.name.clone(), arg_slot));
@@ -207,9 +215,13 @@ impl TranspileableStatement for FunctionStatement {
         let inner_ret_var_slot =
             TypeSlot::Variable(inner_ctx.scope_path.clone(), self.name.clone());
         // If the return type is known explicitly, the inner return var is also known
+        let fox_inner = RosyType::ANY();
+        let inner_ty = self.return_type.as_ref().or_else(|| {
+            crate::syntax_config::is_cosy_syntax().then_some(&fox_inner)
+        });
         resolver.insert_slot(
             inner_ret_var_slot.clone(),
-            self.return_type.as_ref(),
+            inner_ty,
             Some(source_location.clone()),
         );
         inner_ctx
@@ -313,20 +325,18 @@ impl Transpile for FunctionStatement {
             data
         };
 
-        // Insert the function signature, but check it doesn't already exist
-        if context.functions.contains_key(&self.name)
-            || context
-                .functions
-                .insert(
-                    self.name.clone(),
-                    TranspilationInputFunctionContext {
-                        return_type: resolved_return_type,
-                        args: resolved_arg_data.clone(),
-                        requested_variables: BTreeSet::new(),
-                    },
-                )
-                .is_some()
-        {
+        let existed = context
+            .functions
+            .insert(
+                self.name.clone(),
+                TranspilationInputFunctionContext {
+                    return_type: resolved_return_type,
+                    args: resolved_arg_data.clone(),
+                    requested_variables: BTreeSet::new(),
+                },
+            )
+            .is_some();
+        if existed && !crate::syntax_config::is_cosy_syntax() {
             return Err(vec![anyhow!(
                 "Function '{}' is already defined in this scope!",
                 self.name
@@ -402,6 +412,9 @@ impl Transpile for FunctionStatement {
         let serialized_args: Vec<String> = {
             let mut serialized_args = Vec::new();
             for var_name in requested_variables.iter() {
+                if resolved_arg_data.iter().any(|a| a.name == *var_name) {
+                    continue;
+                }
                 let Some(var_data) = inner_context.variables.get(var_name) else {
                     errors.push(
                         anyhow!(
