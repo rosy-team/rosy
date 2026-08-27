@@ -18,10 +18,10 @@ Multi-dimensional arrays: `(RE 2 2)` = `Vec<Vec<f64>>` (initialized as a 2x2 vec
 
 ## Versioning
 
-Uses [Semantic Versioning](https://semver.org/). The version is in `rosy/Cargo.toml`.
+Uses [Semantic Versioning](https://semver.org/). The version is in `rosy-cli/Cargo.toml` (CLI) and `rosy-compiler/Cargo.toml` (keep them in sync).
 
-- **Every commit to `master`** must bump the version in `rosy/Cargo.toml`
+- **Every commit to `master`** must bump the version in `rosy-cli/Cargo.toml`
   - Patch bump (0.1.0 -> 0.1.1): bug fixes, small improvements
   - Minor bump (0.1.0 -> 0.2.0): new language constructs, features, breaking changes, or changes where doc rebuilds are desired
   - Major bump: reserved for 1.0 stable release
-- **Releases are automatic**: when a version bump in `rosy/Cargo.toml` is pushed to `master`, the GitHub Actions release workflow builds binaries, creates a git tag, and publishes a GitHub Release
+- **Releases are automatic**: a version bump in a crate's `Cargo.toml` pushed to `master` publishes that crate to crates.io (skipped if that version already exists). `rosy-cli` also builds binaries, tags `vX.Y.Z`, and creates a GitHub Release if that tag is new.

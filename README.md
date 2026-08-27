@@ -6,7 +6,7 @@ Rosy transpiles source code into self-contained, native Rust executables — opt
 
 ## Language Documentation
 
-The complete Rosy language reference — every operator, function, statement, and type — is in the **[Rustdoc documentation](https://rosy-team.github.io/rosy/)**.
+The complete Rosy language reference — every operator, function, statement, and type — is in the **[Rustdoc documentation](https://docs.rs/rosy-compiler/latest/rosy_compiler/)**.
 
 ## Example
 
@@ -27,6 +27,10 @@ y =  1.141120008059867E-001
 
 ## Installation
 
+```bash
+cargo install rosy-cli
+```
+
 ### From source (recommended)
 
 Requires the [Rust nightly toolchain](https://rustup.rs/) (needed for `--optimized` SIMD support):
@@ -41,7 +45,7 @@ rustup default nightly
 # Build and install Rosy
 git clone https://github.com/rosy-team/rosy.git
 cd rosy
-cargo install --path rosy
+cargo install --path rosy-cli
 ```
 
 To update:
@@ -50,7 +54,7 @@ To update:
 cd rosy
 git pull
 rustup update nightly
-cargo install --path rosy
+cargo install --path rosy-cli
 ```
 
 ### Migrating from Rust Stable to Nightly
@@ -60,7 +64,7 @@ If you previously installed Rosy with Rust stable, switch to nightly for `--opti
 ```bash
 rustup default nightly
 cd rosy && git pull
-cargo install --path rosy --force
+cargo install --path rosy-cli --force
 ```
 
 ### NIU Metis Quick Start
@@ -71,7 +75,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
 rustup default nightly
 git clone https://github.com/rosy-team/rosy.git
-cd rosy && cargo install --path rosy
+cd rosy && cargo install --path rosy-cli
 
 # For MPI programs (PLOOP)
 module load openmpi/openmpi-5.0.7-gcc-14.2.0-cuda-12.8
@@ -86,7 +90,7 @@ To update:
 ```bash
 cd ~/rosy && git pull
 rustup update nightly
-cargo install --path rosy --force
+cargo install --path rosy-cli --force
 ```
 
 ### From GitHub Releases
@@ -143,4 +147,4 @@ For setup instructions, run either:
 
 ## License
 
-See repository for license details.
+MIT. See `LICENSE`.

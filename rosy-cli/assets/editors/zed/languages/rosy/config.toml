@@ -1,0 +1,12 @@
+name = "Rosy"
+grammar = "rosy"
+path_suffixes = ["rosy", "fox"]
+line_comments = []
+block_comment = ["{", "}"]
+autoclose_before = ";:.,=}])> \n\t"
+tab_size = 4
+brackets = [
+  { start = "(", end = ")", close = true, newline = false },
+  { start = "{", end = "}", close = true, newline = false },
+]
+word_characters = ["_"]

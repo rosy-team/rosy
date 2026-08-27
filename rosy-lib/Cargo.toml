@@ -1,8 +1,13 @@
 [package]
-name = "rosy_lib"
-version = "0.1.0"
+name = "rosy-lib"
+version = "1.10.0"
 edition = "2024"
-description = "Rosy runtime library — types, operators, DA/CD, and intrinsics"
+authors = ["hiibolt <rust@hiibolt.com>"]
+license = "MIT"
+description = "Rosy runtime library: types, operators, DA/CD, and intrinsics"
+repository = "https://github.com/rosy-team/rosy"
+homepage = "https://github.com/rosy-team/rosy"
+documentation = "https://docs.rs/rosy-lib"
 
 [features]
 mpi = ["dep:mpi", "dep:bincode"]

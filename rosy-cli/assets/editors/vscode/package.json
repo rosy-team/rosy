@@ -1,0 +1,56 @@
+{
+  "name": "rosy-language-support",
+  "displayName": "Rosy Language Support",
+  "description": "Syntax highlighting and language server support for the Rosy programming language",
+  "version": "0.0.0-injected",
+  "publisher": "rosy-team",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:rosy"
+  ],
+  "main": "./extension.js",
+  "scripts": {
+    "build": "bun build src/extension.js --outfile extension.js --target node --external vscode --format cjs"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "rosy",
+        "aliases": [
+          "Rosy",
+          "rosy"
+        ],
+        "extensions": [
+          ".rosy",
+          ".fox"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "rosy",
+        "scopeName": "source.rosy",
+        "path": "./syntaxes/rosy.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Rosy",
+      "properties": {
+        "rosy.lspPath": {
+          "type": "string",
+          "default": "rosy",
+          "description": "Path to the rosy binary (supports ~/). Falls back to PATH lookup."
+        }
+      }
+    }
+  }
+}
