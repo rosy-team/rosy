@@ -307,7 +307,14 @@ impl<T: DACoefficient> DA<T> {
     pub fn trim(&mut self) {
         let rt = get_runtime().expect("Taylor system not initialized");
         let epsilon = rt.config.epsilon;
-        self.nonzero.retain(|&i| self.coeffs[i as usize].abs() > epsilon);
+        self.nonzero.retain(|&i| {
+            if self.coeffs[i as usize].abs() > epsilon {
+                true
+            } else {
+                self.coeffs[i as usize] = T::zero();
+                false
+            }
+        });
     }
 
     #[inline]
@@ -354,12 +361,25 @@ impl<T: DACoefficient> DA<T> {
         self.coeffs[0] = self.coeffs[0] + value;
         let is_nz = self.coeffs[0].abs() > epsilon;
 
-        if is_nz && !was_nz {
-            self.nonzero.push(0);
-        } else if !is_nz && was_nz {
-            if let Some(pos) = self.nonzero.iter().position(|&i| i == 0) {
-                self.nonzero.swap_remove(pos);
+        if is_nz {
+            let mut seen_constant = false;
+            self.nonzero.retain(|&i| {
+                if i == 0 {
+                    if seen_constant {
+                        false
+                    } else {
+                        seen_constant = true;
+                        true
+                    }
+                } else {
+                    true
+                }
+            });
+            if !seen_constant {
+                self.nonzero.push(0);
             }
+        } else if was_nz || self.nonzero.contains(&0) {
+            self.nonzero.retain(|&i| i != 0);
             self.coeffs[0] = T::zero();
         }
     }
@@ -417,10 +437,14 @@ impl<T: DACoefficient> Add<&DA<T>> for &DA<T> {
         }
 
         let mut nonzero = Vec::with_capacity(self.nonzero.len() + rhs.nonzero.len());
+        let mut result_set = vec![0u64; words];
         for &i in &self.nonzero {
             let iu = i as usize;
             if orders[iu] <= max_order && coeffs[iu].abs() > epsilon {
-                nonzero.push(i);
+                if result_set[iu / 64] & (1u64 << (iu % 64)) == 0 {
+                    nonzero.push(i);
+                    result_set[iu / 64] |= 1u64 << (iu % 64);
+                }
             } else {
                 coeffs[iu] = T::zero();
             }
@@ -429,7 +453,10 @@ impl<T: DACoefficient> Add<&DA<T>> for &DA<T> {
             let ju = j as usize;
             if self_set[ju / 64] & (1u64 << (ju % 64)) == 0 {
                 if orders[ju] <= max_order && coeffs[ju].abs() > epsilon {
-                    nonzero.push(j);
+                    if result_set[ju / 64] & (1u64 << (ju % 64)) == 0 {
+                        nonzero.push(j);
+                        result_set[ju / 64] |= 1u64 << (ju % 64);
+                    }
                 } else {
                     coeffs[ju] = T::zero();
                 }
@@ -520,10 +547,14 @@ impl<T: DACoefficient> Sub<&DA<T>> for &DA<T> {
         }
 
         let mut nonzero = Vec::with_capacity(self.nonzero.len() + rhs.nonzero.len());
+        let mut result_set = vec![0u64; words];
         for &i in &self.nonzero {
             let iu = i as usize;
             if orders[iu] <= max_order && coeffs[iu].abs() > epsilon {
-                nonzero.push(i);
+                if result_set[iu / 64] & (1u64 << (iu % 64)) == 0 {
+                    nonzero.push(i);
+                    result_set[iu / 64] |= 1u64 << (iu % 64);
+                }
             } else {
                 coeffs[iu] = T::zero();
             }
@@ -532,7 +563,10 @@ impl<T: DACoefficient> Sub<&DA<T>> for &DA<T> {
             let ju = j as usize;
             if self_set[ju / 64] & (1u64 << (ju % 64)) == 0 {
                 if orders[ju] <= max_order && coeffs[ju].abs() > epsilon {
-                    nonzero.push(j);
+                    if result_set[ju / 64] & (1u64 << (ju % 64)) == 0 {
+                        nonzero.push(j);
+                        result_set[ju / 64] |= 1u64 << (ju % 64);
+                    }
                 } else {
                     coeffs[ju] = T::zero();
                 }
@@ -748,10 +782,15 @@ impl<T: DACoefficient> Mul<T> for &DA<T> {
             return Ok(DA::zero());
         }
         let mut coeffs = T::pool_alloc(rt.num_monomials);
+        let mut nonzero = Vec::with_capacity(self.nonzero.len());
         for &i in &self.nonzero {
-            coeffs[i as usize] = self.coeffs[i as usize] * rhs;
+            let scaled = self.coeffs[i as usize] * rhs;
+            if scaled.abs() > epsilon {
+                coeffs[i as usize] = scaled;
+                nonzero.push(i);
+            }
         }
-        Ok(DA { coeffs, nonzero: self.nonzero.clone() })
+        Ok(DA { coeffs, nonzero })
     }
 }
 
@@ -976,6 +1015,44 @@ impl DA<Complex64> {
             }
         }
         DA { coeffs, nonzero }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    use crate::taylor::config::{cleanup_taylor, init_taylor, set_epsilon};
+
+    #[test]
+    #[serial]
+    fn scalar_multiply_prunes_coefficients_below_runtime_epsilon() {
+        cleanup_taylor();
+        init_taylor(2, 2).unwrap();
+        set_epsilon(1e-16).unwrap();
+
+        let x = DA::<f64>::variable(1).unwrap();
+        let scaled = (&x * 8.0e-17).unwrap();
+
+        assert!(scaled.is_zero());
+
+        cleanup_taylor();
+    }
+
+    #[test]
+    #[serial]
+    fn scalar_multiply_keeps_coefficients_above_runtime_epsilon() {
+        cleanup_taylor();
+        init_taylor(2, 2).unwrap();
+        set_epsilon(1e-16).unwrap();
+
+        let x = DA::<f64>::variable(1).unwrap();
+        let scaled = (&x * 2.0e-16).unwrap();
+
+        assert_eq!(scaled.num_terms(), 1);
+
+        cleanup_taylor();
     }
 }
 

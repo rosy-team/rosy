@@ -9,8 +9,24 @@
 use rosy_lib::*;
 use anyhow::{Result, Context, ensure, bail};
 use num_complex::Complex64;
+use std::sync::OnceLock;
+use std::time::Instant;
+
+static ROSY_PROGRAM_START: OnceLock<Instant> = OnceLock::new();
+
+fn rosy_init_timer() {
+	let _ = ROSY_PROGRAM_START.set(Instant::now());
+}
+
+fn rosy_elapsed_seconds() -> f64 {
+	ROSY_PROGRAM_START
+		.get_or_init(Instant::now)
+		.elapsed()
+		.as_secs_f64()
+}
 
 fn main_wrapper() -> Result<()> {
+	rosy_init_timer();
 	let start = std::time::Instant::now();
 	// <MPI_START>
 	let mut rosy_mpi_context_inner = RosyMPIContext::new()

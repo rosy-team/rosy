@@ -1,6 +1,6 @@
 [package]
 name = "rosy-cli"
-version = "1.10.0"
+version = "1.10.1"
 edition = "2024"
 authors = ["hiibolt <rust@hiibolt.com>"]
 license = "MIT"
@@ -19,7 +19,7 @@ nightly-simd = ["rosy-compiler/nightly-simd"]
 [dependencies]
 anyhow.workspace = true
 clap = { version = "4.5", features = ["derive"] }
-rosy-compiler = { version = "1.10.0", path = "../rosy-compiler" }
+rosy-compiler = { version = "1.10.1", path = "../rosy-compiler" }
 tokio = { version = "1", features = ["rt", "io-std", "macros"] }
 
 [dev-dependencies]

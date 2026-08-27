@@ -12,6 +12,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/program");
     println!("cargo:rerun-if-changed=src/compiler");
     println!("cargo:rerun-if-changed=../rosy-lib/src");
+    println!("cargo:rerun-if-changed=assets/output_template/main.rs");
 
     let out_dir = std::env::var("OUT_DIR").unwrap();
 
