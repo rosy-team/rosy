@@ -49,10 +49,15 @@ pub fn rosy_daprv(
 ///   - No header line
 ///   - Each non-zero term: `{coeff:17.12}     {exponents_concatenated}\n`
 ///   - Separator: ` ` + 78 dashes + `\n`
+/// Printed/parsed exponent slots: COSY uses min(max_vars, 6), padding zeros.
+fn daprv_exponent_digits(max_vars: usize) -> usize {
+    max_vars.min(crate::taylor::MAX_VARS)
+}
+
 fn format_daprv(
     array: &Vec<DA>,
     num_components: usize,
-    _max_vars: usize,
+    max_vars: usize,
     current_vars: usize,
 ) -> Result<String> {
     let epsilon = get_runtime()
@@ -71,7 +76,7 @@ fn format_daprv(
         }
     }
 
-    let sort_vars = current_vars.max(1).min(_max_vars).min(6);
+    let sort_vars = current_vars.max(1).min(6);
     all_monomials.sort_by_cached_key(|m| {
         (
             m.total_order,
@@ -81,16 +86,18 @@ fn format_daprv(
     });
 
     // One block per component (single-column COSY format)
-    let nv = current_vars.min(6);
+    let nv = daprv_exponent_digits(max_vars);
     for comp_idx in 0..num_components.min(array.len()) {
         for monomial in &all_monomials {
             let coeff = array[comp_idx].get_coeff(monomial);
             if coeff.abs() <= epsilon {
                 continue;
             }
-            let exp_str: String = monomial.exponents[..nv]
-                .iter()
-                .map(|&e| char::from_digit(e as u32, 10).unwrap_or('?'))
+            let exp_str: String = (0..nv)
+                .map(|i| {
+                    let e = monomial.exponents.get(i).copied().unwrap_or(0);
+                    char::from_digit(e as u32, 10).unwrap_or('?')
+                })
                 .collect();
             output.push_str(&format!("{:17.12}     {}\n", coeff, exp_str));
         }
@@ -117,7 +124,7 @@ pub fn rosy_darev(
 ) -> Result<()> {
     let num_components = crate::rosy_as_usize(&num_components.into_f64());
     let _max_vars = crate::rosy_as_usize(&_max_vars.into_f64());
-    let current_vars = crate::rosy_as_usize(&current_vars.into_f64());
+    let _current_vars = crate::rosy_as_usize(&current_vars.into_f64());
     let unit = crate::rosy_as_u64(&unit);
     let dest = array;
     let mut array = dest.load_da_vec();
@@ -129,7 +136,7 @@ pub fn rosy_darev(
         array[i] = DA::zero();
     }
 
-    let nv = current_vars.min(6);
+    let nv = daprv_exponent_digits(_max_vars);
 
     // Read one block per component; each block ends with a separator line (all dashes)
     for comp_idx in 0..num_components.min(array.len()) {
@@ -153,7 +160,7 @@ pub fn rosy_darev(
 
             let coeff: f64 = tokens[0].parse().unwrap_or(0.0);
             // Exponents are concatenated single digits per variable, e.g. "10" = x1=1, x2=0
-            let mut exponents = [0u8; 6];
+            let mut exponents = [0u8; crate::taylor::MAX_VARS];
             for (i, ch) in tokens[1].chars().enumerate().take(nv) {
                 exponents[i] = ch.to_digit(10).unwrap_or(0) as u8;
             }
@@ -533,4 +540,56 @@ pub fn rosy_dacqlc(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    use crate::taylor::{cleanup_taylor, init_taylor};
+
+    #[test]
+    fn exponent_digits_use_max_vars_capped_at_six() {
+        assert_eq!(daprv_exponent_digits(2), 2);
+        assert_eq!(daprv_exponent_digits(6), 6);
+        assert_eq!(daprv_exponent_digits(8), 6);
+    }
+
+    #[test]
+    #[serial]
+    fn format_daprv_pads_exponent_slots_when_max_vars_exceeds_current() {
+        cleanup_taylor();
+        init_taylor(2, 2).unwrap();
+
+        let da = DA::variable(1).unwrap();
+        let out = format_daprv(&vec![da], 1, 6, 2).unwrap();
+        let exp_col: Vec<&str> = out
+            .lines()
+            .filter(|l| !l.trim().chars().all(|c| c == '-'))
+            .filter_map(|l| l.split_whitespace().nth(1))
+            .collect();
+
+        assert_eq!(exp_col, vec!["100000"]);
+        cleanup_taylor();
+    }
+
+    #[test]
+    #[serial]
+    fn darev_reads_the_same_padded_exponent_width() {
+        cleanup_taylor();
+        init_taylor(2, 2).unwrap();
+
+        let nv = daprv_exponent_digits(6);
+        let token = "100000";
+        let mut exponents = [0u8; crate::taylor::MAX_VARS];
+        for (i, ch) in token.chars().enumerate().take(nv) {
+            exponents[i] = ch.to_digit(10).unwrap_or(0) as u8;
+        }
+        assert_eq!(nv, 6);
+        assert_eq!(exponents[0], 1);
+        assert!(exponents[1..].iter().all(|&e| e == 0));
+
+        cleanup_taylor();
+    }
 }

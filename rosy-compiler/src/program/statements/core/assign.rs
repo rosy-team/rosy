@@ -36,6 +36,34 @@ use crate::{
 use anyhow::{Context, Error, Result, anyhow, ensure};
 use rosy_lib::{RosyBaseType, RosyType};
 
+/// `COORD(1) := COORD(1) & DA(...)` nests one extra DA/CD dimension on the
+/// container (like `A(1) := A(1) & 3` on `(VE n)`). Same base, rhs is one
+/// dim thicker than the peeled/old type.
+fn da_concat_nest_promote(elem_or_old: &RosyType, rhs_or_new: &RosyType) -> bool {
+    matches!(
+        elem_or_old.base_type,
+        RosyBaseType::DA | RosyBaseType::CD
+    ) && elem_or_old.base_type == rhs_or_new.base_type
+        && rhs_or_new.dimensions == elem_or_old.dimensions + 1
+}
+
+fn bump_da_array_nesting(resolver: &mut TypeResolver, var_slot: &TypeSlot, new_type: RosyType) {
+    if let Some(node) = resolver.nodes.get_mut(var_slot) {
+        node.resolved = Some(new_type);
+        match &mut node.rule {
+            ResolutionRule::Explicit(t) => {
+                t.dimensions = new_type.dimensions;
+            }
+            ResolutionRule::InferredFrom { recipe, reason } => {
+                *recipe = ExprRecipe::Literal(new_type);
+                reason.clear();
+                reason.push_str("da/cd indexed concat nest");
+            }
+            _ => {}
+        }
+    }
+}
+
 /// AST node for the assignment statement `name := expr;`.
 #[derive(Debug)]
 pub struct AssignStatement {
@@ -159,6 +187,16 @@ impl TranspileableStatement for AssignStatement {
                     && new_type != explicit_type
                     && !new_type.is_any()
                 {
+                    if da_concat_nest_promote(&explicit_type, &new_type) {
+                        let mut nested = resolved;
+                        nested.dimensions += 1;
+                        bump_da_array_nesting(resolver, &var_slot, nested);
+                        return Some(Ok(()));
+                    }
+                    // VARIABLE (DA) X; X := 1 is fine. declared RE stays RE.
+                    if re_da_assignment_type(explicit_type, new_type) == Some(explicit_type) {
+                        return Some(Ok(()));
+                    }
                     if crate::syntax_config::is_cosy_syntax() {
                         if let Some(node) = resolver.nodes.get_mut(&var_slot) {
                             node.rule = ResolutionRule::InferredFrom {
@@ -361,6 +399,22 @@ impl TranspileableStatement for AssignStatement {
 
                 if let (Ok(old_type), Ok(new_type)) = (old_type_result, new_type_result) {
                     if old_type != new_type {
+                    if da_concat_nest_promote(&old_type, &new_type) {
+                        bump_da_array_nesting(resolver, &var_slot, new_type);
+                        return Some(Ok(()));
+                    }
+                    if let Some(promoted) = re_da_assignment_type(old_type, new_type) {
+                        if promoted != old_type
+                            && let Some(node) = resolver.nodes.get_mut(&var_slot)
+                        {
+                            node.rule = ResolutionRule::InferredFrom {
+                                recipe: ExprRecipe::Literal(promoted),
+                                reason: "RE promoted to DA".to_string(),
+                            };
+                            node.depends_on.clear();
+                        }
+                        return Some(Ok(()));
+                    }
                     // Cosy cells are untyped. Rosy ANY only for 0-d base conflicts.
                     let any_ok = crate::syntax_config::is_cosy_syntax()
                         || (old_type.dimensions == 0 && new_type.dimensions == 0);
@@ -583,9 +637,16 @@ impl Transpile for AssignStatement {
         let value_type = value.type_of(context).map_err(|e| {
             vec![e.context("...while determining type of value expression for assignment")]
         })?;
+        let da_singleton_wrap = matches!(
+            variable_type.base_type,
+            RosyBaseType::DA | RosyBaseType::CD
+        ) && variable_type.base_type == value_type.base_type
+            && variable_type.dimensions == value_type.dimensions + 1;
         if variable_type != value_type
             && !variable_type.is_any()
             && !value_type.is_any()
+            && !da_singleton_wrap
+            && re_da_assignment_type(variable_type, value_type) != Some(variable_type)
         {
             return Err(vec![anyhow!(
                 "Cannot assign value of type '{}' to variable '{}' of type '{}'!",
@@ -677,10 +738,19 @@ impl Transpile for AssignStatement {
                 value_output.as_owned(&value_type),
                 variable_type.base_type.to_string().to_lowercase()
             )
+        } else if variable_type == RosyType::DA() && value_type == RosyType::RE() {
+            format!("DA::from_coeff({})", value_output.as_owned(&value_type))
         } else if variable_type == RosyType::RE() && value_type != RosyType::RE() {
             format!("rosy_as_f64(&({}))", value_output.as_owned(&value_type))
         } else if variable_type == RosyType::ST() && value_type != RosyType::ST() {
             format!("RosyST::rosy_to_string(&{})", value_output.as_ref())
+        } else if matches!(
+            variable_type.base_type,
+            RosyBaseType::DA | RosyBaseType::CD
+        ) && variable_type.base_type == value_type.base_type
+            && variable_type.dimensions == value_type.dimensions + 1
+        {
+            format!("vec![{}]", value_output.as_owned(&value_type))
         } else {
             value_output.as_owned(&variable_type)
         };
@@ -790,6 +860,18 @@ impl Transpile for AssignStatement {
         } else {
             Err(errors)
         }
+    }
+}
+
+/// RE is a constant DA. same rank only. promotes the slot to DA when RE comes first.
+fn re_da_assignment_type(old: RosyType, new: RosyType) -> Option<RosyType> {
+    if old.dimensions != new.dimensions {
+        return None;
+    }
+    match (old.base_type, new.base_type) {
+        (RosyBaseType::RE, RosyBaseType::DA) => Some(new),
+        (RosyBaseType::DA, RosyBaseType::RE) => Some(old),
+        _ => None,
     }
 }
 

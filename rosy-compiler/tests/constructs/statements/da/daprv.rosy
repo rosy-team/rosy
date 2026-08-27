@@ -2,12 +2,12 @@ BEGIN;
     DAINI 3 2 0 0;
     VARIABLE (DA 1) A;
     A(1) := DA(1) + 2;
-    DAPRV A 1 2 2 6;
+    DAPRV A 1 6 2 6;
 END;
 
 ======= expect
-   2.000000000000     00
-   1.000000000000     10
+   2.000000000000     000000
+   1.000000000000     100000
  ------------------------------------------------------------------------------
 
 ======= fox
@@ -17,7 +17,7 @@ PROCEDURE RUN;
     VARIABLE A 2000 1;
     DAINI 3 2 0 NM;
     A(1) := DA(1) + 2;
-    DAPRV A 1 2 2 6;
+    DAPRV A 1 6 2 6;
     WRITE 6 'daprv ok';
 ENDPROCEDURE;
 RUN;
