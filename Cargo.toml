@@ -1,7 +1,8 @@
 [workspace]
 resolver = "3"
 members = [
-    "rosy",
+    "rosy-cli",
+    "rosy-compiler",
     "rosy-lib",
 ]
 exclude = [ ".rosy_output", ".rosy_test_cache" ]

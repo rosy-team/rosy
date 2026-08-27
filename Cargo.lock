@@ -1228,15 +1228,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "rosy"
-version = "1.9.0"
+name = "rosy-cli"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "clap",
+ "rosy-compiler",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "rosy-compiler"
+version = "1.10.0"
+dependencies = [
+ "anyhow",
  "flate2",
  "pest",
  "pest_derive",
- "rosy_lib",
+ "rosy-lib",
  "semver",
  "serde",
  "tar",
@@ -1248,8 +1258,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "rosy_lib"
-version = "0.1.0"
+name = "rosy-lib"
+version = "1.10.0"
 dependencies = [
  "anyhow",
  "bincode",

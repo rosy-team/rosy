@@ -1,0 +1,36 @@
+[package]
+name = "rosy-compiler"
+version = "1.10.0"
+edition = "2024"
+authors = ["hiibolt <rust@hiibolt.com>"]
+license = "MIT"
+description = "Rosy language compiler: parse, resolve, transpile"
+repository = "https://github.com/rosy-team/rosy"
+homepage = "https://github.com/rosy-team/rosy"
+documentation = "https://docs.rs/rosy-compiler"
+
+[lib]
+name = "rosy_compiler"
+path = "src/lib.rs"
+
+[features]
+nightly-simd = ["rosy-lib/nightly-simd"]
+
+[dependencies]
+anyhow.workspace = true
+pest.workspace = true
+pest_derive.workspace = true
+semver = "1"
+ureq = { version = "3", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+flate2 = "1"
+tar = "0.4"
+rosy-lib = { version = "1.10.0", path = "../rosy-lib" }
+
+# LSP server
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["rt", "io-std", "macros"] }
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,15 @@
+id = "rosy"
+name = "Rosy"
+description = "Rosy language support — diagnostics, completions, type hints, and inlay hints"
+version = "0.2.1"
+schema_version = 1
+authors = ["rosy-team"]
+repository = "https://github.com/rosy-team/rosy"
+
+[grammars.rosy]
+repository = "https://github.com/rosy-team/rosy-tree-sitter"
+rev = "f55e96054227229e352bcce48a4ff1b76ef4b0db"
+
+[language_servers.rosy-lsp]
+name = "Rosy LSP"
+languages = ["Rosy"]

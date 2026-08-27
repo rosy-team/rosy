@@ -25,10 +25,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build documentation
-        run: cargo doc --document-private-items --no-deps -p rosy -p rosy_lib
+        run: cargo doc --document-private-items --no-deps -p rosy-compiler -p rosy-lib
 
       - name: Add redirect index.html
-        run: echo '<meta http-equiv="refresh" content="0;url=rosy/index.html">' > target/doc/index.html
+        run: echo '<meta http-equiv="refresh" content="0;url=rosy_compiler/index.html">' > target/doc/index.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
