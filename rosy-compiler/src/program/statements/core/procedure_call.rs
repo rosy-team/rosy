@@ -27,12 +27,15 @@ use crate::{
     resolve::{ScopeContext, TypeResolver},
     transpile::*,
 };
+use pest::Parser;
+use rosy_lib::{RosyBaseType, RosyType};
 
 /// AST node for a procedure call statement.
 #[derive(Debug)]
 pub struct ProcedureCallStatement {
     pub name: String,
     pub args: Vec<Expr>,
+    raw: String,
 }
 
 impl FromRule for ProcedureCallStatement {
@@ -43,6 +46,7 @@ impl FromRule for ProcedureCallStatement {
             pair.as_rule()
         );
 
+        let raw = pair.as_str().to_string();
         let mut inner = pair.into_inner();
         let name = inner
             .next()
@@ -63,9 +67,136 @@ impl FromRule for ProcedureCallStatement {
             args.push(expr);
         }
 
-        Ok(Some(ProcedureCallStatement { name, args }))
+        Ok(Some(ProcedureCallStatement { name, args, raw }))
     }
 }
+
+fn split_raw_call_args(raw: &str, name: &str) -> Vec<String> {
+    let mut src = raw.trim();
+    if src.ends_with(';') {
+        src = &src[..src.len() - 1];
+    }
+    src = src.strip_prefix(name).unwrap_or(src).trim_start();
+
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut depth = 0i32;
+    let mut quote: Option<char> = None;
+
+    for ch in src.chars() {
+        if let Some(q) = quote {
+            current.push(ch);
+            if ch == q {
+                quote = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '\'' | '"' => {
+                quote = Some(ch);
+                current.push(ch);
+            }
+            '(' | '[' => {
+                depth += 1;
+                current.push(ch);
+            }
+            ')' | ']' => {
+                depth -= 1;
+                current.push(ch);
+            }
+            ch if ch.is_whitespace() && depth == 0 => {
+                if !current.trim().is_empty() {
+                    args.push(current.trim().to_string());
+                    current.clear();
+                }
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    if !current.trim().is_empty() {
+        args.push(current.trim().to_string());
+    }
+
+    args
+}
+
+fn parse_expr_arg(src: &str) -> Result<Expr> {
+    let pair = CosyParser::parse(Rule::expr, src)
+        .with_context(|| format!("Failed to parse procedure argument '{src}'"))?
+        .next()
+        .ok_or_else(|| anyhow!("Expected expression in procedure argument '{src}'"))?;
+    Expr::from_rule(pair)?
+        .ok_or_else(|| anyhow!("Expected expression in procedure argument '{src}'"))
+}
+
+fn procedure_arg_accepts(expected: &RosyType, provided: &RosyType) -> bool {
+    expected == provided
+        || (expected.dimensions == 0
+            && provided.dimensions == 0
+            && expected.base_type == RosyBaseType::DA
+            && provided.base_type == RosyBaseType::RE)
+}
+
+fn promote_arg_to_expected(
+    arg_output: &TranspilationOutput,
+    provided_type: &RosyType,
+    expected_type: &RosyType,
+) -> Option<String> {
+    if expected_type.dimensions == 0
+        && provided_type.dimensions == 0
+        && expected_type.base_type == RosyBaseType::DA
+        && provided_type.base_type == RosyBaseType::RE
+    {
+        Some(format!(
+            "DA::constant({})",
+            arg_output.as_owned(provided_type)
+        ))
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn procedure_call_splits_negative_numeric_argument() {
+        let pair = CosyParser::parse(Rule::procedure_call, "DP 10 90 -0.05;")
+            .expect("procedure call should parse")
+            .next()
+            .expect("missing procedure_call pair");
+        let call = ProcedureCallStatement::from_rule(pair)
+            .expect("procedure call should build")
+            .expect("procedure call should be present");
+
+        assert_eq!(call.name, "DP");
+        assert_eq!(
+            split_raw_call_args(&call.raw, &call.name),
+            vec!["10", "90", "-0.05"]
+        );
+    }
+
+    #[test]
+    fn procedure_call_accepts_leading_dot_numeric_arguments() {
+        let pair = CosyParser::parse(Rule::procedure_call, "MQ .1 Q .05;")
+            .expect("procedure call should parse")
+            .next()
+            .expect("missing procedure_call pair");
+        let call = ProcedureCallStatement::from_rule(pair)
+            .expect("procedure call should build")
+            .expect("procedure call should be present");
+
+        assert_eq!(call.name, "MQ");
+        assert_eq!(
+            split_raw_call_args(&call.raw, &call.name),
+            vec![".1", "Q", ".05"]
+        );
+    }
+}
+
 impl Transpile for ProcedureCallStatement {
     fn transpile(
         &self,
@@ -92,13 +223,30 @@ impl Transpile for ProcedureCallStatement {
         }
         .clone();
 
+        let fallback_args;
+        let args = if proc_context.args.len() > self.args.len() {
+            let raw_args = split_raw_call_args(&self.raw, &self.name);
+            if raw_args.len() == proc_context.args.len() {
+                fallback_args = raw_args
+                    .iter()
+                    .map(|arg| parse_expr_arg(arg))
+                    .collect::<Result<Vec<_>>>()
+                    .map_err(|e| vec![e])?;
+                &fallback_args
+            } else {
+                &self.args
+            }
+        } else {
+            &self.args
+        };
+
         // Check that the number of arguments is correct
-        if proc_context.args.len() != self.args.len() {
+        if proc_context.args.len() != args.len() {
             return Err(vec![anyhow!(
                 "procedure '{}' expects {} arguments, but {} were provided!",
                 self.name,
                 proc_context.args.len(),
-                self.args.len()
+                args.len()
             )]);
         }
         let mut errors = Vec::new();
@@ -161,7 +309,7 @@ impl Transpile for ProcedureCallStatement {
         }
 
         // Pass 1 — record (a) bare-variable duplicates.
-        for (i, arg_expr) in self.args.iter().enumerate() {
+        for (i, arg_expr) in args.iter().enumerate() {
             if let Some(arg_name) = arg_expr.as_bare_variable_name() {
                 if first_occurrence.contains_key(arg_name) {
                     if let Some(var_data) = context.variables.get(arg_name) {
@@ -187,7 +335,7 @@ impl Transpile for ProcedureCallStatement {
         }
 
         // Add the manual arguments
-        for (i, arg_expr) in self.args.iter().enumerate() {
+        for (i, arg_expr) in args.iter().enumerate() {
             match arg_expr.transpile(context) {
                 Ok(arg_output) => {
                     // Check the type is correct
@@ -199,10 +347,19 @@ impl Transpile for ProcedureCallStatement {
                             "procedure '{}' expects {} arguments, but {} were provided!",
                             self.name,
                             proc_context.args.len(),
-                            self.args.len()
+                            args.len()
                         )])?
                         .r#type;
-                    if !types_compatible(&provided_type, &expected_type) {
+                    if let Some(promoted) =
+                        promote_arg_to_expected(&arg_output, &provided_type, &expected_type)
+                    {
+                        let temp_name = format!("__rosy_arg_tmp_{}", i);
+                        prelude_decls.push(format!("let mut {} = {};", temp_name, promoted));
+                        serialized_args.push(format!("&mut {}", temp_name));
+                        requested_variables.extend(arg_output.requested_variables);
+                    } else if !types_compatible(&provided_type, &expected_type)
+                        && !procedure_arg_accepts(&expected_type, &provided_type)
+                    {
                         if crate::syntax_config::is_cosy_syntax() {
                             if let Some(name) = arg_expr.as_bare_variable_name() {
                                 let scope = context

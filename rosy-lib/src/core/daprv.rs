@@ -5,7 +5,7 @@
 
 use anyhow::{Result, Context, bail};
 
-use crate::taylor::{DA, get_config, get_runtime};
+use crate::taylor::{DA, cosy_display_rank, get_config, get_runtime};
 use crate::taylor::Monomial;
 
 /// Write an array of DA vectors in COSY INFINITY DAPRV format.
@@ -71,18 +71,13 @@ fn format_daprv(
         }
     }
 
-    // Sort by total order ascending, then reverse-lexicographic on exponents
-    all_monomials.sort_by(|m1, m2| {
-        m1.total_order.cmp(&m2.total_order)
-            .then_with(|| {
-                for i in (0..m1.exponents.len()).rev() {
-                    match m1.exponents[i].cmp(&m2.exponents[i]) {
-                        std::cmp::Ordering::Equal => continue,
-                        ord => return ord,
-                    }
-                }
-                std::cmp::Ordering::Equal
-            })
+    let sort_vars = current_vars.max(1).min(_max_vars).min(6);
+    all_monomials.sort_by_cached_key(|m| {
+        (
+            m.total_order,
+            cosy_display_rank(&m.exponents, sort_vars),
+            m.exponents,
+        )
     });
 
     // One block per component (single-column COSY format)

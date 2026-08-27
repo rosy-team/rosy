@@ -1229,7 +1229,7 @@ dependencies = [
 
 [[package]]
 name = "rosy-cli"
-version = "1.10.0"
+version = "1.10.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1240,7 +1240,7 @@ dependencies = [
 
 [[package]]
 name = "rosy-compiler"
-version = "1.10.0"
+version = "1.10.1"
 dependencies = [
  "anyhow",
  "flate2",
@@ -1259,7 +1259,7 @@ dependencies = [
 
 [[package]]
 name = "rosy-lib"
-version = "1.10.0"
+version = "1.10.1"
 dependencies = [
  "anyhow",
  "bincode",

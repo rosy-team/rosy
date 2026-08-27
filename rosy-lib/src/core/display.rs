@@ -1,5 +1,7 @@
 use crate::{RE, ST, LO, CM, VE, DA, CD};
-use crate::taylor::get_runtime;
+use crate::taylor::{MAX_VARS, cosy_display_rank, get_config, get_runtime};
+
+const ALL_COMPONENTS_ZERO: &str = "     ALL COMPONENTS ZERO\n     -------------------";
 
 fn sci(x: f64) -> (f64, i32) {
     if x == 0.0 {
@@ -176,24 +178,19 @@ impl RosyDisplay for &DA {
         // Get all coefficients
         let coeffs: Vec<_> = self.coeffs_iter();
         if coeffs.is_empty() {
-            return "     I  COEFFICIENT            ORDER EXPONENTS\n     1   0.000000000000000       0   0 0\n     -----------------------------------".to_string();
+            return ALL_COMPONENTS_ZERO.to_string();
         }
-        
-        // Sort by graded reverse lexicographic order (COSY format)
-        // First by total order, then by exponents in reverse lexicographic order
+
         let mut sorted = coeffs.clone();
-        sorted.sort_by(|(m1, _), (m2, _)| {
-            m1.total_order.cmp(&m2.total_order)
-                .then_with(|| {
-                    // Reverse lexicographic: compare from right to left
-                    for i in (0..m1.exponents.len()).rev() {
-                        match m1.exponents[i].cmp(&m2.exponents[i]) {
-                            std::cmp::Ordering::Equal => continue,
-                            ord => return ord,
-                        }
-                    }
-                    std::cmp::Ordering::Equal
-                })
+        let sort_vars = get_config()
+            .map(|config| config.num_vars)
+            .unwrap_or(MAX_VARS);
+        sorted.sort_by_cached_key(|(m, _)| {
+            (
+                m.total_order,
+                cosy_display_rank(&m.exponents, sort_vars),
+                m.exponents,
+            )
         });
         
         let mut output = String::new();
@@ -241,24 +238,19 @@ impl RosyDisplay for &CD {
         }
         
         if all_monomials.is_empty() {
-            return "     I  COEFFICIENTS                           ORDER EXPONENTS\n     1  0.000000000000000      0.000000000000000       0   0 0\n                                      ".to_string();
+            return ALL_COMPONENTS_ZERO.to_string();
         }
-        
-        // Sort by graded reverse lexicographic order (COSY format)
-        // First by total order, then by exponents in reverse lexicographic order
+
         let mut sorted: Vec<_> = all_monomials.into_iter().collect();
-        sorted.sort_by(|m1, m2| {
-            m1.total_order.cmp(&m2.total_order)
-                .then_with(|| {
-                    // Reverse lexicographic: compare from right to left
-                    for i in (0..m1.exponents.len()).rev() {
-                        match m1.exponents[i].cmp(&m2.exponents[i]) {
-                            std::cmp::Ordering::Equal => continue,
-                            ord => return ord,
-                        }
-                    }
-                    std::cmp::Ordering::Equal
-                })
+        let sort_vars = get_config()
+            .map(|config| config.num_vars)
+            .unwrap_or(MAX_VARS);
+        sorted.sort_by_cached_key(|m| {
+            (
+                m.total_order,
+                cosy_display_rank(&m.exponents, sort_vars),
+                m.exponents,
+            )
         });
         
         let mut output = String::new();
@@ -310,5 +302,19 @@ mod tests {
 
         assert!(displayed.contains(" 0.5469204E-002"), "got: {displayed:?}");
         assert!(displayed.contains(" 0.9378755E-010"), "got: {displayed:?}");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn zero_da_display_matches_cosy() {
+        crate::taylor::cleanup_taylor();
+        crate::taylor::init_taylor(2, 2).unwrap();
+        let value = crate::DA::zero();
+
+        assert_eq!(
+            value.rosy_display(),
+            "     ALL COMPONENTS ZERO\n     -------------------"
+        );
+        crate::taylor::cleanup_taylor();
     }
 }

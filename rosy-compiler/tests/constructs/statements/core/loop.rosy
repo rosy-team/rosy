@@ -4,11 +4,14 @@ BEGIN;
     LOOP I 1 + 0 5;
         SUM := SUM + I;
     ENDLOOP;
+    LOOP I 5 1 -2;
+        SUM := SUM + I;
+    ENDLOOP;
     WRITE 6 SUM;
 END;
 
 ======= expect
- 15.00000000000000
+ 24.00000000000000
 
 ======= fox
 BEGIN;
@@ -17,6 +20,9 @@ PROCEDURE RUN;
     VARIABLE SUM 1;
     SUM := 0;
     LOOP I 1 + 0 5;
+        SUM := SUM + I;
+    ENDLOOP;
+    LOOP I 5 1 -2;
         SUM := SUM + I;
     ENDLOOP;
     WRITE 6 SUM;

@@ -30,6 +30,7 @@ use crate::{
     resolve::*,
     transpile::*,
 };
+use pest::Parser;
 use rosy_lib::RosyType;
 
 /// AST node for the counted `LOOP i start end [step]; ... ENDLOOP;` statement.
@@ -73,14 +74,15 @@ impl FromRule for LoopStatement {
             let end_pair = start_loop_inner
                 .next()
                 .context("Missing third token `end_expr`!")?;
-            let end = Expr::from_rule(end_pair)
+            let end_text = end_pair.as_str().to_string();
+            let mut end = Expr::from_rule(end_pair)
                 .context("Failed to build `end` expression in `loop` statement!")?
                 .ok_or_else(|| {
                     anyhow::anyhow!("Expected expression for `end` in `loop` statement")
                 })?;
 
             // Optional step expression
-            let step = if let Some(step_pair) = start_loop_inner.next() {
+            let mut step = if let Some(step_pair) = start_loop_inner.next() {
                 if !matches!(step_pair.as_rule(), Rule::semicolon | Rule::end_loop) {
                     Some(
                         Expr::from_rule(step_pair)
@@ -97,6 +99,16 @@ impl FromRule for LoopStatement {
             } else {
                 None
             };
+
+            if step.is_none() {
+                if let Some((recovered_end, recovered_step)) =
+                    recover_trailing_signed_numeric_loop_step(&end_text)
+                        .context("Failed to recover signed numeric LOOP step")?
+                {
+                    end = recovered_end;
+                    step = Some(recovered_step);
+                }
+            }
 
             (iterator, start, end, step)
         };
@@ -126,6 +138,44 @@ impl FromRule for LoopStatement {
         }))
     }
 }
+
+fn parse_loop_expr_fragment(src: &str) -> Result<Expr> {
+    let trimmed = src.trim();
+    let mut pairs = CosyParser::parse(Rule::expr, trimmed)
+        .with_context(|| format!("Failed to parse LOOP expression fragment `{trimmed}`"))?;
+    let pair = pairs
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Empty LOOP expression fragment `{trimmed}`"))?;
+    Expr::from_rule(pair)?
+        .ok_or_else(|| anyhow::anyhow!("Expected expression in LOOP fragment `{trimmed}`"))
+}
+
+fn recover_trailing_signed_numeric_loop_step(end_text: &str) -> Result<Option<(Expr, Expr)>> {
+    let trimmed = end_text.trim_end();
+    let Some(split_at) = trimmed.rfind(char::is_whitespace) else {
+        return Ok(None);
+    };
+
+    let step_text = trimmed[split_at..].trim_start();
+    let end_text = trimmed[..split_at].trim_end();
+    if end_text.is_empty() || !is_signed_numeric_literal(step_text) {
+        return Ok(None);
+    }
+
+    Ok(Some((
+        parse_loop_expr_fragment(end_text)?,
+        parse_loop_expr_fragment(step_text)?,
+    )))
+}
+
+fn is_signed_numeric_literal(src: &str) -> bool {
+    if !src.starts_with('-') {
+        return false;
+    }
+    let normalized = src.replace('D', "E").replace('d', "e");
+    normalized.parse::<f64>().is_ok()
+}
+
 impl TranspileableStatement for LoopStatement {
     fn register_typeslot_declaration(
         &self,
