@@ -85,7 +85,18 @@ impl Transpile for VariableDeclarationData {
                 base_value
             }
         } else {
-            let mut result = base_value;
+            let extra = resolved_type
+                .dimensions
+                .saturating_sub(self.dimension_exprs.len());
+            let mut result = if extra > 0 {
+                let mut inner = "vec![]".to_string();
+                for _ in 1..extra {
+                    inner = format!("vec![{}; 0]", inner);
+                }
+                inner
+            } else {
+                base_value
+            };
             for dim in self.dimension_exprs.iter().rev() {
                 // ensure the type compiles down to a RE
                 if let Err(e) = dim.type_of(context).and_then(|t| {
@@ -289,7 +300,9 @@ impl TranspileableStatement for VarDeclStatement {
         {
             let mut resolved = *t;
             if !self.data.dimension_exprs.is_empty() {
-                resolved.dimensions = self.data.dimension_exprs.len();
+                resolved.dimensions = resolved
+                    .dimensions
+                    .max(self.data.dimension_exprs.len());
             }
             self.data.r#type = Some(resolved);
         }

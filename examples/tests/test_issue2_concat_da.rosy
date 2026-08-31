@@ -1,7 +1,6 @@
 { Issue 2: DA & DA concatenation. Builds a 1D-of-DA via repeated concat
-  in the canonical pattern (no LHS index → flat 1D). The FEEDBACK
-  reproducer `COORD(1) := COORD(1) & Y` is rejected (correctly) because
-  the LHS index forces a 2D output; the right pattern below works. }
+  with no LHS index (flat 1D). Indexed `COORD(1) := COORD(1) & Y` now
+  nests one extra dim on COORD (see concat_da_indexed.rosy). }
 
 BEGIN;
 

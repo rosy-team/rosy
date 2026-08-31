@@ -1,6 +1,6 @@
 [package]
 name = "rosy-compiler"
-version = "1.10.1"
+version = "1.11.0"
 edition = "2024"
 authors = ["hiibolt <rust@hiibolt.com>"]
 license = "MIT"
@@ -26,7 +26,7 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 flate2 = "1"
 tar = "0.4"
-rosy-lib = { version = "1.10.1", path = "../rosy-lib" }
+rosy-lib = { version = "1.11.0", path = "../rosy-lib" }
 
 # LSP server
 tower-lsp = "0.20"

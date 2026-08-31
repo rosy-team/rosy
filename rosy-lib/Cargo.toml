@@ -1,6 +1,6 @@
 [package]
 name = "rosy-lib"
-version = "1.10.1"
+version = "1.11.0"
 edition = "2024"
 authors = ["hiibolt <rust@hiibolt.com>"]
 license = "MIT"

@@ -1,0 +1,26 @@
+BEGIN;
+    DAINI 3 2 0 0;
+    VARIABLE (DA 1) COORD;
+    COORD(1) := COORD(1) & DA(1);
+    COORD(1) := COORD(1) & DA(2);
+    WRITE 6 ST(CONS(COORD(1)(1) + 1));
+    WRITE 6 ST(CONS(COORD(1)(2) + 1));
+END;
+
+======= expect
+ 1.000000000000000
+ 1.000000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NM 1;
+    VARIABLE COORD 2000 1;
+    DAINI 3 2 0 NM;
+    COORD(1) := COORD(1) & DA(1);
+    COORD(1) := COORD(1) & DA(2);
+    WRITE 6 CONS(COORD(1)(1) + 1);
+    WRITE 6 CONS(COORD(1)(2) + 1);
+ENDPROCEDURE;
+RUN;
+END;
