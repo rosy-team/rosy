@@ -1229,7 +1229,7 @@ dependencies = [
 
 [[package]]
 name = "rosy-cli"
-version = "1.11.0"
+version = "1.11.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1259,7 +1259,7 @@ dependencies = [
 
 [[package]]
 name = "rosy-lib"
-version = "1.11.0"
+version = "1.11.1"
 dependencies = [
  "anyhow",
  "bincode",
