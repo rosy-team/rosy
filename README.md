@@ -27,12 +27,6 @@ y =  1.141120008059867E-001
 
 ## Installation
 
-```bash
-cargo install rosy-cli
-```
-
-### From source (recommended)
-
 Requires the [Rust nightly toolchain](https://rustup.rs/) (needed for `--optimized` SIMD support):
 
 ```bash
@@ -41,8 +35,23 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # Switch to nightly (required for --optimized builds)
 rustup default nightly
+```
 
-# Build and install Rosy
+### Cargo (recommended)
+
+```bash
+cargo install rosy-cli
+```
+
+To update:
+
+```bash
+cargo install rosy-cli
+```
+
+### From source
+
+```bash
 git clone https://github.com/rosy-team/rosy.git
 cd rosy
 cargo install --path rosy-cli
@@ -63,8 +72,7 @@ If you previously installed Rosy with Rust stable, switch to nightly for `--opti
 
 ```bash
 rustup default nightly
-cd rosy && git pull
-cargo install --path rosy-cli --force
+cargo install rosy-cli --force
 ```
 
 ### NIU Metis Quick Start
@@ -74,23 +82,28 @@ cargo install --path rosy-cli --force
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
 rustup default nightly
-git clone https://github.com/rosy-team/rosy.git
-cd rosy && cargo install --path rosy-cli
+cargo install rosy-cli
 
 # For MPI programs (PLOOP)
 module load openmpi/openmpi-5.0.7-gcc-14.2.0-cuda-12.8
 
 # Run a program
-rosy run examples/basic.rosy
-rosy build examples/basic.rosy --optimized -o my_program
+rosy run example.rosy
+rosy build example.rosy --optimized -o my_program
+```
+
+Clone the repo only if you want the bundled examples:
+
+```bash
+git clone https://github.com/rosy-team/rosy.git
+rosy run rosy/examples/basic.rosy
 ```
 
 To update:
 
 ```bash
-cd ~/rosy && git pull
 rustup update nightly
-cargo install --path rosy-cli --force
+cargo install rosy-cli
 ```
 
 ### From GitHub Releases
@@ -105,11 +118,13 @@ nix develop   # Enters a shell with nightly Rust + all dependencies
 
 ## Quick Start
 
+Save the example above as `example.rosy` (or grab `examples/basic.rosy` from a clone).
+
 ```bash
-rosy run examples/basic.rosy                   # run directly
-rosy build examples/basic.rosy -o out          # build a binary
-rosy build examples/basic.rosy --release       # release build
-rosy build examples/basic.rosy --optimized     # max performance (recommended)
+rosy run example.rosy                   # run directly
+rosy build example.rosy -o out          # build a binary
+rosy build example.rosy --release       # release build
+rosy build example.rosy --optimized     # max performance (recommended)
 ```
 
 ## Build Modes
