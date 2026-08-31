@@ -1,6 +1,6 @@
 [package]
 name = "rosy-compiler"
-version = "1.11.0"
+version = "1.11.1"
 edition = "2024"
 authors = ["hiibolt <rust@hiibolt.com>"]
 license = "MIT"

@@ -171,6 +171,12 @@ impl Program {
         if let Some(parent) = resolved.parent() {
             if let Some(stem) = resolved.file_name() {
                 for ext in [".fox", ".FOX", ".rosy", ".ROSY"] {
+                    candidates.push(
+                        parent.join(format!("{}{ext}", stem.to_string_lossy().to_uppercase())),
+                    );
+                    candidates.push(
+                        parent.join(format!("{}{ext}", stem.to_string_lossy().to_lowercase())),
+                    );
                     candidates.push(parent.join(format!("{}{ext}", stem.to_string_lossy())));
                 }
             }
@@ -179,6 +185,12 @@ impl Program {
             candidates.push(resolved.to_path_buf());
         }
         candidates.push(resolved.join("mod.rosy"));
+
+        let candidates_for_printing = candidates
+            .iter()
+            .map(|c| c.display().to_string())
+            .collect::<Vec<String>>();
+        println!("candidates: {}", candidates_for_printing.join(", "));
 
         let mut seen = HashSet::new();
         for cand in candidates {
@@ -193,12 +205,9 @@ impl Program {
         }
 
         bail!(
-            "Failed to resolve INCLUDE path '{}' — tried '{}', '{}.fox', '{}.rosy', and '{}/mod.rosy'",
+            "Failed to resolve INCLUDE path '{}' — tried '{}",
             include_path,
-            resolved.display(),
-            resolved.display(),
-            resolved.display(),
-            resolved.display(),
+            candidates_for_printing.join(", "),
         )
     }
 
@@ -576,12 +585,14 @@ mod tests {
 
     #[test]
     fn nested_procedure_keeps_source_file() {
-        let src = "BEGIN;\nPROCEDURE OUTER;\nPROCEDURE INNER;\nENDPROCEDURE;\nENDPROCEDURE;\nEND;\n";
+        let src =
+            "BEGIN;\nPROCEDURE OUTER;\nPROCEDURE INNER;\nENDPROCEDURE;\nENDPROCEDURE;\nEND;\n";
         let pair = ast::parse_source(src).unwrap().next().unwrap();
         let path = Path::new("/tmp/nested.rosy");
-        let prog = Program::from_rule_with_includes(pair, Some(path), &mut IncludeTracker::default())
-            .unwrap()
-            .unwrap();
+        let prog =
+            Program::from_rule_with_includes(pair, Some(path), &mut IncludeTracker::default())
+                .unwrap()
+                .unwrap();
         let outer = &prog.statements[0];
         assert_eq!(outer.source_location.file.as_deref(), Some(path));
         let StmtKind::Procedure(p) = &outer.inner else {
