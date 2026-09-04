@@ -355,7 +355,8 @@ impl Transpile for LoopStatement {
                 "let mut {it}: RE = rosy_as_f64(&({start}));\n\
                  let __{iter}_end: RE = rosy_as_f64(&({end}));\n\
                  let __{iter}_step: RE = rosy_as_f64(&({step}));\n\
-                 while (__{iter}_step > 0.0_f64 && {it} <= __{iter}_end) || (__{iter}_step <= 0.0_f64 && {it} >= __{iter}_end) {{\n\
+                 if __{iter}_step == 0.0_f64 {{ anyhow::bail!(\"LOOP step must not be 0\"); }}\n\
+                 while (__{iter}_step > 0.0_f64 && {it} <= __{iter}_end) || (__{iter}_step < 0.0_f64 && {it} >= __{iter}_end) {{\n\
                  {sync}\n\
                  {body}\n\
                  \t{it} += __{iter}_step;\n\

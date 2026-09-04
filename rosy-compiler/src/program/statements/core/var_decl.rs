@@ -351,6 +351,7 @@ impl Transpile for VarDeclStatement {
 
         if let Some(prev) = previous
             && prev.scope != VariableScope::Higher
+            && !(context.in_block && prev.scope == VariableScope::Local)
             && !syntax_config::is_cosy_syntax()
         {
             return Err(vec![anyhow!(

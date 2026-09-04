@@ -9,7 +9,9 @@ pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
     match (lhs.base_type, lhs.dimensions, rhs.base_type, rhs.dimensions) {
         (RE, 0, RE, 0) | (RE, 0, VE, 0) | (VE, 0, RE, 0) | (VE, 0, VE, 0) => Some(RosyType::VE()),
         (ST, 0, ST, 0) => Some(RosyType::ST()),
-        (DA, 0 | 1, DA, 0 | 1) => Some(RosyType::new(DA, 1)),
+        (DA, 0 | 1, DA, 0 | 1) | (DA, 0 | 1, RE, 0) | (RE, 0, DA, 0 | 1) => {
+            Some(RosyType::new(DA, 1))
+        }
         (CD, 0 | 1, CD, 0 | 1) => Some(RosyType::new(CD, 1)),
         _ => None,
     }
@@ -99,6 +101,38 @@ impl RosyConcat<&Vec<DA>> for &Vec<DA> {
     type Output = Vec<DA>;
     fn rosy_concat(self, other: &Vec<DA>) -> Result<Self::Output> {
         let mut result = self.clone();
+        result.extend_from_slice(other);
+        Ok(result)
+    }
+}
+
+impl RosyConcat<&RE> for &DA {
+    type Output = Vec<DA>;
+    fn rosy_concat(self, other: &RE) -> Result<Self::Output> {
+        Ok(vec![self.clone(), DA::constant(*other)])
+    }
+}
+
+impl RosyConcat<&DA> for &RE {
+    type Output = Vec<DA>;
+    fn rosy_concat(self, other: &DA) -> Result<Self::Output> {
+        Ok(vec![DA::constant(*self), other.clone()])
+    }
+}
+
+impl RosyConcat<&RE> for &Vec<DA> {
+    type Output = Vec<DA>;
+    fn rosy_concat(self, other: &RE) -> Result<Self::Output> {
+        let mut result = self.clone();
+        result.push(DA::constant(*other));
+        Ok(result)
+    }
+}
+
+impl RosyConcat<&Vec<DA>> for &RE {
+    type Output = Vec<DA>;
+    fn rosy_concat(self, other: &Vec<DA>) -> Result<Self::Output> {
+        let mut result = vec![DA::constant(*self)];
         result.extend_from_slice(other);
         Ok(result)
     }

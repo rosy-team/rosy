@@ -1,0 +1,26 @@
+{ DI map + GTRA vs the checklist COSY numbers: GTRA x~-10, s~10, no doubled pi. }
+
+BEGIN;
+
+MODULE GITHUB "rosy-team/libcosy" "v1.1.4";
+
+PROCEDURE RUN;
+    OV 2 2 0;
+    RPP 100;
+    UM;
+    DI 10 90 0.05 0 0 0 0;
+    WRITE 6 CONS(GTRA(1));
+    WRITE 6 CONS(GTRA(3));
+    { checklist COSY: GTRA x ~ -10, s ~ 10; doubled-pi bug would miss this. }
+    IF ABS(CONS(GTRA(1)) + 10) > 1E-8;
+        WRITE 6 'FAIL GTRA(1)';
+        QUIT 1;
+    ENDIF;
+    IF ABS(CONS(GTRA(3)) - 10) > 1E-8;
+        WRITE 6 'FAIL GTRA(3)';
+        QUIT 1;
+    ENDIF;
+ENDPROCEDURE;
+
+RUN;
+END;

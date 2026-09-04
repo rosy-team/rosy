@@ -127,6 +127,9 @@ pub struct TranspilationInputContext {
     pub functions: HashMap<String, TranspilationInputFunctionContext>,
     pub procedures: HashMap<String, TranspilationInputProcedureContext>,
     pub in_loop: bool,
+    /// True inside IF/ELSEIF/ELSE rust blocks. Locals may be redeclared
+    /// (shadowed) without treating the parent binding as a captured Higher ref.
+    pub in_block: bool,
     /// Higher bindings hidden by a local of the same name. RK's step `H`
     /// shadows the global curvature `H`; ODE/POTFLD still need the outer one.
     pub outer_bindings: HashMap<String, ScopedVariableData>,
@@ -175,6 +178,7 @@ impl TranspilationInputContext {
             name.to_string()
         }
     }
+
 }
 
 /// Whether an expression produces an owned value or a reference.

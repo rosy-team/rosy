@@ -182,18 +182,24 @@ impl TranspileableStatement for IfStatement {
         ctx: &mut ScopeContext,
         _source_location: SourceLocation,
     ) -> Option<Result<()>> {
-        if let Err(e) = resolver.discover_slots(&self.then_body, &mut ctx.clone()) {
+        let mut then_ctx = ctx.clone();
+        then_ctx.scope_path.push("<if-then>".to_string());
+        if let Err(e) = resolver.discover_slots(&self.then_body, &mut then_ctx) {
             return Some(Err(e));
         }
-        for elseif in &self.elseif_clauses {
-            if let Err(e) = resolver.discover_slots(&elseif.body, &mut ctx.clone()) {
+        for (i, elseif) in self.elseif_clauses.iter().enumerate() {
+            let mut elseif_ctx = ctx.clone();
+            elseif_ctx.scope_path.push(format!("<elseif-{i}>"));
+            if let Err(e) = resolver.discover_slots(&elseif.body, &mut elseif_ctx) {
                 return Some(Err(e));
             }
         }
-        if let Some(else_body) = &self.else_body
-            && let Err(e) = resolver.discover_slots(else_body, &mut ctx.clone())
-        {
-            return Some(Err(e));
+        if let Some(else_body) = &self.else_body {
+            let mut else_ctx = ctx.clone();
+            else_ctx.scope_path.push("<else>".to_string());
+            if let Err(e) = resolver.discover_slots(else_body, &mut else_ctx) {
+                return Some(Err(e));
+            }
         }
         Some(Ok(()))
     }
@@ -202,18 +208,24 @@ impl TranspileableStatement for IfStatement {
         resolver: &TypeResolver,
         current_scope: &[String],
     ) -> Option<Result<()>> {
-        if let Err(e) = resolver.apply_to_ast(&mut self.then_body, current_scope) {
+        let mut then_scope = current_scope.to_vec();
+        then_scope.push("<if-then>".to_string());
+        if let Err(e) = resolver.apply_to_ast(&mut self.then_body, &then_scope) {
             return Some(Err(e));
         }
-        for elseif in &mut self.elseif_clauses {
-            if let Err(e) = resolver.apply_to_ast(&mut elseif.body, current_scope) {
+        for (i, elseif) in self.elseif_clauses.iter_mut().enumerate() {
+            let mut elseif_scope = current_scope.to_vec();
+            elseif_scope.push(format!("<elseif-{i}>"));
+            if let Err(e) = resolver.apply_to_ast(&mut elseif.body, &elseif_scope) {
                 return Some(Err(e));
             }
         }
-        if let Some(else_body) = &mut self.else_body
-            && let Err(e) = resolver.apply_to_ast(else_body, current_scope)
-        {
-            return Some(Err(e));
+        if let Some(else_body) = &mut self.else_body {
+            let mut else_scope = current_scope.to_vec();
+            else_scope.push("<else>".to_string());
+            if let Err(e) = resolver.apply_to_ast(else_body, &else_scope) {
+                return Some(Err(e));
+            }
         }
         Some(Ok(()))
     }
@@ -254,6 +266,7 @@ impl Transpile for ElseIfClause {
         let serialized_statements: Vec<String> = {
             let mut serialized_statements = Vec::new();
             let mut inner_context: TranspilationInputContext = context.clone();
+            inner_context.in_block = true;
 
             // Transpile each inner statement
             for stmt in &self.body {
@@ -329,6 +342,7 @@ impl Transpile for IfStatement {
         let serialized_if_statements: Vec<String> = {
             let mut serialized_if_statements = Vec::new();
             let mut inner_context: TranspilationInputContext = context.clone();
+            inner_context.in_block = true;
 
             // Transpile each inner statement
             for stmt in &self.then_body {
@@ -371,6 +385,7 @@ impl Transpile for IfStatement {
         let serialized_else_clause = if let Some(else_body) = &self.else_body {
             let mut serialized_else_statements = Vec::new();
             let mut inner_context: TranspilationInputContext = context.clone();
+            inner_context.in_block = true;
 
             // Transpile each inner statement
             for stmt in else_body {

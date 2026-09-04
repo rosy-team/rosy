@@ -2,7 +2,7 @@
   test_libcosy_smoke.rosy -- Smoke test for libcosy
 
   Confirms that:
-   * `MODULE GITHUB "rosy-team/libcosy" "v1.0.1";` fetches the tagged source
+   * `MODULE GITHUB "rosy-team/libcosy" "v1.1.4";` fetches the tagged source
      tarball, validates the Rosy.toml manifest, and splices libcosy/mod.rosy.
    * libcosy/globals.rosy parses and its declarations (PI, NRAY, ...) are
      visible at the top level after splicing.
@@ -17,7 +17,7 @@
 
 BEGIN;
 
-MODULE GITHUB "rosy-team/libcosy" "v1.0.1";
+MODULE GITHUB "rosy-team/libcosy" "v1.1.4";
 
 VARIABLE (RE) RESULT;
 
@@ -83,11 +83,14 @@ PCOEFS[3, 1] := 0;     PCOEFS[3, 2] := 0;     PCOEFS[3, 3] := 0;
 RESULT := POLY(2, 5, PCOEFS, 2);
 WRITE 6 'POLY(2, 5, [[1,2,0],[3,0,0],[0,0,0]], order=2) = ' RESULT '   [expect 1+2*5+3*2 = 17]';
 
-{ Drive GAUSS1 / GAUSS inference too. Use MFD-shaped 25x100 dummy. }
+{ Drive GAUSS1 / GAUSS inference too. GAUSS is DA-valued (measured-field
+  interpolation carries DA through MFD). GAUSS1 stays RE. }
 RESULT := GAUSS1(0, 30, 1, 2, 1, MFD_DUMMY, ERR_DUMMY);
 WRITE 6 'GAUSS1 on zero MFD (sanity) = ' RESULT '   [expect 0]';
-RESULT := GAUSS(0, 0, 700, 30, 1, 1, 2, MFD_DUMMY, ERR_DUMMY);
-WRITE 6 'GAUSS  on zero MFD (sanity) = ' RESULT '   [expect 0]';
+VARIABLE (DA 700 30) MFD_DA;
+VARIABLE (DA) RESULT_DA;
+RESULT_DA := GAUSS(0, 0, 700, 30, 1, 1, 2, MFD_DA, ERR_DUMMY);
+WRITE 6 'GAUSS  on zero MFD (sanity) = ' CONS(RESULT_DA) '   [expect 0]';
 
 { M3: exercise physics/fringe_field.rosy
   FD populates ENGEC with default fringe-field coefficients (PEP-fitted). }
@@ -371,11 +374,11 @@ DL 0.5;
 VARIABLE (DA 8) M_FODO;
 SNM MAP M_FODO;
 VARIABLE (DA 8) GT_F;
-VARIABLE (DA 4) GT_MU;
-VARIABLE (DA 4) GT_ALPHA;
-VARIABLE (DA 4) GT_BETA;
-VARIABLE (DA 4) GT_GAMMA;
-VARIABLE (DA 4) GT_R;
+VARIABLE (CD 4) GT_MU;
+VARIABLE (CD 4) GT_ALPHA;
+VARIABLE (CD 4) GT_BETA;
+VARIABLE (CD 4) GT_GAMMA;
+VARIABLE (CD 4) GT_R;
 GT M_FODO GT_F GT_MU GT_ALPHA GT_BETA GT_GAMMA GT_R;
 WRITE 6 'Horizontal tune fraction CONS(GT_MU[1]) =' CONS(GT_MU[1]);
 WRITE 6 'Horizontal beta CONS(GT_BETA[1])  =' CONS(GT_BETA[1]);
@@ -674,7 +677,7 @@ WRITE 6 ' ----- M6.3: ND=2 sextupole via MM/FFELE/SIELE/UPDATE -----';
 OV 3 2 0;
 RPP 100;
 UM;
-VARIABLE (RE 5) BA_VEC;
+VARIABLE (DA 5) BA_VEC;
 BA_VEC[1] := 0;        { quad strength = 0 }
 BA_VEC[2] := 1.0;      { sext strength = 1 }
 BA_VEC[3] := 0; BA_VEC[4] := 0; BA_VEC[5] := 0;
@@ -739,7 +742,7 @@ WRITE 6 ' ----- RF: thin-lens RF cavity in 3D phase space -----';
 OV 2 3 0;
 RPP 100;
 UM;
-VARIABLE (RE 3 3) RFV;
+VARIABLE (DA 3 3) RFV;
 RFV[1, 1] := 1;             { 1 kV DC profile (flat) }
 RFV[1, 2] := 0; RFV[1, 3] := 0;
 RFV[2, 1] := 0; RFV[2, 2] := 0; RFV[2, 3] := 0;

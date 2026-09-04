@@ -847,6 +847,16 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
                         .collect(),
                 ));
             }
+            if let (Some(a), RosyValue::RE(x)) = (as_da_list(lhs), rhs) {
+                let mut out = a;
+                out.push(DA::constant(*x));
+                return Ok(RosyValue::Arr(out.into_iter().map(RosyValue::DA).collect()));
+            }
+            if let (RosyValue::RE(x), Some(b)) = (lhs, as_da_list(rhs)) {
+                let mut out = vec![DA::constant(*x)];
+                out.extend(b);
+                return Ok(RosyValue::Arr(out.into_iter().map(RosyValue::DA).collect()));
+            }
             if let (Some(a), Some(b)) = (as_cd_list(lhs), as_cd_list(rhs)) {
                 return Ok(RosyValue::Arr(
                     a.into_iter()

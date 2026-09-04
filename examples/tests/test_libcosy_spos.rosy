@@ -8,7 +8,7 @@
 
 BEGIN;
 
-MODULE GITHUB "rosy-team/libcosy" "v1.0.1";
+MODULE GITHUB "rosy-team/libcosy" "v1.1.4";
 
 OV 2 2 0;
 RP 1 1 1;
