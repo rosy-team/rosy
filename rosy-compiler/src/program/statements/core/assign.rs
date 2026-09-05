@@ -415,6 +415,18 @@ impl TranspileableStatement for AssignStatement {
                         }
                         return Some(Ok(()));
                     }
+                    if let Some(promoted) = re_ve_assignment_type(old_type, new_type) {
+                        if promoted != old_type
+                            && let Some(node) = resolver.nodes.get_mut(&var_slot)
+                        {
+                            node.rule = ResolutionRule::InferredFrom {
+                                recipe: ExprRecipe::Literal(promoted),
+                                reason: "RE promoted to VE".to_string(),
+                            };
+                            node.depends_on.clear();
+                        }
+                        return Some(Ok(()));
+                    }
                     // Cosy cells are untyped. Rosy ANY only for 0-d base conflicts.
                     let any_ok = crate::syntax_config::is_cosy_syntax()
                         || (old_type.dimensions == 0 && new_type.dimensions == 0);
@@ -647,6 +659,7 @@ impl Transpile for AssignStatement {
             && !value_type.is_any()
             && !da_singleton_wrap
             && re_da_assignment_type(variable_type, value_type) != Some(variable_type)
+            && re_ve_assignment_type(variable_type, value_type) != Some(variable_type)
         {
             return Err(vec![anyhow!(
                 "Cannot assign value of type '{}' to variable '{}' of type '{}'!",
@@ -738,6 +751,8 @@ impl Transpile for AssignStatement {
                 value_output.as_owned(&value_type),
                 variable_type.base_type.to_string().to_lowercase()
             )
+        } else if variable_type == RosyType::VE() && value_type == RosyType::RE() {
+            format!("vec![{}]", value_output.as_owned(&value_type))
         } else if variable_type == RosyType::DA() && value_type == RosyType::RE() {
             format!("DA::from_coeff({})", value_output.as_owned(&value_type))
         } else if variable_type == RosyType::RE() && value_type != RosyType::RE() {
@@ -860,6 +875,18 @@ impl Transpile for AssignStatement {
         } else {
             Err(errors)
         }
+    }
+}
+
+/// Seed a vector with a real (`X := 0` then `X := X & I`).
+fn re_ve_assignment_type(old: RosyType, new: RosyType) -> Option<RosyType> {
+    if old.dimensions != 0 || new.dimensions != 0 {
+        return None;
+    }
+    match (old.base_type, new.base_type) {
+        (RosyBaseType::RE, RosyBaseType::VE) => Some(new),
+        (RosyBaseType::VE, RosyBaseType::RE) => Some(old),
+        _ => None,
     }
 }
 

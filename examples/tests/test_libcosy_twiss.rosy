@@ -10,14 +10,14 @@
 
 BEGIN;
 
-MODULE GITHUB "rosy-team/libcosy" "v1.0.1";
+MODULE GITHUB "rosy-team/libcosy" "v1.1.4";
 
 VARIABLE (DA 8) F_GT;
-VARIABLE (DA 4) MU_GT;
-VARIABLE (DA 4) ALPHA_GT;
-VARIABLE (DA 4) BETA_GT;
-VARIABLE (DA 4) GAMMA_GT;
-VARIABLE (DA 4) R_GT;
+VARIABLE (CD 4) MU_GT;
+VARIABLE (CD 4) ALPHA_GT;
+VARIABLE (CD 4) BETA_GT;
+VARIABLE (CD 4) GAMMA_GT;
+VARIABLE (CD 4) R_GT;
 
 OV 2 2 0;
 RP 1 1 1;
@@ -51,7 +51,7 @@ WRITE 6 '----';
 WRITE 6 'After MQ (y-plane unstable), GT hyperbolic results:';
 WRITE 6 'MU[1] (x stable, fractional tune):';
 WRITE 6 MU_GT[1];
-WRITE 6 'MU[2] (y unstable, real-cast tune is 0):';
+WRITE 6 'MU[2] (y unstable, imag hyperbolic tune kept):';
 WRITE 6 MU_GT[2];
 
 END;

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result};
 use clap::Subcommand;
 use std::{fs, fs::write, path::PathBuf};
 
@@ -12,11 +12,12 @@ pub(crate) enum EditorTarget {
     Zed,
 }
 
-// VS Code: package.json + thin client. language config is generated from
-// the grammar at build time. vscode-languageclient is installed via npm.
+// VS Code: package.json + bundled client (vscode-languageclient inlined).
+// language config is generated from the grammar at build time.
 const VSCODE_PACKAGE_JSON: &str = include_str!("../../assets/editors/vscode/package.json");
 const VSCODE_LANG_CONFIG: &str = rosy_compiler::VSCODE_LANGUAGE_CONFIGURATION;
-const VSCODE_EXTENSION_JS: &str = include_str!("../../assets/editors/vscode/src/extension.js");
+const VSCODE_EXTENSION_JS: &str =
+    include_str!("../../assets/editors/vscode/extension.bundle.js");
 const VSCODE_TM_GRAMMAR: &str =
     include_str!("../../assets/editors/vscode/syntaxes/rosy.tmLanguage.json");
 
@@ -96,17 +97,6 @@ fn install_vscode_extension() -> Result<()> {
     )?;
     write(ext_dir.join("extension.js"), VSCODE_EXTENSION_JS)?;
     write(syntaxes_dir.join("rosy.tmLanguage.json"), VSCODE_TM_GRAMMAR)?;
-
-    let npm_status = std::process::Command::new("npm")
-        .args(["install", "--omit=dev"])
-        .current_dir(&ext_dir)
-        .status()
-        .context("Failed to run npm. Install Node.js so vscode-languageclient can be fetched.")?;
-    ensure!(
-        npm_status.success(),
-        "npm install failed in {}",
-        ext_dir.display()
-    );
 
     let done_verb = if action == "Updating" {
         "Updated"
