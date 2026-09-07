@@ -45,7 +45,7 @@ pub(crate) fn rosy(
     let raw_script = std::fs::read_to_string(script_path).with_context(|| {
         format!(
             "Failed to read script file from `{}`!",
-            script_path.display()
+            super::display_path(script_path)
         )
     })?;
     step_done(t);
@@ -142,7 +142,7 @@ pub(crate) fn compile_source(
         if !quiet {
             eprintln!(
                 "{BOLD}{YELLOW}    warning{RESET}: using local rosy-lib ({})",
-                local.display()
+                super::display_path(local)
             );
         }
     }
@@ -150,14 +150,14 @@ pub(crate) fn compile_source(
     let new_contents = embedded::inject_code(&serialization, uses_mpi)
         .context("Failed to inject transpiled code into template")?;
 
-    write(rosy_output_path.join("src/main.rs"), &new_contents)
+    write(rosy_output_path.join("src").join("main.rs"), &new_contents)
         .context("Failed to write Rust output file!")?;
     if !quiet {
         step_done(t);
         eprintln!("{BOLD}{CYAN}[6/6]{RESET} Compiling generated Rust code...");
     }
 
-    let mut cargo_args = vec!["build", "--bin", "rosy_output"];
+    let mut cargo_args = vec!["build", "--bin", "rosy-output"];
     if !quiet {
         cargo_args.push("--color");
         cargo_args.push("always");
@@ -174,14 +174,20 @@ pub(crate) fn compile_source(
         cmd.stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
     }
-    let output = cmd
-        .output()
-        .context("Failed to spawn cargo build process")?;
-    if !output.status.success() {
-        if quiet {
+    let status = if quiet {
+        let output = cmd
+            .output()
+            .context("Failed to spawn cargo build process")?;
+        if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("generated code failed to compile\n{stderr}");
         }
+        output.status
+    } else {
+        cmd.status()
+            .context("Failed to spawn cargo build process")?
+    };
+    if !status.success() {
         eprintln!();
         eprintln!("{BOLD}{RED}  error:{RESET} The generated Rust code failed to compile.");
         eprintln!();
@@ -190,17 +196,20 @@ pub(crate) fn compile_source(
         eprintln!("  Include your {BOLD}source{RESET} files and the error output above.");
         anyhow::bail!(
             "Internal transpiler error: generated code failed to compile (exit code {:?})",
-            output.status.code()
+            status.code()
         );
     }
 
     let build_profile = if release { "release" } else { "debug" };
     let binary_name = if cfg!(windows) {
-        "rosy_output.exe"
+        "rosy-output.exe"
     } else {
-        "rosy_output"
+        "rosy-output"
     };
-    let binary_path = rosy_output_path.join(format!("target/{}/{}", build_profile, binary_name));
+    let binary_path = rosy_output_path
+        .join("target")
+        .join(build_profile)
+        .join(binary_name);
 
     if !quiet {
         let total_ms = total_start.elapsed().as_millis();

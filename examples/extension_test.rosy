@@ -1,15 +1,22 @@
 BEGIN ;
+    { A is a static type - its type is known at }
+    {  compile time, and doesn't change. The    }
+    {  extension will show this as LO!          }
     VARIABLE A ;
+
+    { A variable that changes type- if you have }
+    {  the Rosy extension in your IDE           }
+    {  you can see the type of X is ANY.        }
     VARIABLE X ;
 
-    A := TRUE;
+    A := TRUE;       { A becomes a boolean here }
     WRITE 6 A ;
 
-    X := "meow";
-    WRITE 6 "hii: " X ;
+    X := "World";          { X is now a string }
+    WRITE 6 "Hello, " & X & "!" ;
 
-    X := 3 ;
-    LOOP I 0 3 2;
-        WRITE 6 X ;
+    X := 3 ;              { X is now an integer }
+    LOOP I 1 3 1 ;
+        WRITE 6 I ;
     ENDLOOP ;
 END ;

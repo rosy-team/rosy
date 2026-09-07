@@ -1,12 +1,11 @@
 [package]
 name = "rosy-lib"
-version = "1.12.1"
+version = "1.12.2"
 edition = "2024"
 authors = ["hiibolt <rust@hiibolt.com>"]
 license = "MIT"
 description = "Rosy runtime library: types, operators, DA/CD, and intrinsics"
 repository = "https://github.com/rosy-team/rosy"
-homepage = "https://github.com/rosy-team/rosy"
 documentation = "https://docs.rs/rosy-lib"
 
 [features]
@@ -22,7 +21,6 @@ rustc-hash = "2"
 rand = "0.9"
 libm = "0.2"
 memory-stats = "1"
-libc = "0.2"
 
 [dev-dependencies]
 serial_test = "3.2"

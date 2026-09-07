@@ -263,7 +263,7 @@ pub(crate) fn run_construct_tests(filter: Option<&str>, release: bool, bless: bo
 
     let build_dir = std::env::temp_dir().join(format!("rosy_test_{}", std::process::id()));
     fs::create_dir_all(&build_dir).context("Failed to create build directory")?;
-    eprintln!("  Build dir: {}\n", build_dir.display());
+    eprintln!("  Build dir: {}\n", super::display_path(&build_dir));
 
     let total_start = Instant::now();
     let mut results = Vec::with_capacity(total);

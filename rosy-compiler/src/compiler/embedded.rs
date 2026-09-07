@@ -25,9 +25,27 @@ fn write_if_changed(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> std::
 /// Embedded main.rs template for generated projects
 const MAIN_RS_TEMPLATE: &str = include_str!("../../assets/output_template/main.rs");
 
+/// Strip Windows `\\?\` / `\\?\UNC\` prefixes from `canonicalize()` so the
+/// path is usable in Cargo.toml and human-readable in diagnostics.
+fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    let s = path.to_string_lossy();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        path
+    }
+}
+
 fn local_rosy_lib() -> Option<PathBuf> {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../rosy-lib");
-    p.is_dir().then(|| p.canonicalize().ok()).flatten()
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("rosy-lib");
+    p.is_dir()
+        .then(|| p.canonicalize().ok())
+        .flatten()
+        .map(strip_verbatim_prefix)
 }
 
 /// Generates a Cargo.toml for the output project
@@ -42,7 +60,7 @@ fn generate_cargo_toml(optimized: bool, rosy_lib_dep: &str) -> String {
     };
 
     format!(
-        "[workspace]\n\n[package]\nname = \"rosy_output\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nanyhow = \"1.0\"\n{rosy_lib_dep}\nnum-complex = \"0.4\"\n{profile_section}"
+        "[workspace]\n\n[package]\nname = \"rosy-output\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nanyhow = \"1.0\"\n{rosy_lib_dep}\nnum-complex = \"0.4\"\n{profile_section}"
     )
 }
 
@@ -91,7 +109,7 @@ pub fn create_output_project(
     .context("Failed to write Cargo.toml template")?;
 
     // Write main.rs template
-    std::fs::write(output_dir.join("src/main.rs"), MAIN_RS_TEMPLATE)
+    std::fs::write(output_dir.join("src").join("main.rs"), MAIN_RS_TEMPLATE)
         .context("Failed to write main.rs template")?;
 
     Ok(local)

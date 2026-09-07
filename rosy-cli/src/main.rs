@@ -5,7 +5,7 @@ use clap::{Parser as ClapParser, Subcommand};
 use std::{path::PathBuf, process::Command};
 
 use cli::setup::EditorTarget;
-use cli::{BOLD, CYAN, RESET};
+use cli::{display_path, BOLD, CYAN, RESET};
 
 
 /// Rosy Transpiler - Converts Rosy source code to executable Rust programs
@@ -160,11 +160,14 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Run { .. } => {
-            eprintln!("{BOLD}{CYAN}     Running{RESET} {}\n", source.display());
+            eprintln!(
+                "{BOLD}{CYAN}     Running{RESET} {}\n",
+                display_path(&source)
+            );
 
-            let status = Command::new(&binary_path)
-                .status()
-                .with_context(|| format!("Failed to run binary at `{}`!", binary_path.display()))?;
+            let status = Command::new(&binary_path).status().with_context(|| {
+                format!("Failed to run binary at `{}`!", display_path(&binary_path))
+            })?;
             ensure!(
                 status.success(),
                 "Execution failed with exit code: {:?}",
@@ -175,7 +178,10 @@ fn main() -> Result<()> {
             let destination = PathBuf::from(output_name.unwrap());
             std::fs::copy(&binary_path, &destination)
                 .context("Failed to copy binary to current directory")?;
-            eprintln!("  Binary written to {BOLD}{}{RESET}", destination.display());
+            eprintln!(
+                "  Binary written to {BOLD}{}{RESET}",
+                display_path(&destination)
+            );
         }
         Commands::Test { .. } | Commands::Lsp { .. } | Commands::Setup { .. } => unreachable!(),
     }

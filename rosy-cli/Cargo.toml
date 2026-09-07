@@ -1,12 +1,11 @@
 [package]
 name = "rosy-cli"
-version = "1.12.1"
+version = "1.12.2"
 edition = "2024"
 authors = ["hiibolt <rust@hiibolt.com>"]
 license = "MIT"
 description = "Rosy CLI: transpile and run Rosy programs"
 repository = "https://github.com/rosy-team/rosy"
-homepage = "https://github.com/rosy-team/rosy"
 documentation = "https://docs.rs/rosy-cli"
 
 [[bin]]

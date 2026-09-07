@@ -4,6 +4,18 @@ pub(crate) mod compile;
 pub(crate) mod setup;
 pub(crate) mod test;
 
+use std::path::Path;
+
+/// Format a path for terminal output using the host's native separators.
+pub(crate) fn display_path(path: impl AsRef<Path>) -> String {
+    let s = path.as_ref().display().to_string();
+    if cfg!(windows) {
+        s.replace('/', "\\")
+    } else {
+        s
+    }
+}
+
 pub(crate) const BOLD: &str = "\x1b[1m";
 pub(crate) const DIM: &str = "\x1b[2m";
 pub(crate) const GREEN: &str = "\x1b[32m";

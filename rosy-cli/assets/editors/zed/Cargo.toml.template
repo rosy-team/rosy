@@ -12,3 +12,11 @@ crate-type = ["cdylib"]
 
 [dependencies]
 zed_extension_api = "0.7"
+
+# Incremental compilation uses file locks that fail on WSL UNC paths
+# (\\wsl.localhost\...) when Windows Zed builds a Linux-side checkout.
+[profile.dev]
+incremental = false
+
+[profile.release]
+incremental = false

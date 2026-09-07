@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::Subcommand;
 use std::{fs, fs::write, path::PathBuf};
 
-use super::{BOLD, DIM, GREEN, RESET};
+use super::{display_path, BOLD, DIM, GREEN, RESET};
 
 #[derive(Subcommand)]
 pub(crate) enum EditorTarget {
@@ -29,6 +29,7 @@ const ZED_CARGO_TOML: &str = include_str!("../../assets/editors/zed/Cargo.toml.t
 const ZED_LIB_RS: &str = include_str!("../../assets/editors/zed/src/lib.rs");
 const ZED_CONFIG_TOML: &str = include_str!("../../assets/editors/zed/languages/rosy/config.toml");
 const ZED_HIGHLIGHTS_SCM: &str = rosy_compiler::TREE_SITTER_HIGHLIGHTS;
+const ZED_CARGO_CONFIG: &str = include_str!("../../assets/editors/zed/.cargo/config.toml");
 
 pub(crate) fn install_editor_extension(editor: &EditorTarget) -> Result<()> {
     match editor {
@@ -42,7 +43,7 @@ fn install_vscode_extension() -> Result<()> {
         .or_else(|_| std::env::var("USERPROFILE"))
         .context("Could not determine home directory (neither HOME nor USERPROFILE is set)")?;
 
-    let extensions_dir = PathBuf::from(&home).join(".vscode/extensions");
+    let extensions_dir = PathBuf::from(&home).join(".vscode").join("extensions");
 
     // Clean up old extension directories from before the naming fix
     for old_name in ["rosy-language-support", "rosy-team.rosy-language-support"] {
@@ -50,7 +51,7 @@ fn install_vscode_extension() -> Result<()> {
         if old_ext_dir.exists() {
             eprintln!(
                 "{DIM}  Removing old extension at {}{RESET}",
-                old_ext_dir.display()
+                display_path(&old_ext_dir)
             );
             let _ = fs::remove_dir_all(&old_ext_dir);
         }
@@ -64,7 +65,7 @@ fn install_vscode_extension() -> Result<()> {
             if name.starts_with("rosy-team.rosy-language-support-") {
                 eprintln!(
                     "{DIM}  Removing old extension at {}{RESET}",
-                    entry.path().display()
+                    display_path(entry.path())
                 );
                 let _ = fs::remove_dir_all(entry.path());
             }
@@ -81,7 +82,7 @@ fn install_vscode_extension() -> Result<()> {
         "Installing"
     };
     eprintln!("{BOLD}  {action}{RESET} VS Code extension");
-    eprintln!("         to: {}", ext_dir.display());
+    eprintln!("         to: {}", display_path(&ext_dir));
 
     fs::create_dir_all(&syntaxes_dir).context("Failed to create extension directory")?;
 
@@ -119,14 +120,19 @@ fn install_zed_extension() -> Result<()> {
     let ext_dir = if cfg!(target_os = "windows") {
         let appdata = std::env::var("LOCALAPPDATA")
             .context("Could not determine data directory (LOCALAPPDATA is not set)")?;
-        PathBuf::from(appdata).join("rosy/zed-extension")
+        PathBuf::from(appdata).join("rosy").join("zed-extension")
     } else {
         let home = std::env::var("HOME")
             .context("Could not determine home directory (HOME is not set)")?;
-        PathBuf::from(home).join(".local/share/rosy/zed-extension")
+        PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("rosy")
+            .join("zed-extension")
     };
     let src_dir = ext_dir.join("src");
-    let languages_dir = ext_dir.join("languages/rosy");
+    let languages_dir = ext_dir.join("languages").join("rosy");
+    let cargo_config_dir = ext_dir.join(".cargo");
 
     let action = if ext_dir.exists() {
         "Updating"
@@ -134,13 +140,15 @@ fn install_zed_extension() -> Result<()> {
         "Writing"
     };
     eprintln!("{BOLD}  {action}{RESET} Zed extension source");
-    eprintln!("         to: {}", ext_dir.display());
+    eprintln!("         to: {}", display_path(&ext_dir));
 
     fs::create_dir_all(&src_dir).context("Failed to create extension source directory")?;
     fs::create_dir_all(&languages_dir).context("Failed to create languages directory")?;
+    fs::create_dir_all(&cargo_config_dir).context("Failed to create .cargo directory")?;
 
     write(ext_dir.join("extension.toml"), ZED_EXTENSION_TOML)?;
     write(ext_dir.join("Cargo.toml"), ZED_CARGO_TOML)?;
+    write(cargo_config_dir.join("config.toml"), ZED_CARGO_CONFIG)?;
     write(src_dir.join("lib.rs"), ZED_LIB_RS)?;
     write(languages_dir.join("config.toml"), ZED_CONFIG_TOML)?;
     write(languages_dir.join("highlights.scm"), ZED_HIGHLIGHTS_SCM)?;
@@ -158,14 +166,14 @@ fn install_zed_extension() -> Result<()> {
     eprintln!("      {DIM}curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh{RESET}");
     eprintln!("    Then set up the toolchain:");
     eprintln!("      {DIM}rustup default nightly{RESET}");
-    eprintln!("      {DIM}rustup target add wasm32-wasip1{RESET}");
+    eprintln!("      {DIM}rustup target add wasm32-wasip2{RESET}");
     eprintln!("      {DIM}rustup component add rust-src{RESET}");
     eprintln!();
     eprintln!("  {BOLD}To install:{RESET}");
     eprintln!("    1. Open Zed");
     eprintln!("    2. Open the command palette ({DIM}Cmd+Shift+P / Ctrl+Shift+P{RESET})");
     eprintln!("    3. Run {BOLD}zed: install dev extension{RESET}");
-    eprintln!("    4. Select: {DIM}{}{RESET}", ext_dir.display());
+    eprintln!("    4. Select: {DIM}{}{RESET}", display_path(&ext_dir));
     eprintln!();
     eprintln!("  Zed will compile the extension and activate it. Open any");
     eprintln!("  {BOLD}.rosy{RESET} file to see diagnostics, completions, and type hints.");

@@ -1,0 +1,4 @@
+# Windows Zed compiling a WSL checkout cannot lock incremental artifacts
+# on \\wsl.localhost\... (os error -2147024895).
+[build]
+incremental = false
