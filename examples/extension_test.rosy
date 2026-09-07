@@ -1,0 +1,15 @@
+BEGIN ;
+    VARIABLE A ;
+    VARIABLE X ;
+
+    A := TRUE;
+    WRITE 6 A ;
+
+    X := "meow";
+    WRITE 6 "hii: " X ;
+
+    X := 3 ;
+    LOOP I 0 3 2;
+        WRITE 6 X ;
+    ENDLOOP ;
+END ;

@@ -16,7 +16,6 @@ settings.local.json
 *_t*_output*.txt
 *.bins
 *.dat
-.codegraph
 rosy/src/program/statements/io/save/testfile.bin
 rosy/src/program/statements/io/rewf/test_rewf.txt
 node_modules

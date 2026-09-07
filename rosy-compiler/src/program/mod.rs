@@ -190,7 +190,6 @@ impl Program {
             .iter()
             .map(|c| c.display().to_string())
             .collect::<Vec<String>>();
-        println!("candidates: {}", candidates_for_printing.join(", "));
 
         let mut seen = HashSet::new();
         for cand in candidates {
