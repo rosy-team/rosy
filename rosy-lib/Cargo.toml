@@ -21,6 +21,7 @@ rustc-hash = "2"
 rand = "0.9"
 libm = "0.2"
 memory-stats = "1"
+libc = "0.2.189"
 
 [dev-dependencies]
 serial_test = "3.2"
