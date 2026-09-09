@@ -1,6 +1,6 @@
 //! # SCRLEN Statement
 //!
-//! Sets the amount of space scratch variables are allocated with.
+//! Sets or queries the DA scratch arena size (COSY-compatible).
 //!
 //! ## Syntax
 //!
@@ -8,10 +8,11 @@
 //! SCRLEN c;
 //! ```
 //!
-//! ## Semantics in Rosy
+//! ## Semantics
 //!
-//! Scratch memory allocation is managed automatically by the Rust runtime.
-//! SCRLEN is accepted for COSY compatibility but is a no-op.
+//! One in-out operation. If `c < 0`, the current size (f64 words) is written
+//! into `c`. Otherwise the size is set to NINT(`c`). Default at process start
+//! is 50000. Named DA values stay on the heap; operator temps use this arena.
 //!
 //! ## Example
 //! ```text
@@ -62,11 +63,32 @@ impl Transpile for ScrlenStatement {
         })?;
         requested_variables.extend(size_output.requested_variables.iter().cloned());
 
-        // SCRLEN is a no-op in Rosy: scratch space is managed automatically by Rust.
-        let serialization = format!(
-            "{{ let _ = {}; /* SCRLEN: no-op in Rosy (scratch space managed automatically) */ }}",
-            size_output.as_value(),
-        );
+        let val = size_output.as_value();
+        let serialization = if let Some(name) = self.size_expr.as_bare_variable_name() {
+            let var = context.variables.get(name).ok_or_else(|| {
+                vec![anyhow::anyhow!(
+                    "Variable '{}' is not defined in this scope!",
+                    name
+                )]
+            })?;
+            let dest = match var.scope {
+                VariableScope::Local => name.to_string(),
+                VariableScope::Arg => {
+                    format!("(*{name})")
+                }
+                VariableScope::Higher => {
+                    requested_variables.insert(name.to_string());
+                    format!("(*{name})")
+                }
+            };
+            format!(
+                "{{ let mut __scrlen = rosy_as_f64(&({val})); rosy_scrlen(&mut __scrlen)?; {dest}.set_f64(__scrlen); }}"
+            )
+        } else {
+            format!(
+                "{{ let mut __scrlen = rosy_as_f64(&({val})); rosy_scrlen(&mut __scrlen)?; }}"
+            )
+        };
 
         Ok(TranspilationOutput {
             serialization,

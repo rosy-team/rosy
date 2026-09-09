@@ -11,8 +11,9 @@ use std::simd::prelude::*;
 #[cfg(feature = "nightly-simd")]
 use std::simd::StdFloat;
 
-use super::da::{DA, DACoefficient};
+use super::da::{DA, DACoefficient, bitset_pool_alloc, bitset_pool_return, multiply_truncated_into};
 use super::config::{get_runtime, MULT_INVALID, TaylorRuntime};
+use super::scratch::{ScratchFrame, scratch_alloc, scratch_reserve};
 
 // ============================================================================
 // FixedMultiplier — Cache-optimized multiply for a fixed RHS operand
@@ -193,19 +194,68 @@ impl DA<f64> {
     /// (e.g. transcendental functions that need config + Horner).
     #[inline(always)]
     pub fn horner_eval_with_rt(da_prime: &DA<f64>, taylor_coeffs: &[f64], rt: &TaylorRuntime) -> Result<DA<f64>> {
-        let n = taylor_coeffs.len();
-        if n == 0 { return Ok(DA::zero()); }
-        if n == 1 { return Ok(DA::from_coeff(taylor_coeffs[0])); }
+        let nxf = taylor_coeffs.len();
+        if nxf == 0 { return Ok(DA::zero()); }
+        if nxf == 1 { return Ok(DA::from_coeff(taylor_coeffs[0])); }
 
+        let n = rt.num_monomials;
+        let epsilon = rt.config.epsilon;
         let full_order = rt.config.max_order;
+        let words = (n + 63) / 64;
 
-        let mut result = DA::from_coeff(taylor_coeffs[n - 1]);
-        for i in (0..n - 1).rev() {
-            let steps_from_end = (n - 1) - i;
-            let trunc_order = (steps_from_end as u32).min(full_order);
-            result = DA::multiply_truncated_with_rt(&result, da_prime, trunc_order, &rt)?;
-            result.add_constant_in_place(taylor_coeffs[i]);
-        }
+        let _frame = ScratchFrame::enter();
+        let acc_ptr = scratch_alloc(n)?;
+        let tmp_ptr = scratch_alloc(n)?;
+        let mut written = bitset_pool_alloc(words);
+
+        // SAFETY: both pointers are `n` words from the bump arena; `_frame`
+        // keeps the cursor from being reused until we copy out.
+        let result = unsafe {
+            let acc = std::slice::from_raw_parts_mut(acc_ptr, n);
+            let tmp = std::slice::from_raw_parts_mut(tmp_ptr, n);
+            acc.fill(0.0);
+            tmp.fill(0.0);
+
+            let mut acc_nz = Vec::new();
+            let mut tmp_nz = Vec::new();
+            acc[0] = taylor_coeffs[nxf - 1];
+            if acc[0].abs() > epsilon {
+                acc_nz.push(0);
+            }
+
+            let mut acc_is_a = true;
+            for i in (0..nxf - 1).rev() {
+                let steps_from_end = (nxf - 1) - i;
+                let trunc_order = (steps_from_end as u32).min(full_order);
+                let (src, src_nz, dst, dst_nz) = if acc_is_a {
+                    (&acc[..], &acc_nz, &mut tmp[..], &mut tmp_nz)
+                } else {
+                    (&tmp[..], &tmp_nz, &mut acc[..], &mut acc_nz)
+                };
+                multiply_truncated_into(
+                    src,
+                    src_nz,
+                    &da_prime.coeffs,
+                    &da_prime.nonzero,
+                    trunc_order,
+                    rt,
+                    dst,
+                    dst_nz,
+                    &mut written,
+                );
+                add_const_into(dst, dst_nz, taylor_coeffs[i], epsilon);
+                acc_is_a = !acc_is_a;
+            }
+
+            let (final_buf, final_nz) = if acc_is_a {
+                (&acc[..], &acc_nz)
+            } else {
+                (&tmp[..], &tmp_nz)
+            };
+            copy_f64_scratch_to_da(n, final_buf, final_nz)
+        };
+
+        bitset_pool_return(written);
         Ok(result)
     }
 
@@ -245,6 +295,33 @@ impl DA<f64> {
     }
 }
 
+fn add_const_into(buf: &mut [f64], nz: &mut Vec<u32>, c: f64, epsilon: f64) {
+    if c == 0.0 {
+        return;
+    }
+    buf[0] += c;
+    let is_nz = buf[0].abs() > epsilon;
+    let pos = nz.iter().position(|&i| i == 0);
+    if is_nz {
+        if pos.is_none() {
+            nz.push(0);
+        }
+    } else if let Some(p) = pos {
+        nz.swap_remove(p);
+        buf[0] = 0.0;
+    }
+}
+
+fn copy_f64_scratch_to_da(n: usize, buf: &[f64], nz: &[u32]) -> DA<f64> {
+    let mut coeffs = f64::pool_alloc(n);
+    let mut nonzero = Vec::with_capacity(nz.len());
+    for &i in nz {
+        coeffs[i as usize] = buf[i as usize];
+        nonzero.push(i);
+    }
+    DA { coeffs, nonzero }
+}
+
 impl DA<Complex64> {
     /// Horner evaluation for Complex DA with progressive truncation.
     /// Holds runtime lock for the entire loop.
@@ -256,6 +333,7 @@ impl DA<Complex64> {
 
         let rt = get_runtime()?;
         let full_order = rt.config.max_order;
+        let _slots = scratch_reserve(2 * rt.num_monomials)?;
 
         let mut result = DA::from_coeff(taylor_coeffs[n - 1]);
         for i in (0..n - 1).rev() {

@@ -59,26 +59,9 @@ impl RosySIN for CD {
     }
 }
 
-/// Compute sine of a DA object using Horner's method for Taylor composition.
-///
-/// Evaluates P(δf) = c₀ + δf·(c₁ + δf·(c₂ + ...)) where c_n = d^n(sin)(f₀)/n!
-/// Horner's reduces allocations from 3 per iteration to 1 (just the DA×DA multiply).
+/// Sine via the coupled sin/cos homogeneous recurrence (COSY DAFUN).
 fn da_sin(da: &DA) -> anyhow::Result<DA> {
-    let rt = crate::taylor::get_runtime()?;
-    let nocut = rt.config.max_order as usize;
-
-    let f0 = da.constant_part();
-    let da_prime = da.make_prime();
-
-    // DACE-style recurrence: xf[i] = -xf[i-2] / (i*(i-1))
-    let mut xf = Vec::with_capacity(nocut + 1);
-    xf.push(f0.sin());
-    if nocut >= 1 { xf.push(f0.cos()); }
-    for i in 2..=nocut {
-        xf.push(-xf[i - 2] / ((i * (i - 1)) as f64));
-    }
-
-    DA::horner_eval_with_rt(&da_prime, &xf, &rt)
+    crate::taylor::compose::compose_sin(da)
 }
 
 /// Compute sine of a CD object using Horner's method for Taylor composition.

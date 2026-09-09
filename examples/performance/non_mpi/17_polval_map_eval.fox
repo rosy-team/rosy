@@ -1,5 +1,6 @@
 { Benchmark: POLVAL map evaluation — full polval.fox pipeline }
-{ TIER_SCALE: repetitions (old T4 = 80000). Particle count stays 100, order 6. }
+{ TIER_SCALE: 200x repetitions (old T4 = 80000 reps => 16000000). Particle count stays 100, order 6. }
+{ Full pipeline per rep is heavy (and currently slower on Rosy); divide so --scale 10000 stays ~100ms. }
 BEGIN;
     PROCEDURE RUN;
         VARIABLE I 1; VARIABLE J 1; VARIABLE K 1; VARIABLE L 1; VARIABLE JJ 1;
@@ -30,7 +31,10 @@ BEGIN;
             TIER_SCALE := 1 ;
         ENDIF ;
 
-        NP:=100; NREP:=TIER_SCALE; MASS:=1;
+        NP:=100; NREP:=TIER_SCALE/200; MASS:=1;
+        IF (NREP < 1) ;
+            NREP := 1 ;
+        ENDIF ;
         GAMMA0:=2.065789024930937; V0:=0.8750256596748323;
         P0:=GAMMA0*V0; K0:=GAMMA0-1; DIM:=3; ORDER:=6;
         DAINI ORDER 2*DIM 0 NM;

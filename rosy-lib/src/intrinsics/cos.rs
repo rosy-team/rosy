@@ -59,26 +59,9 @@ impl RosyCOS for CD {
     }
 }
 
-/// Compute cosine of a DA object using Taylor series composition.
-///
-/// Evaluates P(δf) = c₀ + δf·(c₁ + δf·(c₂ + ...)) using Horner's method
-/// where c_n = d^n(cos)(f₀)/n!, cycle: [cos, -sin, -cos, sin]
+/// Cosine via the coupled sin/cos homogeneous recurrence (COSY DAFUN).
 fn da_cos(da: &DA) -> anyhow::Result<DA> {
-    let rt = crate::taylor::get_runtime()?;
-    let nocut = rt.config.max_order as usize;
-
-    let f0 = da.constant_part();
-    let da_prime = da.make_prime();
-
-    // DACE-style recurrence: xf[i] = -xf[i-2] / (i*(i-1))
-    let mut xf = Vec::with_capacity(nocut + 1);
-    xf.push(f0.cos());
-    if nocut >= 1 { xf.push(-f0.sin()); }
-    for i in 2..=nocut {
-        xf.push(-xf[i - 2] / ((i * (i - 1)) as f64));
-    }
-
-    DA::horner_eval_with_rt(&da_prime, &xf, &rt)
+    crate::taylor::compose::compose_cos(da)
 }
 
 /// Compute cosine of a CD object using Horner's method.

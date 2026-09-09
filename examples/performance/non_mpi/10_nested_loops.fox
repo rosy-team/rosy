@@ -1,6 +1,7 @@
 { Benchmark: Triple-nested loop with arithmetic }
 { Tests: loop overhead, register pressure, FP throughput }
-{ TIER_SCALE: side length N of an N^3 nest (old T4 = 500) }
+{ TIER_SCALE: total inner iterations of an N^3 nest (old T4 = 125000000) }
+{ N = round(cbrt(TIER_SCALE)) so a uniform --scale is not cubed. }
 BEGIN ;
 
 VARIABLE T1 1 ;
@@ -30,7 +31,10 @@ IF (TIER_SCALE < 1) ;
     TIER_SCALE := 1 ;
 ENDIF ;
 
-N := TIER_SCALE ;
+N := NINT(TIER_SCALE^(1.0/3.0)) ;
+IF (N < 1) ;
+    N := 1 ;
+ENDIF ;
 ACC := 0.0 ;
 
 WRITE 6 'Nested Loops Benchmark: ' N '^3 iterations' ;
