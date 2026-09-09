@@ -1,0 +1,61 @@
+{ Benchmark: Repeated matrix determinant }
+{ Tests: LDET performance on 15x15 matrices }
+{ TIER_SCALE: repetitions (old T4 = 20000). Matrix size stays 15. }
+BEGIN ;
+
+VARIABLE T1 1 ;
+VARIABLE T2 1 ;
+VARIABLE A 1 15 15 ;
+VARIABLE N 1 ;
+VARIABLE ADIM 1 ;
+VARIABLE DET 1 ;
+VARIABLE ITER 1 ;
+VARIABLE I 1 ;
+VARIABLE J 1 ;
+VARIABLE DT 1 ;
+VARIABLE TIER_SCALE 1 ;
+VARIABLE SCALE_ST 200 ;
+
+SCALE_ST := '1' ;
+ARGGET 1 SCALE_ST ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    OPENF 77 'tier_scale.dat' 'UNKNOWN' ;
+    READS 77 SCALE_ST ;
+    CLOSEF 77 ;
+ENDIF ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    SCALE_ST := '1' ;
+ENDIF ;
+STCRE SCALE_ST TIER_SCALE ;
+IF (TIER_SCALE < 1) ;
+    TIER_SCALE := 1 ;
+ENDIF ;
+
+N := 15 ;
+ADIM := 15 ;
+
+WRITE 6 'Matrix Determinant Benchmark: 15x15, ' TIER_SCALE ' repetitions' ;
+
+CPUSEC T1 ;
+
+LOOP ITER 1 TIER_SCALE ;
+    LOOP I 1 15 ;
+        LOOP J 1 15 ;
+            IF (I = J) ;
+                A(I,J) := 10.0 + I + ITER * 0.001 ;
+            ELSEIF LO(1) ;
+                A(I,J) := COS(I * 0.5 + J * 0.3) * 0.1 ;
+            ENDIF ;
+        ENDLOOP ;
+    ENDLOOP ;
+
+    LDET A N ADIM DET ;
+ENDLOOP ;
+
+CPUSEC T2 ;
+
+DT := T2 - T1 ;
+WRITE 6 'Last determinant: ' DET ;
+WRITE 6 'CPUSEC: ' DT ;
+
+END ;

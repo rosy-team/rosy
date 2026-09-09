@@ -36,6 +36,10 @@ enum Commands {
         /// Aggressive optimizations: LTO, single codegen unit, panic=abort, SIMD DA (slower builds, faster binaries; requires nightly Rust)
         #[arg(long)]
         optimized: bool,
+
+        /// Print type-resolution slots (type, rule, origin, deps) after analysis
+        #[arg(long)]
+        trace_types: bool,
     },
 
     /// Run language feature tests (transpile, compile, execute each construct)
@@ -73,6 +77,10 @@ enum Commands {
         /// Aggressive optimizations: LTO, single codegen unit, panic=abort, SIMD DA (slower builds, faster binaries; requires nightly Rust)
         #[arg(long)]
         optimized: bool,
+
+        /// Print type-resolution slots (type, rule, origin, deps) after analysis
+        #[arg(long)]
+        trace_types: bool,
     },
 
     /// Start the Language Server Protocol (LSP) server on stdin/stdout
@@ -115,18 +123,20 @@ fn main() -> Result<()> {
         return cli::test::run_construct_tests(filter.as_deref(), *release, *bless);
     }
 
-    let (source, output_dir, release, optimized, output_name) = match &cli.command {
+    let (source, output_dir, release, optimized, output_name, trace_types) = match &cli.command {
         Commands::Run {
             source,
             output_dir,
             release,
             optimized,
+            trace_types,
         } => (
             source.clone(),
             output_dir.clone(),
             *release || *optimized,
             *optimized,
             None,
+            *trace_types,
         ),
         Commands::Build {
             source,
@@ -134,6 +144,7 @@ fn main() -> Result<()> {
             output_dir,
             release,
             optimized,
+            trace_types,
         } => {
             let mut name = output.clone().unwrap_or_else(|| {
                 source
@@ -151,12 +162,13 @@ fn main() -> Result<()> {
                 *release || *optimized,
                 *optimized,
                 Some(name),
+                *trace_types,
             )
         }
         Commands::Test { .. } | Commands::Lsp { .. } | Commands::Setup { .. } => unreachable!(),
     };
 
-    let binary_path = cli::compile::rosy(&source, output_dir, release, optimized)?;
+    let binary_path = cli::compile::rosy(&source, output_dir, release, optimized, trace_types)?;
 
     match cli.command {
         Commands::Run { .. } => {

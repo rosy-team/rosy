@@ -1,0 +1,92 @@
+{ Benchmark: Dynamic ANY cells with mixed arithmetic, math, string, vector, and type hops }
+{ Tests: RosyValue dispatch vs COSY native dynamic typing }
+{ TIER_SCALE: iterations (old T4 = 10000000) }
+BEGIN ;
+
+VARIABLE T1 1 ;
+VARIABLE T2 1 ;
+VARIABLE N 1 ;
+VARIABLE I 1 ;
+VARIABLE DT 1 ;
+VARIABLE TIER_SCALE 1 ;
+VARIABLE SCALE_ST 200 ;
+
+VARIABLE X 200 ;
+VARIABLE Y 200 ;
+VARIABLE Z 200 ;
+VARIABLE FLAG 200 ;
+VARIABLE S 200 ;
+VARIABLE T 200 ;
+VARIABLE L 200 ;
+VARIABLE V 200 ;
+VARIABLE ACC 200 ;
+VARIABLE TMP 200 ;
+
+SCALE_ST := '1' ;
+ARGGET 1 SCALE_ST ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    OPENF 77 'tier_scale.dat' 'UNKNOWN' ;
+    READS 77 SCALE_ST ;
+    CLOSEF 77 ;
+ENDIF ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    SCALE_ST := '1' ;
+ENDIF ;
+STCRE SCALE_ST TIER_SCALE ;
+IF (TIER_SCALE < 1) ;
+    TIER_SCALE := 1 ;
+ENDIF ;
+
+N := TIER_SCALE ;
+ACC := 0.0 ;
+
+X := 'seed' ;
+X := 1.0 ;
+Y := 'y' ;
+Y := 2.0 ;
+Z := 'z' ;
+Z := 0.0 ;
+FLAG := 'f' ;
+FLAG := 1.0 ;
+S := 0.0 ;
+S := 's' ;
+T := 0.0 ;
+T := 't' ;
+L := 'l' ;
+L := 0.0 ;
+V := 'v' ;
+V := 1.0 & 2.0 ;
+TMP := 'tmp' ;
+TMP := 0.0 ;
+
+WRITE 6 'ANY Operations Benchmark: ' N ' iterations of mixed dynamic ops' ;
+
+CPUSEC T1 ;
+
+LOOP I 1 N ;
+    X := I * 0.0001 + 0.5 ;
+    Y := SIN(X) + COS(X) * SQRT(X) ;
+    Z := Y * Y - X / (Y + 1.0) + EXP(X * 0.001) + LOG(1.0 + X) + ABS(Y - X) ;
+
+    FLAG := (Z > 0.0) * (X < 10.0) ;
+
+    S := ST(Z) ;
+    T := 'v=' & S & ' i=' & ST(I) ;
+    L := LENGTH(T) ;
+
+    V := X & Y & Z ;
+    ACC := ACC + Z + L + VMAX(V) + VMIN(V) ;
+
+    TMP := T ;
+    TMP := Z + L ;
+    ACC := ACC + TMP ;
+ENDLOOP ;
+
+CPUSEC T2 ;
+
+DT := T2 - T1 ;
+WRITE 6 'Accumulated result: ' ACC ;
+WRITE 6 'Last string: ' T ;
+WRITE 6 'CPUSEC: ' DT ;
+
+END ;

@@ -132,6 +132,22 @@ pub enum ExprRecipe {
     Unknown(Option<String>),
 }
 
+impl std::fmt::Display for ExprRecipe {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExprRecipe::Literal(t) => write!(f, "{t}"),
+            ExprRecipe::Variable(s) => write!(f, "{s}"),
+            ExprRecipe::IndexedVariable(s, n) => write!(f, "{s}[{n} index]"),
+            ExprRecipe::BinaryOp { op, left, right } => write!(f, "({left} {op:?} {right})"),
+            ExprRecipe::Concat(left, right) => write!(f, "({left} & {right})"),
+            ExprRecipe::UnaryIntrinsic { name, inner } => write!(f, "{name}({inner})"),
+            ExprRecipe::WithDimensions(inner, n) => write!(f, "{inner} +{n}D"),
+            ExprRecipe::Unknown(None) => write!(f, "?"),
+            ExprRecipe::Unknown(Some(ctx)) => write!(f, "? ({ctx})"),
+        }
+    }
+}
+
 impl ExprRecipe {
     /// Returns true if this recipe references the given type slot.
     pub fn references_slot(&self, target: &TypeSlot) -> bool {
@@ -219,6 +235,48 @@ impl TypeResolver {
         resolver.apply_to_ast(&mut program.statements, &[])?;
 
         Ok((resolver, warnings))
+    }
+
+    /// Print every graph node the resolver already holds (type, rule, origin).
+    /// Does not compute anything new — this is the same data LSP inlays use.
+    pub fn dump_resolution(&self) {
+        let mut nodes: Vec<&GraphNode> = self.nodes.values().collect();
+        nodes.sort_by_key(|n| n.slot.to_string());
+        eprintln!("  type resolution ({} slots)", nodes.len());
+        for node in nodes {
+            eprintln!("  ── {}", node.slot);
+            match &node.resolved {
+                Some(t) => eprintln!("     type:      {t}"),
+                None => eprintln!("     type:      (unresolved)"),
+            }
+            match &node.rule {
+                ResolutionRule::Explicit(t) => {
+                    eprintln!("     rule:      explicit {t}");
+                }
+                ResolutionRule::InferredFrom { recipe, reason } => {
+                    eprintln!("     rule:      inferred  {reason}");
+                    eprintln!("     recipe:    {recipe}");
+                }
+                ResolutionRule::Mirror { source, reason } => {
+                    eprintln!("     rule:      mirror    {reason}");
+                    eprintln!("     source:    {source}");
+                }
+                ResolutionRule::Unresolved => {
+                    eprintln!("     rule:      unresolved");
+                }
+            }
+            if let Some(loc) = &node.declared_at {
+                eprintln!("     declared:  {loc}");
+            }
+            if let Some(loc) = &node.assigned_at {
+                eprintln!("     assigned:  {loc}");
+            }
+            if !node.depends_on.is_empty() {
+                let mut deps: Vec<String> = node.depends_on.iter().map(|d| d.to_string()).collect();
+                deps.sort();
+                eprintln!("     depends:   {}", deps.join(", "));
+            }
+        }
     }
 
     // ─── Graph Infrastructure ───────────────────────────────────────────

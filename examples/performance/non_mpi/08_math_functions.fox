@@ -1,0 +1,51 @@
+{ Benchmark: Math intrinsic functions in a tight loop }
+{ Tests: SIN, COS, EXP, LOG, SQRT function call overhead }
+{ TIER_SCALE: iterations (old T4 = 500000000) }
+BEGIN ;
+
+VARIABLE T1 1 ;
+VARIABLE T2 1 ;
+VARIABLE X 1 ;
+VARIABLE Y 1 ;
+VARIABLE ACC 1 ;
+VARIABLE N 1 ;
+VARIABLE I 1 ;
+VARIABLE DT 1 ;
+VARIABLE TIER_SCALE 1 ;
+VARIABLE SCALE_ST 200 ;
+
+SCALE_ST := '1' ;
+ARGGET 1 SCALE_ST ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    OPENF 77 'tier_scale.dat' 'UNKNOWN' ;
+    READS 77 SCALE_ST ;
+    CLOSEF 77 ;
+ENDIF ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    SCALE_ST := '1' ;
+ENDIF ;
+STCRE SCALE_ST TIER_SCALE ;
+IF (TIER_SCALE < 1) ;
+    TIER_SCALE := 1 ;
+ENDIF ;
+
+N := TIER_SCALE ;
+ACC := 0.0 ;
+
+WRITE 6 'Math Functions Benchmark: ' N ' iterations of SIN+COS+EXP+LOG+SQRT' ;
+
+CPUSEC T1 ;
+
+LOOP I 1 N ;
+    X := I * 0.0000001 ;
+    Y := SIN(X) + COS(X) + EXP(X * 0.001) + LOG(1.0 + X) + SQRT(1.0 + X) ;
+    ACC := ACC + Y ;
+ENDLOOP ;
+
+CPUSEC T2 ;
+
+DT := T2 - T1 ;
+WRITE 6 'Accumulated result: ' ACC ;
+WRITE 6 'CPUSEC: ' DT ;
+
+END ;

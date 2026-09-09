@@ -335,12 +335,13 @@ impl TranspileableStatement for AssignStatement {
                 let mut old_type_result = resolver.evaluate_recipe(old_recipe);
                 let mut new_type_result = resolver.evaluate_recipe(&dimensioned_recipe);
 
-                // If the old recipe can't be evaluated yet (e.g. X:=10.5*J
-                // where J has a known recipe but isn't resolved), try
-                // temporarily resolving leaf dependencies so the conflict
-                // checker can detect RE↔VE coercion patterns.
+                // If either recipe can't be evaluated yet (e.g. X:=10.5*J
+                // where J has a known recipe but isn't resolved, or
+                // Z:=Z+X*Y where X/Y are inferred but not yet resolved),
+                // temporarily resolve leaf dependencies so the conflict
+                // checker can see RE↔VE coercion vs a same-type mutation.
                 let mut temp_leaf_slots: Vec<TypeSlot> = Vec::new();
-                if old_type_result.is_err() {
+                if old_type_result.is_err() || new_type_result.is_err() {
                     let all_deps: HashSet<TypeSlot> = {
                         let mut d = resolver
                             .nodes
@@ -946,4 +947,90 @@ fn assignment_append_dest(
         cell
     };
     Ok((dest, idx_serials, requested_variables))
+}
+
+#[cfg(test)]
+mod fox_reassignment_tests {
+    use super::*;
+    use crate::ast;
+    use crate::program::{IncludeTracker, Program, syntax_config};
+    use std::path::Path;
+
+    fn resolve_fox(src: &str) -> TypeResolver {
+        syntax_config::with_path(Some(Path::new("t.fox")), || {
+            let program = ast::parse_source(src)
+                .unwrap()
+                .next()
+                .expect("program");
+            let mut ast = Program::from_rule_with_includes(
+                program,
+                Some(Path::new("t.fox")),
+                &mut IncludeTracker::default(),
+            )
+            .unwrap()
+            .expect("ast");
+            TypeResolver::resolve(&mut ast).unwrap().0
+        })
+    }
+
+    fn slot_type(resolver: &TypeResolver, name: &str) -> RosyType {
+        let slot = TypeSlot::Variable(vec![], name.to_string());
+        resolver
+            .nodes
+            .get(&slot)
+            .and_then(|n| n.resolved)
+            .unwrap_or_else(|| panic!("no type for {name}"))
+    }
+
+    #[test]
+    fn fox_self_ref_arith_using_other_re_vars_stays_re() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+VARIABLE X 1 ;
+VARIABLE Y 1 ;
+VARIABLE Z 1 ;
+X := 1.0 ;
+Y := 2.0 ;
+Z := 0.0 ;
+LOOP I 1 3 ;
+    Z := Z + X * Y - X / (Y + 1.0) + SQRT(X) ;
+ENDLOOP ;
+END ;
+"#,
+        );
+        assert_eq!(slot_type(&resolver, "Z"), RosyType::RE());
+        assert_eq!(slot_type(&resolver, "X"), RosyType::RE());
+        assert_eq!(slot_type(&resolver, "Y"), RosyType::RE());
+    }
+
+    #[test]
+    fn fox_re_then_concat_still_promotes_to_ve() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+VARIABLE X 1 ;
+X := 0 ;
+LOOP I 1 3 ;
+    X := X & I ;
+ENDLOOP ;
+END ;
+"#,
+        );
+        assert_eq!(slot_type(&resolver, "X"), RosyType::VE());
+    }
+
+    #[test]
+    fn fox_st_then_lo_still_becomes_any() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+VARIABLE X 1 ;
+X := 'hi' ;
+X := LO(1) ;
+END ;
+"#,
+        );
+        assert_eq!(slot_type(&resolver, "X"), RosyType::ANY());
+    }
 }

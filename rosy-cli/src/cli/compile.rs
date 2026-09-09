@@ -25,6 +25,7 @@ pub(crate) fn rosy(
     output_dir: Option<PathBuf>,
     release: bool,
     optimized: bool,
+    trace_types: bool,
 ) -> Result<PathBuf> {
     let filename = script_path
         .file_name()
@@ -57,6 +58,7 @@ pub(crate) fn rosy(
         release,
         optimized,
         false,
+        trace_types,
     )
 }
 
@@ -67,6 +69,7 @@ pub(crate) fn compile_source(
     release: bool,
     optimized: bool,
     quiet: bool,
+    trace_types: bool,
 ) -> Result<PathBuf> {
     let total_start = Instant::now();
 
@@ -98,14 +101,19 @@ pub(crate) fn compile_source(
     }
 
     let t = Instant::now();
-    let (_resolver, warnings) =
+    let (resolver, warnings) =
         resolve::TypeResolver::resolve(&mut ast).context("Failed to resolve types!")?;
     if !quiet {
         step_done(t);
         for w in &warnings {
             eprintln!("{BOLD}{YELLOW}    warning{RESET}: {}", w.message);
         }
+        if trace_types {
+            resolver.dump_resolution();
+        }
         step(5, 6, "Generating Rust code");
+    } else if trace_types {
+        resolver.dump_resolution();
     }
 
     let t = Instant::now();

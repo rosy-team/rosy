@@ -1,0 +1,56 @@
+{ Benchmark: PLOOP distributing vector operations }
+{ Tests: parallel vector construction, NORM, element access }
+{ TIER_SCALE: vector ops per rank (old = 3000000) }
+BEGIN ;
+
+VARIABLE T1 1 ;
+VARIABLE T2 1 ;
+VARIABLE RESULTS 1 20 ;
+VARIABLE ACC 1 ;
+VARIABLE V 8 ;
+VARIABLE I 1 ;
+VARIABLE J 1 ;
+VARIABLE DT 1 ;
+VARIABLE TIER_SCALE 1 ;
+VARIABLE SCALE_ST 200 ;
+
+SCALE_ST := '1' ;
+ARGGET 1 SCALE_ST ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    OPENF 77 'tier_scale.dat' 'UNKNOWN' ;
+    READS 77 SCALE_ST ;
+    CLOSEF 77 ;
+ENDIF ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    SCALE_ST := '1' ;
+ENDIF ;
+STCRE SCALE_ST TIER_SCALE ;
+IF (TIER_SCALE < 1) ;
+    TIER_SCALE := 1 ;
+ENDIF ;
+
+WRITE 6 'PLOOP Vector Benchmark: 20 iterations x ' TIER_SCALE ' vector ops each' ;
+
+CPUSEC T1 ;
+
+PLOOP I 1 20 ;
+    ACC := 0.0 ;
+    LOOP J 1 TIER_SCALE ;
+        V := SIN(I * J * 0.0001) & COS(I * J * 0.0001)
+           & SIN(I * J * 0.0002) & COS(I * J * 0.0002)
+           & SIN(I * J * 0.0003) & COS(I * J * 0.0003)
+           & SIN(I * J * 0.0004) & COS(I * J * 0.0004) ;
+        ACC := ACC + VMAX(V) - VMIN(V) + ABS(V) ;
+    ENDLOOP ;
+    RESULTS(I) := ACC ;
+ENDPLOOP RESULTS ;
+
+CPUSEC T2 ;
+
+WRITE 6 'Results(1) = ' RESULTS(1) ;
+WRITE 6 'Results(10) = ' RESULTS(10) ;
+WRITE 6 'Results(20) = ' RESULTS(20) ;
+DT := T2 - T1 ;
+WRITE 6 'CPUSEC: ' DT ;
+
+END ;

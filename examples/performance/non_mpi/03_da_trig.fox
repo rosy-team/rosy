@@ -1,0 +1,59 @@
+{ Benchmark: DA transcendental functions }
+{ Tests: SIN, COS, EXP on DA vectors - Taylor series composition }
+{ Order 5, 2 variables => C(7,2) = 21 monomials per DA vector }
+{ TIER_SCALE: iterations (old T4 = 500000) }
+BEGIN ;
+
+VARIABLE T1 1 ;
+VARIABLE T2 1 ;
+VARIABLE ORDER 1 ;
+VARIABLE NVARS 1 ;
+VARIABLE NM 1 ;
+VARIABLE I 1 ;
+VARIABLE DT 1 ;
+VARIABLE X 25 ;
+VARIABLE Y 25 ;
+VARIABLE R 25 ;
+VARIABLE TIER_SCALE 1 ;
+VARIABLE SCALE_ST 200 ;
+
+SCALE_ST := '1' ;
+ARGGET 1 SCALE_ST ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    OPENF 77 'tier_scale.dat' 'UNKNOWN' ;
+    READS 77 SCALE_ST ;
+    CLOSEF 77 ;
+ENDIF ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    SCALE_ST := '1' ;
+ENDIF ;
+STCRE SCALE_ST TIER_SCALE ;
+IF (TIER_SCALE < 1) ;
+    TIER_SCALE := 1 ;
+ENDIF ;
+
+ORDER := 5 ;
+NVARS := 2 ;
+DAINI ORDER NVARS 0 NM ;
+
+X := DA(1) + 0.5 ;
+Y := DA(2) + 0.3 ;
+
+WRITE 6 'DA Trig Benchmark: order 5, 2 vars, ' TIER_SCALE ' iterations' ;
+WRITE 6 'Monomials per DA vector: ' NM ;
+
+CPUSEC T1 ;
+
+LOOP I 1 TIER_SCALE ;
+    R := SIN(X + Y) * COS(X - Y) + EXP(X * 0.01) ;
+    R := R + LOG(1.0 + X * X * 0.1) ;
+    R := SQRT(R * R + 1.0) ;
+ENDLOOP ;
+
+CPUSEC T2 ;
+
+DT := T2 - T1 ;
+WRITE 6 'Result constant part: ' CONS(R) ;
+WRITE 6 'CPUSEC: ' DT ;
+
+END ;

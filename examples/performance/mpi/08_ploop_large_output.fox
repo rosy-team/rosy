@@ -1,0 +1,65 @@
+{ Benchmark: PLOOP with large output data per rank }
+{ Tests: MPI gather/communication overhead with heavy data }
+{ TIER_SCALE: inner loop iterations (old = 150000000) }
+BEGIN ;
+
+VARIABLE T1 1 ;
+VARIABLE T2 1 ;
+VARIABLE RESULTS 1 20 ;
+VARIABLE ACC 1 ;
+VARIABLE X 1 ;
+VARIABLE Y 1 ;
+VARIABLE Z 1 ;
+VARIABLE SUM 1 ;
+VARIABLE I 1 ;
+VARIABLE J 1 ;
+VARIABLE DT 1 ;
+VARIABLE TIER_SCALE 1 ;
+VARIABLE SCALE_ST 200 ;
+
+SCALE_ST := '1' ;
+ARGGET 1 SCALE_ST ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    OPENF 77 'tier_scale.dat' 'UNKNOWN' ;
+    READS 77 SCALE_ST ;
+    CLOSEF 77 ;
+ENDIF ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    SCALE_ST := '1' ;
+ENDIF ;
+STCRE SCALE_ST TIER_SCALE ;
+IF (TIER_SCALE < 1) ;
+    TIER_SCALE := 1 ;
+ENDIF ;
+
+WRITE 6 'PLOOP Large Output Benchmark: 20 iterations x ' TIER_SCALE ' ops, heavy gather' ;
+
+CPUSEC T1 ;
+
+PLOOP I 1 20 ;
+    ACC := 0.0 ;
+    X := I * 0.01 ;
+    Y := I * 0.02 ;
+    LOOP J 1 TIER_SCALE ;
+        Z := SIN(X) * COS(Y) + SQRT(ABS(X * Y)) ;
+        ACC := ACC + Z ;
+        X := X + 0.0000001 ;
+        Y := Y - 0.0000001 ;
+    ENDLOOP ;
+    RESULTS(I) := ACC ;
+ENDPLOOP RESULTS ;
+
+CPUSEC T2 ;
+
+SUM := 0.0 ;
+LOOP I 1 20 ;
+    SUM := SUM + RESULTS(I) ;
+ENDLOOP ;
+
+WRITE 6 'Sum of all results: ' SUM ;
+WRITE 6 'Results(1) = ' RESULTS(1) ;
+WRITE 6 'Results(20) = ' RESULTS(20) ;
+DT := T2 - T1 ;
+WRITE 6 'CPUSEC: ' DT ;
+
+END ;

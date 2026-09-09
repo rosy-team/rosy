@@ -1,0 +1,68 @@
+{ Benchmark: PLOOP distributing DA polynomial computations }
+{ Tests: parallel DA evaluation, per-rank Taylor series overhead }
+{ PLOOP over 20 ranks. TIER_SCALE: DA iterations per rank (old = 30000) }
+BEGIN ;
+
+VARIABLE T1 1 ;
+VARIABLE T2 1 ;
+VARIABLE ORDER 1 ;
+VARIABLE NVARS 1 ;
+VARIABLE NM 1 ;
+VARIABLE RESULTS 1 20 ;
+VARIABLE X 100 ;
+VARIABLE Y 100 ;
+VARIABLE Z 100 ;
+VARIABLE R 100 ;
+VARIABLE I 1 ;
+VARIABLE K 1 ;
+VARIABLE DT 1 ;
+VARIABLE TIER_SCALE 1 ;
+VARIABLE SCALE_ST 200 ;
+
+SCALE_ST := '1' ;
+ARGGET 1 SCALE_ST ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    OPENF 77 'tier_scale.dat' 'UNKNOWN' ;
+    READS 77 SCALE_ST ;
+    CLOSEF 77 ;
+ENDIF ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    SCALE_ST := '1' ;
+ENDIF ;
+STCRE SCALE_ST TIER_SCALE ;
+IF (TIER_SCALE < 1) ;
+    TIER_SCALE := 1 ;
+ENDIF ;
+
+ORDER := 6 ;
+NVARS := 3 ;
+DAINI ORDER NVARS 0 NM ;
+
+WRITE 6 'PLOOP DA Benchmark: 20 iterations of DA order 6, 3 vars x ' TIER_SCALE ;
+WRITE 6 'Monomials per DA vector: ' NM ;
+
+CPUSEC T1 ;
+
+PLOOP I 1 20 ;
+    X := DA(1) + I * 0.1 ;
+    Y := DA(2) + I * 0.05 ;
+    Z := DA(3) ;
+
+    LOOP K 1 TIER_SCALE ;
+        R := SIN(X) * COS(Y) + EXP(Z * 0.1) ;
+        R := R * R + X * Y * Z ;
+        R := R * (X + Y + Z) ;
+    ENDLOOP ;
+
+    RESULTS(I) := CONS(R) ;
+ENDPLOOP RESULTS ;
+
+CPUSEC T2 ;
+
+WRITE 6 'Results(1) = ' RESULTS(1) ;
+WRITE 6 'Results(10) = ' RESULTS(10) ;
+WRITE 6 'Results(20) = ' RESULTS(20) ;
+DT := T2 - T1 ;
+WRITE 6 'CPUSEC: ' DT ;
+
+END ;

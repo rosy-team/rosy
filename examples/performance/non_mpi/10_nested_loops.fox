@@ -1,0 +1,55 @@
+{ Benchmark: Triple-nested loop with arithmetic }
+{ Tests: loop overhead, register pressure, FP throughput }
+{ TIER_SCALE: side length N of an N^3 nest (old T4 = 500) }
+BEGIN ;
+
+VARIABLE T1 1 ;
+VARIABLE T2 1 ;
+VARIABLE ACC 1 ;
+VARIABLE TMP 1 ;
+VARIABLE N 1 ;
+VARIABLE I 1 ;
+VARIABLE J 1 ;
+VARIABLE K 1 ;
+VARIABLE DT 1 ;
+VARIABLE TIER_SCALE 1 ;
+VARIABLE SCALE_ST 200 ;
+
+SCALE_ST := '1' ;
+ARGGET 1 SCALE_ST ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    OPENF 77 'tier_scale.dat' 'UNKNOWN' ;
+    READS 77 SCALE_ST ;
+    CLOSEF 77 ;
+ENDIF ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    SCALE_ST := '1' ;
+ENDIF ;
+STCRE SCALE_ST TIER_SCALE ;
+IF (TIER_SCALE < 1) ;
+    TIER_SCALE := 1 ;
+ENDIF ;
+
+N := TIER_SCALE ;
+ACC := 0.0 ;
+
+WRITE 6 'Nested Loops Benchmark: ' N '^3 iterations' ;
+
+CPUSEC T1 ;
+
+LOOP I 1 N ;
+    LOOP J 1 N ;
+        LOOP K 1 N ;
+            TMP := I * 0.001 + J * 0.0001 + K * 0.00001 ;
+            ACC := ACC + SIN(TMP) * COS(TMP) ;
+        ENDLOOP ;
+    ENDLOOP ;
+ENDLOOP ;
+
+CPUSEC T2 ;
+
+DT := T2 - T1 ;
+WRITE 6 'Accumulated result: ' ACC ;
+WRITE 6 'CPUSEC: ' DT ;
+
+END ;

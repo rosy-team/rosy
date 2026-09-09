@@ -144,6 +144,7 @@ fn run_single_test(
         release,
         false,
         true,
+        false,
     ) {
         Ok(p) => p,
         Err(e) => {

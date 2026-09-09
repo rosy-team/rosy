@@ -1,0 +1,75 @@
+{ Benchmark: PLOOP distributing matrix inversions }
+{ Tests: parallel linear algebra workload, per-rank LINV performance }
+{ PLOOP over 20 ranks. TIER_SCALE: LINV repeats per rank (old = 1500) }
+BEGIN ;
+
+VARIABLE T1 1 ;
+VARIABLE T2 1 ;
+VARIABLE RESULTS 1 20 ;
+VARIABLE A 1 10 10 ;
+VARIABLE B 1 10 10 ;
+VARIABLE N 1 ;
+VARIABLE ADIM 1 ;
+VARIABLE ERR 1 ;
+VARIABLE C 1 ;
+VARIABLE I 1 ;
+VARIABLE K 1 ;
+VARIABLE R 1 ;
+VARIABLE DT 1 ;
+VARIABLE TIER_SCALE 1 ;
+VARIABLE SCALE_ST 200 ;
+
+SCALE_ST := '1' ;
+ARGGET 1 SCALE_ST ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    OPENF 77 'tier_scale.dat' 'UNKNOWN' ;
+    READS 77 SCALE_ST ;
+    CLOSEF 77 ;
+ENDIF ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    SCALE_ST := '1' ;
+ENDIF ;
+STCRE SCALE_ST TIER_SCALE ;
+IF (TIER_SCALE < 1) ;
+    TIER_SCALE := 1 ;
+ENDIF ;
+
+WRITE 6 'PLOOP Matrix Benchmark: 20 iterations x ' TIER_SCALE ' LINV each' ;
+
+CPUSEC T1 ;
+
+PLOOP I 1 20 ;
+    N := 10 ;
+    ADIM := 10 ;
+
+    LOOP R 1 10 ;
+        LOOP C 1 10 ;
+            IF (R=C) ;
+                A(R,C) := 10.0 + R + I * 0.01 ;
+            ELSEIF LO(1) ;
+                A(R,C) := SIN(R * 0.3 + I * 0.1) * COS(C * 0.7) ;
+            ENDIF ;
+        ENDLOOP ;
+    ENDLOOP ;
+
+    LOOP K 1 TIER_SCALE ;
+        LINV A B N ADIM ERR ;
+        LOOP R 1 10 ;
+            LOOP C 1 10 ;
+                A(R,C) := B(R,C) ;
+            ENDLOOP ;
+        ENDLOOP ;
+    ENDLOOP ;
+
+    RESULTS(I) := B(1,1) ;
+ENDPLOOP RESULTS ;
+
+CPUSEC T2 ;
+
+WRITE 6 'Results(1) = ' RESULTS(1) ;
+WRITE 6 'Results(10) = ' RESULTS(10) ;
+WRITE 6 'Results(20) = ' RESULTS(20) ;
+DT := T2 - T1 ;
+WRITE 6 'CPUSEC: ' DT ;
+
+END ;

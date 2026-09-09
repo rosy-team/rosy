@@ -1,0 +1,64 @@
+{ Benchmark: DA polynomial multiplication chains }
+{ Tests: Taylor series engine performance, sparse polynomial arithmetic }
+{ Order 8, 4 variables => C(12,4) = 495 monomials per DA vector }
+{ TIER_SCALE: multiply-chain iterations (old T4 = 500000) }
+BEGIN ;
+
+VARIABLE T1 1 ;
+VARIABLE T2 1 ;
+VARIABLE ORDER 1 ;
+VARIABLE NVARS 1 ;
+VARIABLE NM 1 ;
+VARIABLE I 1 ;
+VARIABLE DT 1 ;
+VARIABLE X 500 ;
+VARIABLE Y 500 ;
+VARIABLE Z 500 ;
+VARIABLE W 500 ;
+VARIABLE R 500 ;
+VARIABLE TIER_SCALE 1 ;
+VARIABLE SCALE_ST 200 ;
+
+SCALE_ST := '1' ;
+ARGGET 1 SCALE_ST ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    OPENF 77 'tier_scale.dat' 'UNKNOWN' ;
+    READS 77 SCALE_ST ;
+    CLOSEF 77 ;
+ENDIF ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    SCALE_ST := '1' ;
+ENDIF ;
+STCRE SCALE_ST TIER_SCALE ;
+IF (TIER_SCALE < 1) ;
+    TIER_SCALE := 1 ;
+ENDIF ;
+
+ORDER := 8 ;
+NVARS := 4 ;
+DAINI ORDER NVARS 0 NM ;
+
+X := DA(1) ;
+Y := DA(2) ;
+Z := DA(3) ;
+W := DA(4) ;
+
+WRITE 6 'DA Multiply Benchmark: order 8, 4 vars, ' TIER_SCALE ' iterations' ;
+WRITE 6 'Monomials per DA vector: ' NM ;
+
+CPUSEC T1 ;
+
+LOOP I 1 TIER_SCALE ;
+    R := (X + Y) * (Z + W) ;
+    R := R * (X - Z) ;
+    R := R * R ;
+    R := R + X * Y * Z * W ;
+ENDLOOP ;
+
+CPUSEC T2 ;
+
+DT := T2 - T1 ;
+WRITE 6 'Result constant part: ' CONS(R) ;
+WRITE 6 'CPUSEC: ' DT ;
+
+END ;

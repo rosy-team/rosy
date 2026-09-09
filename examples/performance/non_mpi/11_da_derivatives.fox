@@ -1,0 +1,73 @@
+{ Benchmark: DA derivative chains using % operator }
+{ Tests: DA differentiation/antidifferentiation performance }
+{ Order 10, 3 variables }
+{ TIER_SCALE: iterations (old T4 = 500000) }
+BEGIN ;
+
+VARIABLE T1 1 ;
+VARIABLE T2 1 ;
+VARIABLE ORDER 1 ;
+VARIABLE NVARS 1 ;
+VARIABLE NM 1 ;
+VARIABLE I 1 ;
+VARIABLE DT 1 ;
+VARIABLE X 300 ;
+VARIABLE Y 300 ;
+VARIABLE Z 300 ;
+VARIABLE F 300 ;
+VARIABLE DFX 300 ;
+VARIABLE DFY 300 ;
+VARIABLE DFZ 300 ;
+VARIABLE TIER_SCALE 1 ;
+VARIABLE SCALE_ST 200 ;
+
+SCALE_ST := '1' ;
+ARGGET 1 SCALE_ST ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    OPENF 77 'tier_scale.dat' 'UNKNOWN' ;
+    READS 77 SCALE_ST ;
+    CLOSEF 77 ;
+ENDIF ;
+IF (LENGTH(SCALE_ST) = 0) ;
+    SCALE_ST := '1' ;
+ENDIF ;
+STCRE SCALE_ST TIER_SCALE ;
+IF (TIER_SCALE < 1) ;
+    TIER_SCALE := 1 ;
+ENDIF ;
+
+ORDER := 10 ;
+NVARS := 3 ;
+DAINI ORDER NVARS 0 NM ;
+
+X := DA(1) ;
+Y := DA(2) ;
+Z := DA(3) ;
+
+WRITE 6 'DA Derivatives Benchmark: order 10, 3 vars, ' TIER_SCALE ' iterations' ;
+WRITE 6 'Monomials per DA vector: ' NM ;
+
+CPUSEC T1 ;
+
+LOOP I 1 TIER_SCALE ;
+    F := X * X * Y + Y * Y * Z + Z * Z * X + X * Y * Z ;
+    F := F * F + X * X * X + Y * Y * Y + Z * Z * Z ;
+
+    DFX := F % 1 ;
+    DFY := F % 2 ;
+    DFZ := F % 3 ;
+
+    DFX := DFX % 1 ;
+    DFY := DFY % 2 ;
+    DFZ := DFZ % 3 ;
+
+    F := DFX % (-1) + DFY % (-2) + DFZ % (-3) ;
+ENDLOOP ;
+
+CPUSEC T2 ;
+
+DT := T2 - T1 ;
+WRITE 6 'Result constant part: ' CONS(F) ;
+WRITE 6 'CPUSEC: ' DT ;
+
+END ;
