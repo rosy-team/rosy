@@ -50,24 +50,8 @@ impl RosyCOSH for DA {
     }
 }
 
-/// Compute hyperbolic cosine of a DA object using Horner's method.
-///
-/// `c_n = [cosh_f0, sinh_f0][n%2] / n!`
+/// Hyperbolic cosine via the coupled sinh/cosh homogeneous recurrence.
 fn da_cosh(da: &DA) -> anyhow::Result<DA> {
-    let rt = crate::taylor::get_runtime()?;
-    let nocut = rt.config.max_order as usize;
-
-    let f0 = da.constant_part();
-    let da_prime = da.make_prime();
-
-    // Recurrence: xf[i] = xf[i-2] / (i*(i-1))  (no negation for cosh/sinh)
-    let mut xf = Vec::with_capacity(nocut + 1);
-    xf.push(f0.cosh());
-    if nocut >= 1 { xf.push(f0.sinh()); }
-    for i in 2..=nocut {
-        xf.push(xf[i - 2] / ((i * (i - 1)) as f64));
-    }
-
-    DA::horner_eval_with_rt(&da_prime, &xf, &rt)
+    crate::taylor::compose::compose_cosh(da)
 }
 

@@ -36,7 +36,7 @@
 //!
 //! ## System
 //!
-//! - **[`scrlen`]** — `SCRLEN c;` — scratch memory (no-op, COSY compat)
+//! - **[`scrlen`]** — `SCRLEN c;` — DA scratch size (set, or query if `c < 0`)
 //! - **[`pnpro`]** — `PNPRO var;` — number of concurrent processes
 
 pub mod argget;

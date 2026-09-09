@@ -78,6 +78,10 @@ pub struct TaylorRuntime {
     /// flat index of the monomial obtained by incrementing exponent `v` of monomial `k`,
     /// or `DERIV_INVALID` if the result would exceed init_order.
     pub integ_target: Vec<u32>,
+    /// First monomial index of each total order. `degree_offset[d]..degree_offset[d+1]`
+    /// is the homogeneous block of degree `d`. Length is `init_order + 2`
+    /// (`degree_offset[init_order + 1] == num_monomials`).
+    pub degree_offset: Vec<usize>,
 }
 
 /// Read guard wrapper that dereferences directly to `TaylorRuntime`.
@@ -253,6 +257,8 @@ pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
         }
     }
 
+    let degree_offset = build_degree_offset(&monomial_orders, num_monomials, max_order);
+
     *guard = Some(TaylorRuntime {
         config,
         init_order: max_order,
@@ -265,9 +271,31 @@ pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
         deriv_target,
         deriv_exponent,
         integ_target,
+        degree_offset,
     });
 
     Ok(num_monomials)
+}
+
+fn build_degree_offset(monomial_orders: &[u8], num_monomials: usize, max_order: u32) -> Vec<usize> {
+    let max_o = max_order as usize;
+    let mut degree_offset = vec![num_monomials; max_o + 2];
+    degree_offset[0] = 0;
+    let mut cur = 0u8;
+    for (i, &ord) in monomial_orders.iter().enumerate() {
+        while cur < ord {
+            cur += 1;
+            let d = cur as usize;
+            if d < degree_offset.len() {
+                degree_offset[d] = i;
+            }
+        }
+    }
+    let last = monomial_orders.last().copied().unwrap_or(0) as usize;
+    for d in (last + 1)..degree_offset.len() {
+        degree_offset[d] = num_monomials;
+    }
+    degree_offset
 }
 
 /// Print the DA addressing arrays (monomial index → exponents mapping).
@@ -405,6 +433,8 @@ mod tests {
         // Variable indices are populated
         assert!(rt.variable_indices[0] > 0); // x1 is not the constant
         assert!(rt.variable_indices[1] > 0); // x2 is not the constant
+        // C(d+1, 1) monomials of degree d in 2 vars: offsets 0,1,3,6,10,15,21
+        assert_eq!(&rt.degree_offset, &[0, 1, 3, 6, 10, 15, 21]);
 
         drop(rt);
         cleanup_taylor();

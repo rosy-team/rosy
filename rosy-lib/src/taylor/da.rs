@@ -16,6 +16,13 @@ use rustc_hash::FxHashMap;
 
 use super::{Monomial, MAX_VARS};
 use super::config::{get_runtime, MULT_INVALID, TaylorRuntime};
+use super::scratch::scratch_reserve;
+
+/// Reserve `n` scratch words for one operator result. Drop restores the cursor.
+#[inline]
+fn account_result_temp(n: usize) -> Result<super::scratch::ScratchFrame> {
+    scratch_reserve(n)
+}
 
 // ============================================================================
 // Coefficient trait + pool
@@ -417,6 +424,7 @@ impl<T: DACoefficient> Add<&DA<T>> for &DA<T> {
         let max_order = rt.config.max_order as u8;
         let orders = &rt.monomial_orders;
 
+        let _scratch = account_result_temp(n)?;
         let words = (n + 63) / 64;
         let mut self_set = vec![0u64; words];
 
@@ -505,6 +513,7 @@ impl<T: DACoefficient> Neg for &DA<T> {
     type Output = DA<T>;
     fn neg(self) -> Self::Output {
         let n = self.coeffs.len();
+        let _scratch = account_result_temp(n).expect("SCRLEN overflow in DA negation");
         let mut coeffs = T::pool_alloc(n);
         for &i in &self.nonzero {
             coeffs[i as usize] = -self.coeffs[i as usize];
@@ -527,6 +536,7 @@ impl<T: DACoefficient> Sub<&DA<T>> for &DA<T> {
         let max_order = rt.config.max_order as u8;
         let orders = &rt.monomial_orders;
 
+        let _scratch = account_result_temp(n)?;
         let words = (n + 63) / 64;
         let mut self_set = vec![0u64; words];
 
@@ -617,71 +627,116 @@ impl<T: DACoefficient> DA<T> {
     /// Avoids redundant RwLock acquisition when called in a loop (e.g. Horner).
     pub(crate) fn multiply_truncated_with_rt(lhs: &DA<T>, rhs: &DA<T>, trunc_order: u32, rt: &TaylorRuntime) -> Result<DA<T>> {
         let n = rt.num_monomials;
-        let epsilon = rt.config.epsilon;
-        let orders = &rt.monomial_orders;
-        let trunc_order_u8 = trunc_order as u8;
-
+        let _scratch = account_result_temp(n)?;
         let mut result = T::pool_alloc(n);
         let words = (n + 63) / 64;
         let mut written = bitset_pool_alloc(words);
+        let mut nonzero = Vec::new();
+        multiply_truncated_into(
+            &lhs.coeffs,
+            &lhs.nonzero,
+            &rhs.coeffs,
+            &rhs.nonzero,
+            trunc_order,
+            rt,
+            &mut result,
+            &mut nonzero,
+            &mut written,
+        );
+        bitset_pool_return(written);
+        Ok(DA { coeffs: result, nonzero })
+    }
+}
 
-        if let Some(table) = &rt.mult_table {
-            for &i in &lhs.nonzero {
-                let ci = lhs.coeffs[i as usize];
-                let oi = orders[i as usize];
-                if oi > trunc_order_u8 { continue; }
-                let max_b_order = trunc_order_u8 - oi;
-                let row = i as usize * n;
-                for &j in &rhs.nonzero {
-                    if orders[j as usize] > max_b_order { continue; }
-                    let k = table[row + j as usize];
-                    if k != MULT_INVALID {
+/// Scatter-multiply into `out`. `out` must be length `rt.num_monomials`.
+/// Previous contents of `out` at `out_nz` are zeroed; `written` is cleared.
+/// Does not check remaining scratch — caller reserved buffers already.
+pub(crate) fn multiply_truncated_into<T: DACoefficient>(
+    lhs_coeffs: &[T],
+    lhs_nz: &[u32],
+    rhs_coeffs: &[T],
+    rhs_nz: &[u32],
+    trunc_order: u32,
+    rt: &TaylorRuntime,
+    out: &mut [T],
+    out_nz: &mut Vec<u32>,
+    written: &mut [u64],
+) {
+    for &i in out_nz.iter() {
+        let iu = i as usize;
+        if iu < out.len() {
+            out[iu] = T::zero();
+        }
+    }
+    out_nz.clear();
+    written.fill(0);
+
+    let n = rt.num_monomials;
+    let epsilon = rt.config.epsilon;
+    let orders = &rt.monomial_orders;
+    let trunc_order_u8 = trunc_order as u8;
+
+    if let Some(table) = &rt.mult_table {
+        for &i in lhs_nz {
+            let ci = lhs_coeffs[i as usize];
+            let oi = orders[i as usize];
+            if oi > trunc_order_u8 {
+                continue;
+            }
+            let max_b_order = trunc_order_u8 - oi;
+            let row = i as usize * n;
+            for &j in rhs_nz {
+                if orders[j as usize] > max_b_order {
+                    continue;
+                }
+                let k = table[row + j as usize];
+                if k != MULT_INVALID {
+                    let ku = k as usize;
+                    out[ku] = ci.mul_add(rhs_coeffs[j as usize], out[ku]);
+                    written[ku / 64] |= 1u64 << (ku % 64);
+                }
+            }
+        }
+    } else {
+        for &i in lhs_nz {
+            let ci = lhs_coeffs[i as usize];
+            let oi = orders[i as usize];
+            if oi > trunc_order_u8 {
+                continue;
+            }
+            let max_b_order = trunc_order_u8 - oi;
+            for &j in rhs_nz {
+                if orders[j as usize] > max_b_order {
+                    continue;
+                }
+                let product = rt.monomial_list[i as usize].multiply(&rt.monomial_list[j as usize]);
+                if product.within_order(trunc_order) {
+                    if let Some(&k) = rt.monomial_index.get(&product) {
                         let ku = k as usize;
-                        result[ku] = ci.mul_add(rhs.coeffs[j as usize], result[ku]);
+                        out[ku] = ci.mul_add(rhs_coeffs[j as usize], out[ku]);
                         written[ku / 64] |= 1u64 << (ku % 64);
                     }
                 }
             }
-        } else {
-            for &i in &lhs.nonzero {
-                let ci = lhs.coeffs[i as usize];
-                let oi = orders[i as usize];
-                if oi > trunc_order_u8 { continue; }
-                let max_b_order = trunc_order_u8 - oi;
-                for &j in &rhs.nonzero {
-                    if orders[j as usize] > max_b_order { continue; }
-                    let product = rt.monomial_list[i as usize].multiply(&rt.monomial_list[j as usize]);
-                    if product.within_order(trunc_order) {
-                        if let Some(&k) = rt.monomial_index.get(&product) {
-                            let ku = k as usize;
-                            result[ku] = ci.mul_add(rhs.coeffs[j as usize], result[ku]);
-                            written[ku / 64] |= 1u64 << (ku % 64);
-                        }
-                    }
+        }
+    }
+
+    let words = written.len();
+    for word_idx in 0..words {
+        let mut word = written[word_idx];
+        written[word_idx] = 0;
+        while word != 0 {
+            let bit = word.trailing_zeros() as usize;
+            let idx = word_idx * 64 + bit;
+            if idx < n {
+                if out[idx].abs() > epsilon {
+                    out_nz.push(idx as u32);
+                } else {
+                    out[idx] = T::zero();
                 }
             }
+            word &= word - 1;
         }
-
-        let mut nonzero = Vec::new();
-        for word_idx in 0..words {
-            let mut word = written[word_idx];
-            while word != 0 {
-                let bit = word.trailing_zeros() as usize;
-                let idx = word_idx * 64 + bit;
-                if idx < n {
-                    if result[idx].abs() > epsilon {
-                        nonzero.push(idx as u32);
-                    } else {
-                        result[idx] = T::zero();
-                    }
-                }
-                word &= word - 1;
-            }
-        }
-
-        bitset_pool_return(written);
-
-        Ok(DA { coeffs: result, nonzero })
     }
 }
 
@@ -695,6 +750,7 @@ impl<T: DACoefficient> Mul<&DA<T>> for &DA<T> {
         let max_order = rt.config.max_order;
         let order_check = max_order < rt.init_order;
 
+        let _scratch = account_result_temp(n)?;
         let mut result = T::pool_alloc(n);
 
         let words = (n + 63) / 64;
@@ -781,6 +837,7 @@ impl<T: DACoefficient> Mul<T> for &DA<T> {
         if rhs.abs() <= epsilon {
             return Ok(DA::zero());
         }
+        let _scratch = account_result_temp(rt.num_monomials)?;
         let mut coeffs = T::pool_alloc(rt.num_monomials);
         let mut nonzero = Vec::with_capacity(self.nonzero.len());
         for &i in &self.nonzero {
@@ -819,6 +876,7 @@ impl<T: DACoefficient> Div<&DA<T>> for &DA<T> {
             .collect();
         g_entries.sort_unstable_by_key(|&(i, _)| i);
 
+        let _scratch = account_result_temp(n)?;
         let mut result = T::pool_alloc(n);
         let mut nonzero = Vec::new();
 
@@ -882,6 +940,7 @@ impl<T: DACoefficient> Div<T> for &DA<T> {
     fn div(self, rhs: T) -> Self::Output {
         if rhs.abs() < 1e-15 { anyhow::bail!("Division by zero"); }
         let n = self.coeffs.len();
+        let _scratch = account_result_temp(n)?;
         let mut coeffs = T::pool_alloc(n);
         for &i in &self.nonzero {
             coeffs[i as usize] = self.coeffs[i as usize] / rhs;
@@ -1023,7 +1082,7 @@ mod tests {
     use super::*;
     use serial_test::serial;
 
-    use crate::taylor::config::{cleanup_taylor, init_taylor, set_epsilon};
+    use crate::taylor::config::{cleanup_taylor, get_runtime, init_taylor, set_epsilon};
 
     #[test]
     #[serial]
@@ -1051,6 +1110,62 @@ mod tests {
         let scaled = (&x * 2.0e-16).unwrap();
 
         assert_eq!(scaled.num_terms(), 1);
+
+        cleanup_taylor();
+    }
+
+    #[test]
+    #[serial]
+    fn da_add_errors_when_scrlen_too_small() {
+        cleanup_taylor();
+        let mut c = crate::DEFAULT_SCRLEN as f64;
+        crate::rosy_scrlen(&mut c).unwrap();
+
+        init_taylor(1, 1).unwrap();
+        // n = 2 monomials; 1 word cannot hold a result temp.
+        let mut tiny = 1.0;
+        crate::rosy_scrlen(&mut tiny).unwrap();
+
+        let x = DA::<f64>::variable(1).unwrap();
+        let err = (&x + &x).expect_err("DA add must not heap-fallback when SCRLEN is too small");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("SCRLEN overflow"),
+            "expected SCRLEN overflow, got: {msg}"
+        );
+
+        let mut restore = crate::DEFAULT_SCRLEN as f64;
+        crate::rosy_scrlen(&mut restore).unwrap();
+        cleanup_taylor();
+    }
+
+    #[test]
+    #[serial]
+    fn horner_scratch_ping_pong_matches_heap_horner() {
+        cleanup_taylor();
+        init_taylor(5, 2).unwrap();
+        let x = DA::<f64>::variable(1).unwrap();
+        let prime = x.make_prime();
+        // exp series truncated: 1 + x + x^2/2 + x^3/6 + x^4/24 + x^5/120
+        let xf = [1.0, 1.0, 0.5, 1.0 / 6.0, 1.0 / 24.0, 1.0 / 120.0];
+        let ping = {
+            let rt = get_runtime().unwrap();
+            DA::<f64>::horner_eval_with_rt(&prime, &xf, &rt).unwrap()
+        };
+
+        // Heap path: successive truncated muls (same algebra as the old Horner).
+        // Drop RuntimeRef before add_constant_in_place — std RwLock is not reentrant.
+        let mut heap = DA::<f64>::from_coeff(xf[xf.len() - 1]);
+        for i in (0..xf.len() - 1).rev() {
+            let steps_from_end = (xf.len() - 1) - i;
+            {
+                let rt = get_runtime().unwrap();
+                let trunc_order = (steps_from_end as u32).min(rt.config.max_order);
+                heap = DA::multiply_truncated_with_rt(&heap, &prime, trunc_order, &rt).unwrap();
+            }
+            heap.add_constant_in_place(xf[i]);
+        }
+        assert_eq!(ping, heap);
 
         cleanup_taylor();
     }

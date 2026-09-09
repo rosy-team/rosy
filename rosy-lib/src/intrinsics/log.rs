@@ -54,27 +54,6 @@ impl RosyLOG for DA {
 }
 
 fn da_log(da: &DA) -> anyhow::Result<DA> {
-    let rt = crate::taylor::get_runtime()?;
-    let nocut = rt.config.max_order as usize;
-
-    let f0 = da.constant_part();
-    anyhow::ensure!(f0 != 0.0, "LOG: constant part of DA argument must be non-zero");
-
-    let ln_f0 = f0.ln();
-    let da_prime = da.make_prime();
-
-    // u = δf / f₀
-    let u = (&da_prime * DA::from_coeff(1.0 / f0))?;
-
-    // ln(f) = ln(f₀) + u - u²/2 + u³/3 - ...
-    // DACE-style: xf[0] = ln(f0), xf[n] = (-1)^(n+1) / n
-    let mut xf = Vec::with_capacity(nocut + 1);
-    xf.push(ln_f0);
-    for n in 1..=nocut {
-        let sign = if n % 2 == 1 { 1.0 } else { -1.0 };
-        xf.push(sign / (n as f64));
-    }
-
-    DA::horner_eval_with_rt(&u, &xf, &rt)
+    crate::taylor::compose::compose_log(da)
 }
 

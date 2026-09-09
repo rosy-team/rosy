@@ -338,8 +338,11 @@ impl TranspileableStatement for AssignStatement {
                 // If either recipe can't be evaluated yet (e.g. X:=10.5*J
                 // where J has a known recipe but isn't resolved, or
                 // Z:=Z+X*Y where X/Y are inferred but not yet resolved),
-                // temporarily resolve leaf dependencies so the conflict
+                // temporarily resolve inferred dependencies so the conflict
                 // checker can see RE↔VE coercion vs a same-type mutation.
+                // Non-leaf deps (DFX := F % 1, then F := DFX % (-1)) are
+                // included: assume this slot has its old type, then walk
+                // recipes.
                 let mut temp_leaf_slots: Vec<TypeSlot> = Vec::new();
                 if old_type_result.is_err() || new_type_result.is_err() {
                     let all_deps: HashSet<TypeSlot> = {
@@ -352,53 +355,75 @@ impl TranspileableStatement for AssignStatement {
                         d
                     };
 
+                    let mut visiting = HashSet::new();
+                    visiting.insert(var_slot.clone());
                     for dep_slot in &all_deps {
                         if *dep_slot == var_slot {
                             continue;
                         }
-                        if let Some(dep_node) = resolver.nodes.get(dep_slot)
-                            && dep_node.resolved.is_none()
-                            && dep_node.depends_on.is_empty()
-                            && let ResolutionRule::InferredFrom { recipe: ref r, .. } =
-                                dep_node.rule
-                            && let Ok(t) = resolver.evaluate_recipe(r)
-                        {
-                            temp_leaf_slots.push(dep_slot.clone());
-                            resolver.nodes.get_mut(dep_slot).unwrap().resolved = Some(t);
-                        }
+                        temp_resolve_inferred(
+                            resolver,
+                            dep_slot,
+                            &mut temp_leaf_slots,
+                            &mut visiting,
+                        );
                     }
 
                     if !temp_leaf_slots.is_empty() {
                         old_type_result = resolver.evaluate_recipe(old_recipe);
                         new_type_result = resolver.evaluate_recipe(&dimensioned_recipe);
                     }
+
+                    // Self-referential later assignment: pin this slot to
+                    // the first assignment's type, then re-type the new recipe
+                    // (Y:=Y&I, DFX:=DFX%1).
+                    if new_type_result.is_err() {
+                        if old_type_result.is_err() {
+                            old_type_result = resolver.evaluate_recipe(old_recipe);
+                        }
+                        if let Ok(old_type) = old_type_result {
+                            if resolver
+                                .nodes
+                                .get(&var_slot)
+                                .and_then(|n| n.resolved)
+                                .is_none()
+                            {
+                                if let Some(node) = resolver.nodes.get_mut(&var_slot) {
+                                    node.resolved = Some(old_type);
+                                }
+                                temp_leaf_slots.push(var_slot.clone());
+                            }
+                            visiting.remove(&var_slot);
+                            for dep_slot in &all_deps {
+                                if *dep_slot == var_slot {
+                                    continue;
+                                }
+                                temp_resolve_inferred(
+                                    resolver,
+                                    dep_slot,
+                                    &mut temp_leaf_slots,
+                                    &mut visiting,
+                                );
+                            }
+                            new_type_result =
+                                resolver.evaluate_recipe(&dimensioned_recipe);
+                            old_type_result = Ok(old_type);
+                        }
+                    }
                 }
 
-                // If the new recipe failed but old succeeded, try again
-                // with a temporary assumption that the variable has the
-                // old type (handles self-referential patterns like Y:=Y&I)
-                if new_type_result.is_err()
-                    && let Ok(ref old_type) = old_type_result
-                {
-                    // Temporarily mark this slot as resolved
-                    if let Some(node) = resolver.nodes.get_mut(&var_slot) {
-                        node.resolved = Some(*old_type);
-                    }
-                    new_type_result = resolver.evaluate_recipe(&dimensioned_recipe);
-                    // Undo the temporary resolution
-                    if let Some(node) = resolver.nodes.get_mut(&var_slot) {
-                        node.resolved = None;
-                    }
-                }
-
-                // Undo temporary leaf resolutions
+                // Undo temporary resolutions
                 for slot in &temp_leaf_slots {
                     if let Some(node) = resolver.nodes.get_mut(slot) {
                         node.resolved = None;
                     }
                 }
 
-                if let (Ok(old_type), Ok(new_type)) = (old_type_result, new_type_result) {
+                if let (Ok(old_type), Ok(new_type)) =
+                    (old_type_result.as_ref(), new_type_result.as_ref())
+                {
+                    let old_type = *old_type;
+                    let new_type = *new_type;
                     if old_type != new_type {
                     if da_concat_nest_promote(&old_type, &new_type) {
                         bump_da_array_nesting(resolver, &var_slot, new_type);
@@ -517,7 +542,12 @@ impl TranspileableStatement for AssignStatement {
                     );
                     return Some(Err(RosyError::at(source_location.clone(), msg).into()));
                     }
-                } else if crate::syntax_config::is_cosy_syntax() {
+                } else if crate::syntax_config::is_cosy_syntax()
+                    && old_type_result.is_err()
+                {
+                    // First assignment also untyped: fox cell stays ANY.
+                    // If the first assignment typed and the later one still
+                    // cannot, keep the first recipe (mutations below).
                     if let Some(node) = resolver.nodes.get_mut(&var_slot) {
                         node.rule = ResolutionRule::InferredFrom {
                             recipe: ExprRecipe::Literal(RosyType::ANY()),
@@ -891,6 +921,47 @@ fn re_ve_assignment_type(old: RosyType, new: RosyType) -> Option<RosyType> {
     }
 }
 
+/// Temporarily resolve an inferred slot from its recipe, walking deps first.
+fn temp_resolve_inferred(
+    resolver: &mut TypeResolver,
+    slot: &TypeSlot,
+    temp_slots: &mut Vec<TypeSlot>,
+    visiting: &mut HashSet<TypeSlot>,
+) {
+    if visiting.contains(slot) {
+        return;
+    }
+    if resolver
+        .nodes
+        .get(slot)
+        .and_then(|n| n.resolved)
+        .is_some()
+    {
+        return;
+    }
+    let (recipe, deps) = match resolver.nodes.get(slot) {
+        Some(node) => match &node.rule {
+            ResolutionRule::InferredFrom { recipe, .. } => {
+                (recipe.clone(), node.depends_on.clone())
+            }
+            _ => return,
+        },
+        None => return,
+    };
+    visiting.insert(slot.clone());
+    for dep in &deps {
+        temp_resolve_inferred(resolver, dep, temp_slots, visiting);
+    }
+    if let Ok(t) = resolver.evaluate_recipe(&recipe)
+        && let Some(node) = resolver.nodes.get_mut(slot)
+        && node.resolved.is_none()
+    {
+        node.resolved = Some(t);
+        temp_slots.push(slot.clone());
+    }
+    visiting.remove(slot);
+}
+
 /// RE is a constant DA. same rank only. promotes the slot to DA when RE comes first.
 fn re_da_assignment_type(old: RosyType, new: RosyType) -> Option<RosyType> {
     if old.dimensions != new.dimensions {
@@ -1032,5 +1103,29 @@ END ;
 "#,
         );
         assert_eq!(slot_type(&resolver, "X"), RosyType::ANY());
+    }
+
+    #[test]
+    fn fox_da_then_derive_cycle_stays_da() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+VARIABLE X 1 ;
+VARIABLE F 300 ;
+VARIABLE DFX 300 ;
+VARIABLE NM 1 ;
+DAINI 2 1 0 NM ;
+X := DA(1) ;
+F := X * X ;
+F := F * F + X ;
+DFX := F % 1 ;
+DFX := DFX % 1 ;
+F := DFX % (-1) ;
+END ;
+"#,
+        );
+        assert_eq!(slot_type(&resolver, "F"), RosyType::DA());
+        assert_eq!(slot_type(&resolver, "DFX"), RosyType::DA());
+        assert_eq!(slot_type(&resolver, "X"), RosyType::DA());
     }
 }

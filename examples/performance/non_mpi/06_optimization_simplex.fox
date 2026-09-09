@@ -1,6 +1,7 @@
 { Benchmark: Simplex (Nelder-Mead) optimizer on 4-variable Rosenbrock function }
 { Tests: optimization algorithm performance, function evaluation overhead }
-{ TIER_SCALE: starting points (old T4 = 5000) }
+{ TIER_SCALE: 10x starting points (old T4 = 5000 starts => 50000) }
+{ Each start is a full Nelder-Mead solve; divide so --scale 10000 stays ~100ms. }
 BEGIN ;
 
 VARIABLE T1 1 ;
@@ -12,6 +13,7 @@ VARIABLE D 1 ;
 VARIABLE OBJ 1 ;
 VARIABLE EPS 1 ;
 VARIABLE K 1 ;
+VARIABLE NS 1 ;
 VARIABLE DT 1 ;
 VARIABLE TIER_SCALE 1 ;
 VARIABLE SCALE_ST 200 ;
@@ -31,11 +33,16 @@ IF (TIER_SCALE < 1) ;
     TIER_SCALE := 1 ;
 ENDIF ;
 
-WRITE 6 'Optimization Simplex Benchmark: 4-var Rosenbrock, ' TIER_SCALE ' starting points' ;
+NS := TIER_SCALE / 10 ;
+IF (NS < 1) ;
+    NS := 1 ;
+ENDIF ;
+
+WRITE 6 'Optimization Simplex Benchmark: 4-var Rosenbrock, ' NS ' starting points' ;
 
 CPUSEC T1 ;
 
-LOOP K 1 TIER_SCALE ;
+LOOP K 1 NS ;
     A := -2.0 + K * 0.1 ;
     B := -2.0 + K * 0.15 ;
     C := -2.0 + K * 0.2 ;
