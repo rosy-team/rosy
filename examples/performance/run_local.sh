@@ -24,7 +24,7 @@ BENCHMARK_FILTER=""
 SCALE_OVERRIDE=""
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NON_MPI_DIR="$SCRIPT_DIR/non_mpi"
-RUN_TIMEOUT=30
+RUN_TIMEOUT=60
 
 # GNU timeout is missing on stock macOS; gtimeout (coreutils) or perl alarm.
 run_timeout() {
