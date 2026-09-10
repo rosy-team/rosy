@@ -12,7 +12,9 @@
 //!
 //! One in-out operation. If `c < 0`, the current size (f64 words) is written
 //! into `c`. Otherwise the size is set to NINT(`c`). Default at process start
-//! is 50000. Named DA values stay on the heap; operator temps use this arena.
+//! is 50000. Named DA values stay on the heap; operator temps use this arena
+//! when they fit and heap-allocate for that op otherwise. `SCRLEN` is optional
+//! — it is a performance knob, not a capacity the program must size.
 //!
 //! ## Example
 //! ```text

@@ -47,6 +47,7 @@ CPUSEC T2 ;
 
 DT := T2 - T1 ;
 WRITE 6 'Result Z = ' Z ;
+WRITE 6 'Result: ' Z ;
 WRITE 6 'CPUSEC: ' DT ;
 
 END ;

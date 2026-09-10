@@ -48,6 +48,7 @@ CPUSEC T2 ;
 DT := T2 - T1 ;
 WRITE 6 'Last string: ' T ;
 WRITE 6 'Last length: ' LEN ;
+WRITE 6 'Result: ' LEN ;
 WRITE 6 'CPUSEC: ' DT ;
 
 END ;

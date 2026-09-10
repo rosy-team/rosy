@@ -1,0 +1,28 @@
+BEGIN;
+    VARIABLE X;
+    VARIABLE J;
+    J := 0.5;
+    X := 10^(-2)*J;
+    LOOP I 2 4;
+        X := X & (10^(-2)*J);
+    ENDLOOP;
+    WRITE 6 ST(X);
+END;
+
+======= expect
+ 0.5000000E-002 0.5000000E-002 0.5000000E-002 0.5000000E-002
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE X 200;
+    VARIABLE J 1;
+    J := 0.5;
+    X := 10^(-2)*J;
+    LOOP I 2 4;
+        X := X & 10^(-2)*J;
+    ENDLOOP;
+    WRITE 6 ST(X);
+ENDPROCEDURE;
+RUN;
+END;

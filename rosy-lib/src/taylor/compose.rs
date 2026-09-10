@@ -8,7 +8,7 @@ use anyhow::{Result, ensure};
 
 use super::config::{MULT_INVALID, TaylorRuntime, get_runtime};
 use super::da::{DA, DACoefficient};
-use super::scratch::{ScratchFrame, scratch_alloc};
+use super::scratch::ScratchScope;
 
 fn degree_range(rt: &TaylorRuntime, d: usize) -> std::ops::Range<usize> {
     let off = &rt.degree_offset;
@@ -98,27 +98,18 @@ fn copy_buf_to_da(n: usize, buf: &[f64], epsilon: f64) -> DA<f64> {
     DA { coeffs, nonzero }
 }
 
-fn scratch_slice(n: usize) -> Result<(*mut f64, ScratchFrame)> {
-    let frame = ScratchFrame::enter();
-    let p = scratch_alloc(n)?;
-    if n > 0 {
-        unsafe {
-            std::slice::from_raw_parts_mut(p, n).fill(0.0);
-        }
-    }
-    Ok((p, frame))
-}
-
 fn with_scratch_buf<R>(n: usize, f: impl FnOnce(&mut [f64]) -> Result<R>) -> Result<R> {
-    let (p, _frame) = scratch_slice(n)?;
+    let mut scope = ScratchScope::enter();
+    let p = scope.alloc(n);
     let buf = unsafe { std::slice::from_raw_parts_mut(p, n) };
+    buf.fill(0.0);
     f(buf)
 }
 
 fn with_scratch_pair<R>(n: usize, f: impl FnOnce(&mut [f64], &mut [f64]) -> Result<R>) -> Result<R> {
-    let frame = ScratchFrame::enter();
-    let pa = scratch_alloc(n)?;
-    let pb = scratch_alloc(n)?;
+    let mut scope = ScratchScope::enter();
+    let pa = scope.alloc(n);
+    let pb = scope.alloc(n);
     let result = unsafe {
         let a = std::slice::from_raw_parts_mut(pa, n);
         let b = std::slice::from_raw_parts_mut(pb, n);
@@ -126,7 +117,7 @@ fn with_scratch_pair<R>(n: usize, f: impl FnOnce(&mut [f64], &mut [f64]) -> Resu
         b.fill(0.0);
         f(a, b)
     };
-    drop(frame);
+    drop(scope);
     result
 }
 
@@ -398,6 +389,29 @@ mod tests {
                 sum.coeffs[i as usize]
             );
         }
+        cleanup_taylor();
+    }
+
+    #[test]
+    #[serial]
+    fn compose_works_when_scrlen_is_zero() {
+        cleanup_taylor();
+        init_taylor(5, 2).unwrap();
+        let mut z = 0.0;
+        crate::rosy_scrlen(&mut z).unwrap();
+        let f = sample_da();
+        let a = compose_exp(&f).unwrap();
+        let b = horner_exp(&f);
+        assert!(
+            coeffs_close(&a, &b, 1e-12),
+            "exp compose vs Horner with SCRLEN 0 (heap fallback)"
+        );
+        let s = compose_sin(&f).unwrap();
+        let c = compose_cos(&f).unwrap();
+        let sum = (&(&s * &s).unwrap() + &(&c * &c).unwrap()).unwrap();
+        assert!((sum.constant_part() - 1.0).abs() < 1e-12);
+        let mut restore = crate::DEFAULT_SCRLEN as f64;
+        crate::rosy_scrlen(&mut restore).unwrap();
         cleanup_taylor();
     }
 }

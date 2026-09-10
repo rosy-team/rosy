@@ -43,7 +43,7 @@ impl RosyValue {
     pub fn expect_st(self) -> Result<ST> {
         match self {
             Self::ST(v) => Ok(v),
-            other => Ok((&other).rosy_display()),
+            other => Ok((&other).rosy_to_string()),
         }
     }
     pub fn expect_lo(self) -> Result<LO> {
@@ -225,7 +225,10 @@ impl RosyDisplay for &RosyValue {
 
 impl RosyST for &RosyValue {
     fn rosy_to_string(self) -> String {
-        self.rosy_display()
+        match self {
+            RosyValue::RE(v) => v.rosy_to_string(),
+            other => other.rosy_display(),
+        }
     }
 }
 

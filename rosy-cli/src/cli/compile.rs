@@ -142,7 +142,12 @@ pub(crate) fn compile_source(
             )
         })?;
 
-    let uses_mpi = serialization.contains("rosy_mpi_context");
+    // Context is injected whenever PNPRO/PLOOP mention it. The `mpi` crate
+    // (and libffi) is only enabled for real parallel ops — serial PNPRO uses
+    // the size=1 stub in rosy-lib.
+    let needs_mpi_ctx = serialization.contains("rosy_mpi_context");
+    let uses_mpi = serialization.contains("get_group_num")
+        || serialization.contains(".coordinate(");
 
     let local_lib = embedded::create_output_project(&rosy_output_path, uses_mpi, optimized)
         .context("Failed to create output project structure")?;
@@ -155,7 +160,7 @@ pub(crate) fn compile_source(
         }
     }
 
-    let new_contents = embedded::inject_code(&serialization, uses_mpi)
+    let new_contents = embedded::inject_code(&serialization, needs_mpi_ctx)
         .context("Failed to inject transpiled code into template")?;
 
     write(rosy_output_path.join("src").join("main.rs"), &new_contents)

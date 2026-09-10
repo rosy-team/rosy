@@ -107,6 +107,7 @@ BEGIN;
         ENDLOOP;
 
         CPUSEC T2;
+        WRITE 6 'Result: ' ((XF|1)+(YF|1)+(ZF|1)+(PXF|1)+(PYF|1)+(PZF|1));
         WRITE 6 'CPUSEC: ' (T2-T1);
 
     ENDPROCEDURE;

@@ -166,23 +166,6 @@ impl TranspileableStatement for AssignStatement {
                 if explicit_type.is_any() {
                     return Some(Ok(()));
                 }
-                if crate::syntax_config::is_cosy_syntax() {
-                    let differs = resolver
-                        .evaluate_recipe(&recipe)
-                        .map(|t| t != explicit_type)
-                        .unwrap_or(true);
-                    if differs {
-                        if let Some(node) = resolver.nodes.get_mut(&var_slot) {
-                            node.rule = ResolutionRule::InferredFrom {
-                                recipe: ExprRecipe::Literal(RosyType::ANY()),
-                                reason: "reused as multiple types".to_string(),
-                            };
-                            node.resolved = Some(RosyType::ANY());
-                            node.depends_on.clear();
-                        }
-                        return Some(Ok(()));
-                    }
-                }
                 if let Ok(new_type) = resolver.evaluate_recipe(&recipe)
                     && new_type != explicit_type
                     && !new_type.is_any()
@@ -195,6 +178,9 @@ impl TranspileableStatement for AssignStatement {
                     }
                     // VARIABLE (DA) X; X := 1 is fine. declared RE stays RE.
                     if re_da_assignment_type(explicit_type, new_type) == Some(explicit_type) {
+                        return Some(Ok(()));
+                    }
+                    if re_ve_assignment_type(explicit_type, new_type) == Some(explicit_type) {
                         return Some(Ok(()));
                     }
                     if crate::syntax_config::is_cosy_syntax() {
@@ -449,6 +435,7 @@ impl TranspileableStatement for AssignStatement {
                                 recipe: ExprRecipe::Literal(promoted),
                                 reason: "RE promoted to VE".to_string(),
                             };
+                            node.resolved = Some(promoted);
                             node.depends_on.clear();
                         }
                         return Some(Ok(()));
@@ -545,18 +532,9 @@ impl TranspileableStatement for AssignStatement {
                 } else if crate::syntax_config::is_cosy_syntax()
                     && old_type_result.is_err()
                 {
-                    // First assignment also untyped: fox cell stays ANY.
-                    // If the first assignment typed and the later one still
-                    // cannot, keep the first recipe (mutations below).
-                    if let Some(node) = resolver.nodes.get_mut(&var_slot) {
-                        node.rule = ResolutionRule::InferredFrom {
-                            recipe: ExprRecipe::Literal(RosyType::ANY()),
-                            reason: "reused, later assignment not yet typed".to_string(),
-                        };
-                        node.resolved = Some(RosyType::ANY());
-                        node.depends_on.clear();
-                    }
-                    return Some(Ok(()));
+                    // First assignment still has unresolved deps (e.g. `X := 10^(-2)*J`
+                    // before J is typed). Keep that recipe; do not lock the cell to ANY
+                    // or `X := X & …` can never RE→VE promote.
                 }
             }
 
@@ -909,9 +887,10 @@ impl Transpile for AssignStatement {
     }
 }
 
-/// Seed a vector with a real (`X := 0` then `X := X & I`).
+/// Seed a vector with a real (`X := 0` then `X := X & I`), including the
+/// indexed form (`COORD(1) := 0` then `COORD(1) := COORD(1) & x`).
 fn re_ve_assignment_type(old: RosyType, new: RosyType) -> Option<RosyType> {
-    if old.dimensions != 0 || new.dimensions != 0 {
+    if old.dimensions != new.dimensions {
         return None;
     }
     match (old.base_type, new.base_type) {
@@ -937,6 +916,20 @@ fn temp_resolve_inferred(
         .and_then(|n| n.resolved)
         .is_some()
     {
+        return;
+    }
+    let is_unresolved = resolver
+        .nodes
+        .get(slot)
+        .is_some_and(|n| matches!(n.rule, ResolutionRule::Unresolved));
+    if is_unresolved && crate::syntax_config::is_cosy_syntax() {
+        // Fox untyped cells (RERAN dests, unused-until-now names) default to
+        // RE, same as topological_resolve. Needed so `X := 10^(-2)*J` then
+        // `X := X & …` can see RE→VE instead of "not yet typed".
+        if let Some(node) = resolver.nodes.get_mut(slot) {
+            node.resolved = Some(RosyType::RE());
+            temp_slots.push(slot.clone());
+        }
         return;
     }
     let (recipe, deps) = match resolver.nodes.get(slot) {
@@ -1045,11 +1038,13 @@ mod fox_reassignment_tests {
     }
 
     fn slot_type(resolver: &TypeResolver, name: &str) -> RosyType {
-        let slot = TypeSlot::Variable(vec![], name.to_string());
         resolver
             .nodes
-            .get(&slot)
-            .and_then(|n| n.resolved)
+            .iter()
+            .find_map(|(slot, node)| match slot {
+                TypeSlot::Variable(_, n) if n == name => node.resolved,
+                _ => None,
+            })
             .unwrap_or_else(|| panic!("no type for {name}"))
     }
 
@@ -1127,5 +1122,191 @@ END ;
         assert_eq!(slot_type(&resolver, "F"), RosyType::DA());
         assert_eq!(slot_type(&resolver, "DFX"), RosyType::DA());
         assert_eq!(slot_type(&resolver, "X"), RosyType::DA());
+    }
+
+    #[test]
+    fn fox_re_expr_then_concat_promotes_to_ve() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+VARIABLE J 1 ;
+VARIABLE X 200 ;
+RERAN J ;
+X := 10^(-2)*J ;
+LOOP I 2 5 ;
+    RERAN J ;
+    X := X & 10^(-2)*J ;
+ENDLOOP ;
+END ;
+"#,
+        );
+        assert_eq!(slot_type(&resolver, "X"), RosyType::VE());
+        assert_eq!(slot_type(&resolver, "J"), RosyType::RE());
+    }
+
+    #[test]
+    fn fox_indexed_re_then_concat_promotes_ve_array() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+PROCEDURE RUN ;
+VARIABLE COORD 200 6 ;
+VARIABLE X 200 ;
+X := 0 ;
+COORD(1) := X|1 ;
+LOOP I 2 5 ;
+    X := X & I ;
+    COORD(1) := COORD(1) & (X|I) ;
+ENDLOOP ;
+ENDPROCEDURE ;
+RUN ;
+END ;
+"#,
+        );
+        assert_eq!(slot_type(&resolver, "X"), RosyType::VE());
+        assert_eq!(
+            slot_type(&resolver, "COORD"),
+            RosyType::new(RosyBaseType::VE, 1)
+        );
+    }
+
+    #[test]
+    fn fox_indexed_da_array_infers_da() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+PROCEDURE RUN ;
+VARIABLE NM 1 ;
+DAINI 2 1 0 NM ;
+VARIABLE MAP1 11 6 ;
+MAP1(1) := DA(1) ;
+MAP1(2) := DA(1) ;
+ENDPROCEDURE ;
+RUN ;
+END ;
+"#,
+        );
+        assert_eq!(
+            slot_type(&resolver, "MAP1"),
+            RosyType::new(RosyBaseType::DA, 1)
+        );
+    }
+
+    #[test]
+    fn fox_coord_if_seed_then_concat_promotes_ve_array() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+PROCEDURE RUN ;
+VARIABLE COORD 200 6 ;
+VARIABLE X 200 ;
+VARIABLE I 1 ;
+X := 0.01 ;
+LOOP J 2 5 ;
+    X := X & 0.01 ;
+ENDLOOP ;
+LOOP I 1 5 ;
+    IF I=1 ;
+        COORD(1) := (X|I) ;
+    ELSEIF I>1 ;
+        COORD(1) := COORD(1) & (X|I) ;
+    ENDIF ;
+ENDLOOP ;
+ENDPROCEDURE ;
+RUN ;
+END ;
+"#,
+        );
+        assert_eq!(slot_type(&resolver, "X"), RosyType::VE());
+        assert_eq!(
+            slot_type(&resolver, "COORD"),
+            RosyType::new(RosyBaseType::VE, 1),
+            "COORD was {:?}",
+            slot_type(&resolver, "COORD")
+        );
+    }
+
+    #[test]
+    fn fox_polval_coord_pipeline_infers_ve_array() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+PROCEDURE RUN ;
+VARIABLE KE 1 ; VARIABLE TI 1 ; VARIABLE MASS 1 ;
+VARIABLE COORD 200 6 ;
+VARIABLE X 200 ; VARIABLE Y 200 ; VARIABLE Z 200 ;
+VARIABLE PX 200 ; VARIABLE PY 200 ; VARIABLE PZ 200 ;
+VARIABLE NP 1 ; VARIABLE P0 1 ;
+NP := 100 ; MASS := 1 ; P0 := 1.8 ;
+X := 0.01 ; Y := 0.01 ; Z := 0 ;
+PX := 0.002 ; PY := 0.002 ; PZ := P0 ;
+LOOP I 2 NP ;
+    X := X & 0.01 ; Y := Y & 0.01 ; Z := Z & 0 ;
+    PX := PX & 0.002 ; PY := PY & 0.002 ; PZ := PZ & P0 ;
+ENDLOOP ;
+LOOP I 1 NP ;
+    KE := (PX|I)^2+(PY|I)^2+(PZ|I)^2 ;
+    KE := KE/(SQRT(KE+MASS^2)+MASS) ;
+    TI := (Z|I)*(KE+MASS)/(PZ|I) ;
+    IF I=1 ;
+        COORD(1) := (X|I) ; COORD(2) := (PX|I) ; COORD(3) := (Y|I) ;
+        COORD(4) := (PY|I) ; COORD(5) := (TI) ; COORD(6) := (KE) ;
+    ELSEIF I>1 ;
+        COORD(1) := COORD(1)&(X|I) ; COORD(2) := COORD(2)&(PX|I) ;
+        COORD(3) := COORD(3)&(Y|I) ; COORD(4) := COORD(4)&(PY|I) ;
+        COORD(5) := COORD(5)&TI ; COORD(6) := COORD(6)&KE ;
+    ENDIF ;
+ENDLOOP ;
+ENDPROCEDURE ;
+RUN ;
+END ;
+"#,
+        );
+        assert_eq!(slot_type(&resolver, "X"), RosyType::VE());
+        assert_eq!(slot_type(&resolver, "KE"), RosyType::RE());
+        assert_eq!(slot_type(&resolver, "TI"), RosyType::RE());
+        assert_eq!(
+            slot_type(&resolver, "COORD"),
+            RosyType::new(RosyBaseType::VE, 1),
+            "COORD was {:?}",
+            slot_type(&resolver, "COORD")
+        );
+    }
+
+    #[test]
+    fn fox_self_ref_indexed_da_array_stays_any() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+VARIABLE NM 1 ;
+DAINI 2 2 0 NM ;
+VARIABLE SSL 4 4 ;
+LOOP I 1 2 ;
+    SSL(I) := SSL(I) + DA(1) ;
+ENDLOOP ;
+END ;
+"#,
+        );
+        assert_eq!(
+            slot_type(&resolver, "SSL"),
+            RosyType::new(RosyBaseType::ANY, 1),
+            "SSL was {:?}",
+            slot_type(&resolver, "SSL")
+        );
+    }
+
+    #[test]
+    fn fox_unassigned_dim_array_stays_any() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+VARIABLE MAP 4000 8 ;
+END ;
+"#,
+        );
+        assert_eq!(
+            slot_type(&resolver, "MAP"),
+            RosyType::new(RosyBaseType::ANY, 1)
+        );
     }
 }

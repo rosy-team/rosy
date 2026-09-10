@@ -1,0 +1,22 @@
+BEGIN;
+    VARIABLE (RE) X;
+    VARIABLE (RE) L;
+    X := 42;
+    L := LENGTH(ST(X));
+    WRITE 6 L;
+END;
+
+======= expect
+ 18.00000000000000
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE X 1;
+    VARIABLE L 1;
+    X := 42;
+    L := LENGTH(ST(X));
+    WRITE 6 L;
+ENDPROCEDURE;
+RUN;
+END;

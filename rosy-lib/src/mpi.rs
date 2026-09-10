@@ -2,7 +2,11 @@ use mpi::{traits::*, topology::SimpleCommunicator, environment::Universe};
 use bincode::{Encode, Decode, config::Configuration};
 use anyhow::{Result, Context, ensure, bail};
 
-use crate::RE;
+use crate::{CD, DA, RosyValue, RE};
+use num_complex::Complex64;
+use bincode::enc::Encoder;
+use bincode::de::Decoder;
+use bincode::error::{DecodeError, EncodeError};
 
 
 pub struct RosyMPIContext {
@@ -115,5 +119,116 @@ impl RosyMPIContext {
         let root_rank = self.rank - (self.rank % processes_per_group);
 
         Ok(root_rank as RE)
+    }
+}
+
+impl Encode for DA {
+    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
+        self.coeffs.encode(encoder)?;
+        self.nonzero.encode(encoder)
+    }
+}
+
+impl<C> Decode<C> for DA {
+    fn decode<D: Decoder<Context = C>>(decoder: &mut D) -> Result<Self, DecodeError> {
+        Ok(Self {
+            coeffs: Decode::decode(decoder)?,
+            nonzero: Decode::decode(decoder)?,
+        })
+    }
+}
+
+impl Encode for CD {
+    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
+        self.nonzero.encode(encoder)?;
+        (self.coeffs.len() as u64).encode(encoder)?;
+        for c in &self.coeffs {
+            c.re.encode(encoder)?;
+            c.im.encode(encoder)?;
+        }
+        Ok(())
+    }
+}
+
+impl<C> Decode<C> for CD {
+    fn decode<D: Decoder<Context = C>>(decoder: &mut D) -> Result<Self, DecodeError> {
+        let nonzero: Vec<u32> = Decode::decode(decoder)?;
+        let n = u64::decode(decoder)? as usize;
+        let mut coeffs = Vec::with_capacity(n);
+        for _ in 0..n {
+            let re = f64::decode(decoder)?;
+            let im = f64::decode(decoder)?;
+            coeffs.push(Complex64::new(re, im));
+        }
+        Ok(Self { coeffs, nonzero })
+    }
+}
+
+const RV_RE: u8 = 0;
+const RV_ST: u8 = 1;
+const RV_LO: u8 = 2;
+const RV_CM: u8 = 3;
+const RV_VE: u8 = 4;
+const RV_DA: u8 = 5;
+const RV_CD: u8 = 6;
+const RV_ARR: u8 = 7;
+
+impl Encode for RosyValue {
+    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
+        match self {
+            RosyValue::RE(v) => {
+                RV_RE.encode(encoder)?;
+                v.encode(encoder)
+            }
+            RosyValue::ST(v) => {
+                RV_ST.encode(encoder)?;
+                v.encode(encoder)
+            }
+            RosyValue::LO(v) => {
+                RV_LO.encode(encoder)?;
+                v.encode(encoder)
+            }
+            RosyValue::CM(v) => {
+                RV_CM.encode(encoder)?;
+                v.re.encode(encoder)?;
+                v.im.encode(encoder)
+            }
+            RosyValue::VE(v) => {
+                RV_VE.encode(encoder)?;
+                v.encode(encoder)
+            }
+            RosyValue::DA(v) => {
+                RV_DA.encode(encoder)?;
+                v.encode(encoder)
+            }
+            RosyValue::CD(v) => {
+                RV_CD.encode(encoder)?;
+                v.encode(encoder)
+            }
+            RosyValue::Arr(v) => {
+                RV_ARR.encode(encoder)?;
+                v.encode(encoder)
+            }
+        }
+    }
+}
+
+impl<C> Decode<C> for RosyValue {
+    fn decode<D: Decoder<Context = C>>(decoder: &mut D) -> Result<Self, DecodeError> {
+        match u8::decode(decoder)? {
+            RV_RE => Ok(RosyValue::RE(Decode::decode(decoder)?)),
+            RV_ST => Ok(RosyValue::ST(Decode::decode(decoder)?)),
+            RV_LO => Ok(RosyValue::LO(Decode::decode(decoder)?)),
+            RV_CM => {
+                let re = f64::decode(decoder)?;
+                let im = f64::decode(decoder)?;
+                Ok(RosyValue::CM(Complex64::new(re, im)))
+            }
+            RV_VE => Ok(RosyValue::VE(Decode::decode(decoder)?)),
+            RV_DA => Ok(RosyValue::DA(Decode::decode(decoder)?)),
+            RV_CD => Ok(RosyValue::CD(Decode::decode(decoder)?)),
+            RV_ARR => Ok(RosyValue::Arr(Decode::decode(decoder)?)),
+            _ => Err(DecodeError::Other("unknown RosyValue tag")),
+        }
     }
 }

@@ -15,12 +15,18 @@
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/core/reran.rosy"))]
 //! ```
 
-use anyhow::{Context, Error, Result, ensure};
+use anyhow::{ensure, Context, Error, Result};
 use std::collections::BTreeSet;
 
 use crate::{
-    ast::*, program::expressions::core::variable_identifier::VariableIdentifier, transpile::*,
+    ast::*,
+    program::{
+        expressions::core::variable_identifier::VariableIdentifier, statements::SourceLocation,
+    },
+    resolve::{ExprRecipe, ResolutionRule, ScopeContext, TypeResolver},
+    transpile::*,
 };
+use rosy_lib::RosyType;
 
 #[derive(Debug)]
 pub struct ReranStatement {
@@ -95,4 +101,23 @@ impl Transpile for ReranStatement {
     }
 }
 
-impl TranspileableStatement for ReranStatement {}
+impl TranspileableStatement for ReranStatement {
+    fn wire_inference_edges(
+        &self,
+        resolver: &mut TypeResolver,
+        ctx: &mut ScopeContext,
+        source_location: SourceLocation,
+    ) -> Option<Result<()>> {
+        let var_slot = ctx.variables.get(&self.output_var.name)?.clone();
+        if let Some(node) = resolver.nodes.get_mut(&var_slot) {
+            if matches!(node.rule, ResolutionRule::Unresolved) {
+                node.rule = ResolutionRule::InferredFrom {
+                    recipe: ExprRecipe::Literal(RosyType::RE()),
+                    reason: "RERAN writes RE".to_string(),
+                };
+                node.assigned_at = Some(source_location);
+            }
+        }
+        Some(Ok(()))
+    }
+}
