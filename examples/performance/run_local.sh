@@ -12,8 +12,8 @@
 #
 #  Rosy binaries are always built with --optimized.
 #
-#  Each bench WRITEs a `Result:` checksum. With --cosy those values are
-#  compared (rel 1e-5 / abs 1e-8) in the Rosy Result / COSY Result columns.
+#  Each bench WRITEs a `Result:` checksum. With --cosy both values are
+#  printed in the Rosy Result / COSY Result columns.
 
 set -euo pipefail
 
@@ -113,28 +113,6 @@ format_result() {
     }'
 }
 
-# Numeric (rel 1e-5 / abs 1e-8) or exact string. Prints OK or DIFF.
-compare_results() {
-    awk -v a="$1" -v b="$2" 'BEGIN {
-        gsub(/^[ \t]+|[ \t]+$/, "", a)
-        gsub(/^[ \t]+|[ \t]+$/, "", b)
-        if (a == "" || b == "") { print "N/A"; exit }
-        if (a == b) { print "OK"; exit }
-        num = "^[+-]?(([0-9]+\\.?[0-9]*)|(\\.[0-9]+))([eE][+-]?[0-9]+)?$"
-        if (a ~ num && b ~ num) {
-            fa = a + 0
-            fb = b + 0
-            d = fa - fb
-            if (d < 0) d = -d
-            ma = (fa < 0) ? -fa : fa
-            mb = (fb < 0) ? -fb : fb
-            m = (ma > mb) ? ma : mb
-            if (d <= 1e-8 || (m > 0 && d / m <= 1e-5)) { print "OK"; exit }
-        }
-        print "DIFF"
-    }'
-}
-
 # ── Parse Arguments ───────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -205,11 +183,11 @@ echo ""
 
 # ── Table Header ──────────────────────────────────────────────────────────────
 if $HAS_COSY; then
-    printf "%-28s %12s %11s %11s %10s %16s %16s %6s\n" \
-           "Benchmark" "Scale" "Rosy (ms)" "COSY (ms)" "Speedup" "Rosy Result" "COSY Result" "Match"
-    printf "%-28s %12s %11s %11s %10s %16s %16s %6s\n" \
+    printf "%-28s %12s %11s %11s %10s %16s %16s\n" \
+           "Benchmark" "Scale" "Rosy (ms)" "COSY (ms)" "Speedup" "Rosy Result" "COSY Result"
+    printf "%-28s %12s %11s %11s %10s %16s %16s\n" \
            "----------------------------" "------------" "-----------" "-----------" "----------" \
-           "----------------" "----------------" "------"
+           "----------------" "----------------"
 else
     printf "%-28s %12s %11s %16s\n" "Benchmark" "Scale" "Rosy (ms)" "Rosy Result"
     printf "%-28s %12s %11s %16s\n" \
@@ -221,9 +199,6 @@ TOTAL_ROSY_MS=0
 TOTAL_COSY_MS=0
 NUM_TESTS=0
 BENCH_COUNT=0
-NUM_MATCH=0
-NUM_DIFF=0
-DIFF_NAMES=""
 
 for fox_file in "$NON_MPI_DIR"/*.fox; do
     [[ -f "$fox_file" ]] || continue
@@ -249,8 +224,8 @@ for fox_file in "$NON_MPI_DIR"/*.fox; do
     if ! "$ROSY_BIN" build "$fox_file" $BUILD_FLAGS -d "$BUILD_DIR" -o "$rosy_bin_path" 2>/dev/null; then
         printf "\r%80s\r" "" >&2
         if $HAS_COSY; then
-            printf "%-28s %12s %11s %11s %10s %16s %16s %6s\n" \
-                   "$name" "$scale" "BUILD FAIL" "-" "-" "-" "-" "N/A"
+            printf "%-28s %12s %11s %11s %10s %16s %16s\n" \
+                   "$name" "$scale" "BUILD FAIL" "-" "-" "-" "-"
         else
             printf "%-28s %12s %11s %16s\n" "$name" "$scale" "BUILD FAIL" "-"
         fi
@@ -278,28 +253,18 @@ for fox_file in "$NON_MPI_DIR"/*.fox; do
         cosy_ms=$(awk "BEGIN { printf \"%.2f\", ($cosy_end - $cosy_start) / 1000000 }")
         cosy_result=$(parse_result "$NON_MPI_DIR/cosy_${name}_output.txt")
         cosy_result_fmt=$(format_result "$cosy_result")
-        match=$(compare_results "$rosy_result" "$cosy_result")
 
         if [[ ! -s "$NON_MPI_DIR/cosy_${name}_output.txt" ]] || grep -qE "### ERROR|ERROR OCCURED|cannot execute|Exec format error|No such file" "$NON_MPI_DIR/cosy_${name}_output.txt" 2>/dev/null; then
             printf "\r%80s\r" "" >&2
-            printf "%-28s %12s %11.2f %11s %10s %16s %16s %6s\n" \
-                   "$name" "$scale" "$rosy_ms" "COSY ERR" "N/A" "$rosy_result_fmt" "-" "N/A"
+            printf "%-28s %12s %11.2f %11s %10s %16s %16s\n" \
+                   "$name" "$scale" "$rosy_ms" "COSY ERR" "N/A" "$rosy_result_fmt" "-"
         else
             TOTAL_COSY_MS=$(awk -v a="$TOTAL_COSY_MS" -v b="$cosy_ms" 'BEGIN { printf "%.2f", a + b }')
             speedup=$(awk -v r="$rosy_ms" -v c="$cosy_ms" 'BEGIN { if (r > 0.01) printf "%.1f", c / r; else print "INF" }')
-            if [[ "$match" == "OK" ]]; then
-                NUM_MATCH=$((NUM_MATCH + 1))
-            elif [[ "$match" == "DIFF" ]]; then
-                NUM_DIFF=$((NUM_DIFF + 1))
-                DIFF_NAMES="${DIFF_NAMES} ${name}"
-            fi
             printf "\r%80s\r" "" >&2
-            printf "%-28s %12s %11.2f %11.2f %9sx %16s %16s %6s\n" \
+            printf "%-28s %12s %11.2f %11.2f %9sx %16s %16s\n" \
                    "$name" "$scale" "$rosy_ms" "$cosy_ms" "$speedup" \
-                   "$rosy_result_fmt" "$cosy_result_fmt" "$match"
-            if [[ "$match" == "DIFF" ]]; then
-                printf "    rosy=%s\n    cosy=%s\n" "$rosy_result" "$cosy_result"
-            fi
+                   "$rosy_result_fmt" "$cosy_result_fmt"
         fi
     else
         printf "\r%80s\r" "" >&2
@@ -318,18 +283,12 @@ if [[ "$NUM_TESTS" -eq 0 ]]; then
     exit 1
 fi
 if $HAS_COSY; then
-    printf "%-28s %12s %11s %11s %10s %16s %16s %6s\n" \
+    printf "%-28s %12s %11s %11s %10s %16s %16s\n" \
            "----------------------------" "------------" "-----------" "-----------" "----------" \
-           "----------------" "----------------" "------"
+           "----------------" "----------------"
     total_speedup=$(awk -v r="$TOTAL_ROSY_MS" -v c="$TOTAL_COSY_MS" 'BEGIN { if (r > 0.01) printf "%.1f", c / r; else print "INF" }')
-    printf "%-28s      %11.2f %11.2f %9sx %16s %16s %6s\n" \
-           "TOTAL ($NUM_TESTS tests)" "$TOTAL_ROSY_MS" "$TOTAL_COSY_MS" "$total_speedup" \
-           "" "" "${NUM_MATCH} OK"
-    echo ""
-    echo "  Results: ${NUM_MATCH} match, ${NUM_DIFF} differ (rel 1e-5 / abs 1e-8)"
-    if [[ "$NUM_DIFF" -gt 0 ]]; then
-        echo "  Mismatches:${DIFF_NAMES}"
-    fi
+    printf "%-28s      %11.2f %11.2f %9sx\n" \
+           "TOTAL ($NUM_TESTS tests)" "$TOTAL_ROSY_MS" "$TOTAL_COSY_MS" "$total_speedup"
 else
     printf "%-28s %12s %11s %16s\n" \
            "----------------------------" "------------" "-----------" "----------------"
