@@ -7,11 +7,14 @@ pub mod monomial;
 pub mod config;
 pub mod da;
 pub mod horner;
+pub mod scratch;
+pub mod compose;
 
 pub use monomial::{Monomial, cosy_display_rank, enumerate_monomials};
 pub use config::{TaylorConfig, TaylorRuntime, init_taylor, cleanup_taylor, get_config, get_runtime, set_epsilon, set_truncation_order, set_filter_da, get_filter_da, set_weight_vector, dump_addressing_arrays};
 pub use da::DACoefficient;
 pub use horner::FixedMultiplier;
+pub use scratch::{DEFAULT_SCRLEN, rosy_scrlen, scratch_reserve};
 
 // Core generic differential algebra type
 use num_complex::Complex64;

@@ -6,5 +6,4 @@
 #PBS -o rosy_local_optimized.out
 
 cd $PBS_O_WORKDIR
-COSY_BIN="$PBS_O_WORKDIR/../../cosy"
-exec ./run_local.sh --optimized --cosy "$COSY_BIN"
+exec examples/performance/run_local.sh --optimized --scale 50000 --cosy ./cosy

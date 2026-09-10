@@ -50,7 +50,7 @@ pub use registry::{
     lookup_intrinsic, unary_return_type,
 };
 
-pub use taylor::{CD, DA};
+pub use taylor::{CD, DA, DEFAULT_SCRLEN, rosy_scrlen};
 
 pub trait ExpectReExt {
     fn expect_re(&self) -> anyhow::Result<f64>;

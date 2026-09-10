@@ -1,16 +1,65 @@
 BEGIN;
-    SCRLEN 100;
-    WRITE 6 'scrlen ok';
+    VARIABLE (RE) LSCR;
+    LSCR := -1;
+    SCRLEN LSCR;
+    IF LSCR = 50000;
+        WRITE 6 'default 50000';
+    ENDIF;
+    SCRLEN 12345;
+    LSCR := -1;
+    SCRLEN LSCR;
+    IF LSCR = 12345;
+        WRITE 6 'set 12345';
+    ENDIF;
+    SCRLEN 1.7;
+    LSCR := -1;
+    SCRLEN LSCR;
+    IF LSCR = 2;
+        WRITE 6 'nint 2';
+    ENDIF;
+    SCRLEN 0;
+    LSCR := -1;
+    SCRLEN LSCR;
+    IF LSCR = 0;
+        WRITE 6 'zero';
+    ENDIF;
+    SCRLEN 50000;
 END;
 
 ======= expect
-scrlen ok
+default 50000
+set 12345
+nint 2
+zero
 
 ======= fox
 BEGIN;
 PROCEDURE RUN;
-    SCRLEN 100;
-    WRITE 6 'scrlen ok';
+    VARIABLE LSCR 1;
+    LSCR := -1;
+    SCRLEN LSCR;
+    IF (LSCR = 50000);
+        WRITE 6 'default 50000';
+    ENDIF;
+    SCRLEN 12345;
+    LSCR := -1;
+    SCRLEN LSCR;
+    IF (LSCR = 12345);
+        WRITE 6 'set 12345';
+    ENDIF;
+    SCRLEN 1.7;
+    LSCR := -1;
+    SCRLEN LSCR;
+    IF (LSCR = 2);
+        WRITE 6 'nint 2';
+    ENDIF;
+    SCRLEN 0;
+    LSCR := -1;
+    SCRLEN LSCR;
+    IF (LSCR = 0);
+        WRITE 6 'zero';
+    ENDIF;
+    SCRLEN 50000;
 ENDPROCEDURE;
 RUN;
 END;

@@ -8,7 +8,7 @@
 #    ./run_local.sh --cosy ./cosy                # Compare with COSY
 #    ./run_local.sh --rosy ~/.cargo/bin/rosy --cosy ./cosy
 #    ./run_local.sh --benchmark 01               # Run a specific benchmark
-#    ./run_local.sh --scale 10000                # Override TIER_SCALE for all
+#    ./run_local.sh --scale 10000                # Uniform TIER_SCALE (expensive benches map it down)
 #
 
 set -euo pipefail
@@ -37,6 +37,9 @@ run_timeout() {
 }
 
 # Old T4 work units — used when --scale is omitted (one value per benchmark).
+# Expensive benches interpret TIER_SCALE with a divisor / cube-root so a uniform
+# --scale 10000 stays in the same time band as the cheap arithmetic tests; these
+# defaults are the pre-divisor values (same T4 work as before).
 default_scale() {
     case "$1" in
         01_arithmetic_loop)          echo 500000000 ;;
@@ -44,18 +47,18 @@ default_scale() {
         03_da_trig)                  echo 500000 ;;
         04_matrix_inversion)         echo 20000 ;;
         05_matrix_determinant)       echo 20000 ;;
-        06_optimization_simplex)     echo 5000 ;;
-        07_optimization_lmdif)       echo 5000 ;;
+        06_optimization_simplex)     echo 50000 ;;
+        07_optimization_lmdif)       echo 500000 ;;
         08_math_functions)           echo 500000000 ;;
         09_vector_operations)        echo 1000000 ;;
-        10_nested_loops)             echo 500 ;;
+        10_nested_loops)             echo 125000000 ;;
         11_da_derivatives)           echo 500000 ;;
         12_string_operations)        echo 1000000 ;;
         13_da_transfer_map)          echo 200000 ;;
         14_da_high_order_multiply)   echo 5000 ;;
         15_da_bending_magnet)        echo 50000 ;;
         16_da_aberration)            echo 50000 ;;
-        17_polval_map_eval)          echo 80000 ;;
+        17_polval_map_eval)          echo 16000000 ;;
         18_any_operations)           echo 10000000 ;;
         *)                           echo 1 ;;
     esac
