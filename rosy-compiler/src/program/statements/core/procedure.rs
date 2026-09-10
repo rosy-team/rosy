@@ -291,14 +291,7 @@ impl Transpile for ProcedureStatement {
         for stmt in &self.body {
             match stmt.transpile(&mut inner_context) {
                 Ok(output) => {
-                    let mut ser = output.serialization;
-                    if self.name == "RK" && ser.contains("__proc_NORM(") {
-                        ser = ser.replace(
-                            ".context(\"...while calling procedure 'NORM'\")?;",
-                            ".context(\"...while calling procedure 'NORM'\")?; RFNORM = RosyValue::RE(0.0);",
-                        );
-                    }
-                    serialized_statements.push(ser);
+                    serialized_statements.push(output.serialization);
                     requested_variables.extend(output.requested_variables);
                 }
                 Err(stmt_errors) => {
