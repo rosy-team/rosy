@@ -61,7 +61,8 @@ CPUSEC T2 ;
 DT := T2 - T1 ;
 WRITE 6 'Final: A=' A ' B=' B ' C=' C ' D=' D ;
 WRITE 6 'Final OBJ=' OBJ ;
-WRITE 6 'Result: ' OBJ ;
+{ Known min is (1,1,1,1). Sum is ~4 if FIT worked; OBJ near 0 is a bad checksum. }
+WRITE 6 'Result: ' (A + B + C + D) ;
 WRITE 6 'CPUSEC: ' DT ;
 
 END ;
