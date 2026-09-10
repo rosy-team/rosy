@@ -18,9 +18,10 @@ use super::{Monomial, MAX_VARS};
 use super::config::{get_runtime, MULT_INVALID, TaylorRuntime};
 use super::scratch::scratch_reserve;
 
-/// Reserve `n` scratch words for one operator result. Drop restores the cursor.
+/// Best-effort bump reserve for one operator result. Drop restores the cursor.
+/// Misses fall through: named DA results still live in the coeff pool.
 #[inline]
-fn account_result_temp(n: usize) -> Result<super::scratch::ScratchFrame> {
+fn account_result_temp(n: usize) -> super::scratch::ScratchFrame {
     scratch_reserve(n)
 }
 
@@ -424,7 +425,7 @@ impl<T: DACoefficient> Add<&DA<T>> for &DA<T> {
         let max_order = rt.config.max_order as u8;
         let orders = &rt.monomial_orders;
 
-        let _scratch = account_result_temp(n)?;
+        let _scratch = account_result_temp(n);
         let words = (n + 63) / 64;
         let mut self_set = vec![0u64; words];
 
@@ -513,7 +514,7 @@ impl<T: DACoefficient> Neg for &DA<T> {
     type Output = DA<T>;
     fn neg(self) -> Self::Output {
         let n = self.coeffs.len();
-        let _scratch = account_result_temp(n).expect("SCRLEN overflow in DA negation");
+        let _scratch = account_result_temp(n);
         let mut coeffs = T::pool_alloc(n);
         for &i in &self.nonzero {
             coeffs[i as usize] = -self.coeffs[i as usize];
@@ -536,7 +537,7 @@ impl<T: DACoefficient> Sub<&DA<T>> for &DA<T> {
         let max_order = rt.config.max_order as u8;
         let orders = &rt.monomial_orders;
 
-        let _scratch = account_result_temp(n)?;
+        let _scratch = account_result_temp(n);
         let words = (n + 63) / 64;
         let mut self_set = vec![0u64; words];
 
@@ -627,7 +628,7 @@ impl<T: DACoefficient> DA<T> {
     /// Avoids redundant RwLock acquisition when called in a loop (e.g. Horner).
     pub(crate) fn multiply_truncated_with_rt(lhs: &DA<T>, rhs: &DA<T>, trunc_order: u32, rt: &TaylorRuntime) -> Result<DA<T>> {
         let n = rt.num_monomials;
-        let _scratch = account_result_temp(n)?;
+        let _scratch = account_result_temp(n);
         let mut result = T::pool_alloc(n);
         let words = (n + 63) / 64;
         let mut written = bitset_pool_alloc(words);
@@ -750,7 +751,7 @@ impl<T: DACoefficient> Mul<&DA<T>> for &DA<T> {
         let max_order = rt.config.max_order;
         let order_check = max_order < rt.init_order;
 
-        let _scratch = account_result_temp(n)?;
+        let _scratch = account_result_temp(n);
         let mut result = T::pool_alloc(n);
 
         let words = (n + 63) / 64;
@@ -837,7 +838,7 @@ impl<T: DACoefficient> Mul<T> for &DA<T> {
         if rhs.abs() <= epsilon {
             return Ok(DA::zero());
         }
-        let _scratch = account_result_temp(rt.num_monomials)?;
+        let _scratch = account_result_temp(rt.num_monomials);
         let mut coeffs = T::pool_alloc(rt.num_monomials);
         let mut nonzero = Vec::with_capacity(self.nonzero.len());
         for &i in &self.nonzero {
@@ -876,7 +877,7 @@ impl<T: DACoefficient> Div<&DA<T>> for &DA<T> {
             .collect();
         g_entries.sort_unstable_by_key(|&(i, _)| i);
 
-        let _scratch = account_result_temp(n)?;
+        let _scratch = account_result_temp(n);
         let mut result = T::pool_alloc(n);
         let mut nonzero = Vec::new();
 
@@ -940,7 +941,7 @@ impl<T: DACoefficient> Div<T> for &DA<T> {
     fn div(self, rhs: T) -> Self::Output {
         if rhs.abs() < 1e-15 { anyhow::bail!("Division by zero"); }
         let n = self.coeffs.len();
-        let _scratch = account_result_temp(n)?;
+        let _scratch = account_result_temp(n);
         let mut coeffs = T::pool_alloc(n);
         for &i in &self.nonzero {
             coeffs[i as usize] = self.coeffs[i as usize] / rhs;
@@ -1116,23 +1117,23 @@ mod tests {
 
     #[test]
     #[serial]
-    fn da_add_errors_when_scrlen_too_small() {
+    fn da_add_works_when_scrlen_too_small() {
         cleanup_taylor();
         let mut c = crate::DEFAULT_SCRLEN as f64;
         crate::rosy_scrlen(&mut c).unwrap();
 
         init_taylor(1, 1).unwrap();
-        // n = 2 monomials; 1 word cannot hold a result temp.
+        // n = 2 monomials; 1 word cannot hold a result temp — must heap-fallback.
         let mut tiny = 1.0;
         crate::rosy_scrlen(&mut tiny).unwrap();
 
         let x = DA::<f64>::variable(1).unwrap();
-        let err = (&x + &x).expect_err("DA add must not heap-fallback when SCRLEN is too small");
-        let msg = format!("{err:#}");
-        assert!(
-            msg.contains("SCRLEN overflow"),
-            "expected SCRLEN overflow, got: {msg}"
-        );
+        let sum = (&x + &x).expect("DA add should heap-fallback when SCRLEN is too small");
+        assert!((sum.coeffs[get_runtime().unwrap().variable_indices[0] as usize] - 2.0).abs() < 1e-14);
+
+        let mut q = -1.0;
+        crate::rosy_scrlen(&mut q).unwrap();
+        assert_eq!(q, 1.0);
 
         let mut restore = crate::DEFAULT_SCRLEN as f64;
         crate::rosy_scrlen(&mut restore).unwrap();

@@ -1,0 +1,134 @@
+{ Same DA calculation twice: once with a workspace that fits, once without.
+
+  rosy run --release examples/scrlen_scratch_vs_heap.rosy
+
+  Debug mode is too noisy to time. Tweak the knobs just below. }
+
+BEGIN;
+
+    { --- knobs --- }
+    VARIABLE (RE) ORDER;
+    VARIABLE (RE) NVARS;
+    VARIABLE (RE) NITERS;
+    VARIABLE (RE) SIZE_FIT;
+    VARIABLE (RE) SIZE_SMALL;
+
+    ORDER := 5;
+    NVARS := 2;
+    NITERS := 3000000;
+    SIZE_FIT := 50000;
+    SIZE_SMALL := 0;
+
+    VARIABLE (RE) NM;
+    VARIABLE (RE) NEED;
+    VARIABLE (RE) I;
+    VARIABLE (RE) T0;
+    VARIABLE (RE) T1;
+    VARIABLE (RE) T_FIT;
+    VARIABLE (RE) T_SMALL;
+    VARIABLE (RE) SAVED;
+    VARIABLE (RE) PCT;
+    VARIABLE (RE) C_FIT;
+    VARIABLE (RE) C_SMALL;
+    VARIABLE (DA) X1;
+    VARIABLE (DA) X2;
+    VARIABLE (DA) P;
+    VARIABLE (DA) R;
+
+    DAINI ORDER NVARS 0 NM;
+    NEED := 2 * NM;
+
+    X1 := DA(1);
+    X2 := DA(2);
+    P := 0.4 + 0.15 * X1 + 0.10 * X2;
+
+    WRITE 6 'Why a scratch workspace?';
+    WRITE 6 '';
+    WRITE 6 'Each SIN / COS / EXP step needs a short-lived workspace.';
+    WRITE 6 'If that workspace is already there, the step reuses it.';
+    WRITE 6 'If it is too small, every step asks for new memory and throws it away.';
+    WRITE 6 'Your named DA values are stored separately either way.';
+    WRITE 6 '';
+    WRITE 6 'This file runs the same work twice so you can see the cost.';
+    WRITE 6 '';
+    WRITE 6 '--- this job ---';
+    WRITE 6 'Taylor order: ' & ST(ORDER);
+    WRITE 6 'DA variables: ' & ST(NVARS);
+    WRITE 6 'One DA value uses ' & ST(NM) & ' numbers.';
+    WRITE 6 'A SIN/COS step needs about ' & ST(NEED) & ' workspace numbers.';
+    WRITE 6 'Repeats: ' & ST(NITERS);
+    WRITE 6 '';
+    WRITE 6 'Big workspace:   ' & ST(SIZE_FIT) & ' numbers.';
+    IF NEED <= SIZE_FIT;
+        WRITE 6 '  That is enough for this job.';
+    ELSE;
+        WRITE 6 '  That is still too small (need about ' & ST(NEED) & '). Both runs may look the same.';
+    ENDIF;
+    WRITE 6 'Small workspace: ' & ST(SIZE_SMALL) & ' numbers.';
+    IF NEED <= SIZE_SMALL;
+        WRITE 6 '  That is also enough — raise ORDER/NVARS or lower SIZE_SMALL to see a gap.';
+    ELSE;
+        WRITE 6 '  That is not enough, so temps go to fresh memory each step.';
+    ENDIF;
+    WRITE 6 '';
+    WRITE 6 'Working...';
+
+    LOOP I 1 16;
+        R := EXP(P);
+        R := SIN(P) + COS(P);
+        R := SINH(P) + COSH(P);
+    ENDLOOP;
+
+    SCRLEN SIZE_FIT;
+    CPUSEC T0;
+    LOOP I 1 NITERS;
+        R := EXP(P);
+        R := SIN(P) + COS(P);
+        R := SINH(P) + COSH(P);
+    ENDLOOP;
+    CPUSEC T1;
+    T_FIT := T1 - T0;
+    C_FIT := CONS(R);
+
+    SCRLEN SIZE_SMALL;
+    CPUSEC T0;
+    LOOP I 1 NITERS;
+        R := EXP(P);
+        R := SIN(P) + COS(P);
+        R := SINH(P) + COSH(P);
+    ENDLOOP;
+    CPUSEC T1;
+    T_SMALL := T1 - T0;
+    C_SMALL := CONS(R);
+
+    SAVED := T_SMALL - T_FIT;
+    PCT := 100 * SAVED / T_FIT;
+
+    WRITE 6 '';
+    WRITE 6 '--- times (seconds) ---';
+    WRITE 6 'Big enough workspace:  ' & ST(T_FIT);
+    WRITE 6 'Workspace too small:   ' & ST(T_SMALL);
+    IF SAVED > 0;
+        WRITE 6 'Time saved by scratch: ' & ST(SAVED);
+        WRITE 6 'Percent faster:         ' & ST(PCT);
+    ELSE;
+        WRITE 6 'Times were about the same. Try more NITERS, or a bigger ORDER/NVARS.';
+    ENDIF;
+    WRITE 6 '';
+    IF ABS(C_FIT - C_SMALL) < 0.0000000001;
+        WRITE 6 'Both runs got the same answer. This is only a speed difference.';
+    ELSE;
+        WRITE 6 'Answers differed — check the kernel if you changed it.';
+        WRITE 6 '  big workspace answer:   ' & ST(C_FIT);
+        WRITE 6 '  small workspace answer: ' & ST(C_SMALL);
+    ENDIF;
+    WRITE 6 '';
+    WRITE 6 '--- try this ---';
+    WRITE 6 '1. SIZE_FIT / SIZE_SMALL — workspace sizes (default real programs use 50000).';
+    WRITE 6 '2. ORDER / NVARS — bigger DA values need a bigger workspace (NVARS max is 6).';
+    WRITE 6 '3. NITERS — more repeats if the run is too quick to time.';
+    WRITE 6 '4. In your own code: raise SCRLEN until the slow time catches the fast one.';
+    WRITE 6 '   Query the current size with:  LSCR := -1;  SCRLEN LSCR;';
+
+    SCRLEN 50000;
+END;

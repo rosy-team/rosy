@@ -56,6 +56,8 @@ CPUSEC T2 ;
 
 DT := T2 - T1 ;
 WRITE 6 'Last determinant: ' DET ;
+{ log|det|: WRITE of ~1e21 RE truncates; COSY uses scientific notation. }
+WRITE 6 'Result: ' (LOG(ABS(DET))) ;
 WRITE 6 'CPUSEC: ' DT ;
 
 END ;

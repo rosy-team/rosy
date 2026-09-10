@@ -10,6 +10,10 @@
 #    ./run_local.sh --benchmark 01               # Run a specific benchmark
 #    ./run_local.sh --scale 10000                # Uniform TIER_SCALE (expensive benches map it down)
 #
+#  Rosy binaries are always built with --optimized.
+#
+#  Each bench WRITEs a `Result:` checksum. With --cosy those values are
+#  compared (rel 1e-5 / abs 1e-8) in the Rosy Result / COSY Result columns.
 
 set -euo pipefail
 
@@ -18,7 +22,6 @@ ROSY_BIN="${ROSY_BIN:-rosy}"
 COSY_BIN="${COSY_BIN:-}"
 BENCHMARK_FILTER=""
 SCALE_OVERRIDE=""
-OPTIMIZED=false
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NON_MPI_DIR="$SCRIPT_DIR/non_mpi"
 RUN_TIMEOUT=30
@@ -70,6 +73,68 @@ cleanup_artifacts() {
           "$dir"/bench_rosy "$dir"/bench_rosy_* 2>/dev/null || true
 }
 
+# WRITE prints each argument on its own line, so
+#   WRITE 6 'Result: ' Z
+# becomes:
+#   Result:
+#    0.1234567E+001
+parse_result() {
+    local file="$1"
+    [[ -f "$file" ]] || { echo ""; return; }
+    awk '
+        {
+            line = $0
+            if (match(line, /Result:/)) {
+                rest = substr(line, RSTART + RLENGTH)
+                gsub(/^[ \t]+|[ \t]+$/, "", rest)
+                if (rest != "") { val = rest; next }
+                pending = 1
+                next
+            }
+            if (pending) {
+                gsub(/^[ \t]+|[ \t]+$/, "", line)
+                if (line != "") { val = line; pending = 0 }
+            }
+        }
+        END { print val }
+    ' "$file"
+}
+
+# Compact a result for the table. Numbers become %.6e so COSY/Rosy
+# formatting (G15.7 vs raw) still lines up.
+format_result() {
+    awk -v r="$1" 'BEGIN {
+        gsub(/^[ \t]+|[ \t]+$/, "", r)
+        if (r == "") { print "N/A"; exit }
+        num = "^[+-]?(([0-9]+\\.?[0-9]*)|(\\.[0-9]+))([eE][+-]?[0-9]+)?$"
+        if (r ~ num) { printf "%.6e", r + 0; exit }
+        if (length(r) > 16) r = substr(r, 1, 15) "…"
+        print r
+    }'
+}
+
+# Numeric (rel 1e-5 / abs 1e-8) or exact string. Prints OK or DIFF.
+compare_results() {
+    awk -v a="$1" -v b="$2" 'BEGIN {
+        gsub(/^[ \t]+|[ \t]+$/, "", a)
+        gsub(/^[ \t]+|[ \t]+$/, "", b)
+        if (a == "" || b == "") { print "N/A"; exit }
+        if (a == b) { print "OK"; exit }
+        num = "^[+-]?(([0-9]+\\.?[0-9]*)|(\\.[0-9]+))([eE][+-]?[0-9]+)?$"
+        if (a ~ num && b ~ num) {
+            fa = a + 0
+            fb = b + 0
+            d = fa - fb
+            if (d < 0) d = -d
+            ma = (fa < 0) ? -fa : fa
+            mb = (fb < 0) ? -fb : fb
+            m = (ma > mb) ? ma : mb
+            if (d <= 1e-8 || (m > 0 && d / m <= 1e-5)) { print "OK"; exit }
+        }
+        print "DIFF"
+    }'
+}
+
 # ── Parse Arguments ───────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -78,9 +143,8 @@ while [[ $# -gt 0 ]]; do
         --benchmark)  BENCHMARK_FILTER="$2"; shift 2 ;;
         --scale)      SCALE_OVERRIDE="$2"; shift 2 ;;
         --timeout)    RUN_TIMEOUT="$2"; shift 2 ;;
-        --optimized)  OPTIMIZED=true; shift ;;
         -h|--help)
-            echo "Usage: $0 [--rosy PATH] [--cosy PATH] [--benchmark NUM] [--scale N] [--timeout SECS] [--optimized]"
+            echo "Usage: $0 [--rosy PATH] [--cosy PATH] [--benchmark NUM] [--scale N] [--timeout SECS]"
             exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
@@ -129,11 +193,7 @@ if [[ -n "$SCALE_OVERRIDE" ]]; then
 else
     echo "  TIER_SCALE: per-benchmark defaults (old T4 work units)"
 fi
-if $OPTIMIZED; then
-    echo "  Mode:  optimized (nightly SIMD + fat LTO)"
-else
-    echo "  Mode:  release"
-fi
+echo "  Mode:  optimized (nightly SIMD + fat LTO)"
 echo ""
 
 # ── Build Directory (outside workspace to avoid Cargo conflicts) ──────────────
@@ -145,13 +205,15 @@ echo ""
 
 # ── Table Header ──────────────────────────────────────────────────────────────
 if $HAS_COSY; then
-    printf "%-28s %12s %11s %11s %10s\n" "Benchmark" "Scale" "Rosy (ms)" "COSY (ms)" "Speedup"
-    printf "%-28s %12s %11s %11s %10s\n" \
-           "----------------------------" "------------" "-----------" "-----------" "----------"
+    printf "%-28s %12s %11s %11s %10s %16s %16s %6s\n" \
+           "Benchmark" "Scale" "Rosy (ms)" "COSY (ms)" "Speedup" "Rosy Result" "COSY Result" "Match"
+    printf "%-28s %12s %11s %11s %10s %16s %16s %6s\n" \
+           "----------------------------" "------------" "-----------" "-----------" "----------" \
+           "----------------" "----------------" "------"
 else
-    printf "%-28s %12s %11s\n" "Benchmark" "Scale" "Rosy (ms)"
-    printf "%-28s %12s %11s\n" \
-           "----------------------------" "------------" "-----------"
+    printf "%-28s %12s %11s %16s\n" "Benchmark" "Scale" "Rosy (ms)" "Rosy Result"
+    printf "%-28s %12s %11s %16s\n" \
+           "----------------------------" "------------" "-----------" "----------------"
 fi
 
 # ── Run Benchmarks ────────────────────────────────────────────────────────────
@@ -159,6 +221,9 @@ TOTAL_ROSY_MS=0
 TOTAL_COSY_MS=0
 NUM_TESTS=0
 BENCH_COUNT=0
+NUM_MATCH=0
+NUM_DIFF=0
+DIFF_NAMES=""
 
 for fox_file in "$NON_MPI_DIR"/*.fox; do
     [[ -f "$fox_file" ]] || continue
@@ -179,12 +244,16 @@ for fox_file in "$NON_MPI_DIR"/*.fox; do
 
     printf "  [%d] %s scale=%s...\r" "$NUM_TESTS" "$name" "$scale" >&2
 
-    BUILD_FLAGS="--release"
-    if $OPTIMIZED; then BUILD_FLAGS="--optimized"; fi
+    BUILD_FLAGS="--optimized"
     rosy_bin_path="$NON_MPI_DIR/bench_rosy_${name}"
     if ! "$ROSY_BIN" build "$fox_file" $BUILD_FLAGS -d "$BUILD_DIR" -o "$rosy_bin_path" 2>/dev/null; then
         printf "\r%80s\r" "" >&2
-        printf "%-28s %12s %11s\n" "$name" "$scale" "BUILD FAIL"
+        if $HAS_COSY; then
+            printf "%-28s %12s %11s %11s %10s %16s %16s %6s\n" \
+                   "$name" "$scale" "BUILD FAIL" "-" "-" "-" "-" "N/A"
+        else
+            printf "%-28s %12s %11s %16s\n" "$name" "$scale" "BUILD FAIL" "-"
+        fi
         continue
     fi
 
@@ -195,6 +264,8 @@ for fox_file in "$NON_MPI_DIR"/*.fox; do
     rosy_end=$(date +%s%N)
     rosy_ms=$(awk "BEGIN { printf \"%.2f\", ($rosy_end - $rosy_start) / 1000000 }")
     TOTAL_ROSY_MS=$(awk "BEGIN { printf \"%.2f\", $TOTAL_ROSY_MS + $rosy_ms }")
+    rosy_result=$(parse_result "$NON_MPI_DIR/rosy_${name}_output.txt")
+    rosy_result_fmt=$(format_result "$rosy_result")
 
     if $HAS_COSY; then
         cosy_fox_base="$name"
@@ -205,19 +276,34 @@ for fox_file in "$NON_MPI_DIR"/*.fox; do
             > "$NON_MPI_DIR/cosy_${name}_output.txt" 2>&1 || true
         cosy_end=$(date +%s%N)
         cosy_ms=$(awk "BEGIN { printf \"%.2f\", ($cosy_end - $cosy_start) / 1000000 }")
+        cosy_result=$(parse_result "$NON_MPI_DIR/cosy_${name}_output.txt")
+        cosy_result_fmt=$(format_result "$cosy_result")
+        match=$(compare_results "$rosy_result" "$cosy_result")
 
         if [[ ! -s "$NON_MPI_DIR/cosy_${name}_output.txt" ]] || grep -qE "### ERROR|ERROR OCCURED|cannot execute|Exec format error|No such file" "$NON_MPI_DIR/cosy_${name}_output.txt" 2>/dev/null; then
             printf "\r%80s\r" "" >&2
-            printf "%-28s %12s %11.2f %11s %10s\n" "$name" "$scale" "$rosy_ms" "COSY ERR" "N/A"
+            printf "%-28s %12s %11.2f %11s %10s %16s %16s %6s\n" \
+                   "$name" "$scale" "$rosy_ms" "COSY ERR" "N/A" "$rosy_result_fmt" "-" "N/A"
         else
             TOTAL_COSY_MS=$(awk -v a="$TOTAL_COSY_MS" -v b="$cosy_ms" 'BEGIN { printf "%.2f", a + b }')
             speedup=$(awk -v r="$rosy_ms" -v c="$cosy_ms" 'BEGIN { if (r > 0.01) printf "%.1f", c / r; else print "INF" }')
+            if [[ "$match" == "OK" ]]; then
+                NUM_MATCH=$((NUM_MATCH + 1))
+            elif [[ "$match" == "DIFF" ]]; then
+                NUM_DIFF=$((NUM_DIFF + 1))
+                DIFF_NAMES="${DIFF_NAMES} ${name}"
+            fi
             printf "\r%80s\r" "" >&2
-            printf "%-28s %12s %11.2f %11.2f %9sx\n" "$name" "$scale" "$rosy_ms" "$cosy_ms" "$speedup"
+            printf "%-28s %12s %11.2f %11.2f %9sx %16s %16s %6s\n" \
+                   "$name" "$scale" "$rosy_ms" "$cosy_ms" "$speedup" \
+                   "$rosy_result_fmt" "$cosy_result_fmt" "$match"
+            if [[ "$match" == "DIFF" ]]; then
+                printf "    rosy=%s\n    cosy=%s\n" "$rosy_result" "$cosy_result"
+            fi
         fi
     else
         printf "\r%80s\r" "" >&2
-        printf "%-28s %12s %11.2f\n" "$name" "$scale" "$rosy_ms"
+        printf "%-28s %12s %11.2f %16s\n" "$name" "$scale" "$rosy_ms" "$rosy_result_fmt"
     fi
 
     rm -f "$rosy_bin_path"
@@ -232,13 +318,21 @@ if [[ "$NUM_TESTS" -eq 0 ]]; then
     exit 1
 fi
 if $HAS_COSY; then
-    printf "%-28s %12s %11s %11s %10s\n" \
-           "----------------------------" "------------" "-----------" "-----------" "----------"
+    printf "%-28s %12s %11s %11s %10s %16s %16s %6s\n" \
+           "----------------------------" "------------" "-----------" "-----------" "----------" \
+           "----------------" "----------------" "------"
     total_speedup=$(awk -v r="$TOTAL_ROSY_MS" -v c="$TOTAL_COSY_MS" 'BEGIN { if (r > 0.01) printf "%.1f", c / r; else print "INF" }')
-    printf "%-28s      %11.2f %11.2f %9sx\n" "TOTAL ($NUM_TESTS tests)" "$TOTAL_ROSY_MS" "$TOTAL_COSY_MS" "$total_speedup"
+    printf "%-28s      %11.2f %11.2f %9sx %16s %16s %6s\n" \
+           "TOTAL ($NUM_TESTS tests)" "$TOTAL_ROSY_MS" "$TOTAL_COSY_MS" "$total_speedup" \
+           "" "" "${NUM_MATCH} OK"
+    echo ""
+    echo "  Results: ${NUM_MATCH} match, ${NUM_DIFF} differ (rel 1e-5 / abs 1e-8)"
+    if [[ "$NUM_DIFF" -gt 0 ]]; then
+        echo "  Mismatches:${DIFF_NAMES}"
+    fi
 else
-    printf "%-28s %12s %11s\n" \
-           "----------------------------" "------------" "-----------"
+    printf "%-28s %12s %11s %16s\n" \
+           "----------------------------" "------------" "-----------" "----------------"
     printf "%-28s      %11.2f\n" "TOTAL ($NUM_TESTS tests)" "$TOTAL_ROSY_MS"
 fi
 echo ""

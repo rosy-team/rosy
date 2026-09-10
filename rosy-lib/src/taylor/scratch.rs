@@ -1,7 +1,11 @@
 //! COSY-compatible `SCRLEN` bump arena for DA operator temps.
 //!
-//! Size is in f64 words (default 50000). Named DA values stay on the heap;
-//! add/mul/Horner reserve `n` words here once per operation, not per monomial.
+//! Size is in f64 words (default 50000). Named DA values stay on the heap.
+//! Operator temps use this arena when they fit; otherwise that op allocates
+//! a heap `Vec` so callers are not forced to size `SCRLEN`.
+//!
+//! The queried/set size is never grown automatically (COSY programs read it).
+//! Live bump pointers also must not be invalidated by a realloc.
 
 use std::cell::UnsafeCell;
 
@@ -55,32 +59,61 @@ pub fn current_scrlen() -> usize {
     with_scratch(|s| s.words.len())
 }
 
-/// Reserve `n` words from the bump pointer. Errors if they would not fit.
-/// The returned pointer is valid until the matching [`ScratchFrame`] drops
-/// or `rosy_scrlen` resizes.
-pub fn scratch_alloc(n: usize) -> Result<*mut f64> {
+/// Bump-allocate `n` words, or `None` if they would not fit.
+///
+/// The pointer is valid until the matching [`ScratchFrame`] drops or
+/// `rosy_scrlen` resizes. Prefer [`ScratchScope::alloc`], which falls back
+/// to the heap instead of returning `None`.
+pub fn try_scratch_alloc(n: usize) -> Option<*mut f64> {
     if n == 0 {
-        return Ok(std::ptr::null_mut());
+        return Some(std::ptr::null_mut());
     }
     with_scratch(|s| {
         if s.cursor + n > s.words.len() {
-            bail!(
-                "SCRLEN overflow: need {n} words, {} remaining of {}",
-                s.words.len().saturating_sub(s.cursor),
-                s.words.len()
-            );
+            return None;
         }
         let p = unsafe { s.words.as_mut_ptr().add(s.cursor) };
         s.cursor += n;
-        Ok(p)
+        Some(p)
     })
 }
 
-/// Enter a frame and reserve `n` words (accounting + storage for this op).
-pub fn scratch_reserve(n: usize) -> Result<ScratchFrame> {
+/// Frame plus any heap fallbacks for this operator.
+///
+/// Drop restores the bump cursor and frees overflow `Vec`s. Nested ops each
+/// own a scope, so inner heap temps do not outlive their call.
+pub struct ScratchScope {
+    overflow: Vec<Vec<f64>>,
+    _frame: ScratchFrame,
+}
+
+impl ScratchScope {
+    pub fn enter() -> Self {
+        Self {
+            overflow: Vec::new(),
+            _frame: ScratchFrame::enter(),
+        }
+    }
+
+    /// `n` words from the bump arena, or a fresh heap buffer if it would not fit.
+    pub fn alloc(&mut self, n: usize) -> *mut f64 {
+        if let Some(p) = try_scratch_alloc(n) {
+            return p;
+        }
+        self.overflow.push(vec![0.0; n]);
+        // Inner heap buffer is stable across later `overflow` pushes.
+        self.overflow.last_mut().unwrap().as_mut_ptr()
+    }
+}
+
+/// Enter a frame and bump-reserve `n` words when they fit.
+///
+/// Misses are ignored: accounting-only callers still `pool_alloc`, and
+/// storage callers should use [`ScratchScope`].
+pub fn scratch_reserve(n: usize) -> ScratchFrame {
     let frame = ScratchFrame::enter();
-    let _ = scratch_alloc(n)?;
-    Ok(frame)
+    let _ = try_scratch_alloc(n);
+    frame
 }
 
 fn set_scrlen(n: usize) -> Result<()> {
@@ -170,12 +203,37 @@ mod tests {
     }
 
     #[test]
-    fn overflow_errors_without_heap_fallback() {
+    fn overflow_falls_back_to_heap() {
         reset();
         let mut c = 1.0;
         rosy_scrlen(&mut c).unwrap();
-        let _frame = ScratchFrame::enter();
-        assert!(scratch_alloc(2).is_err());
+        let mut scope = ScratchScope::enter();
+        assert!(try_scratch_alloc(2).is_none());
+        let p = scope.alloc(2);
+        assert!(!p.is_null());
+        unsafe {
+            *p = 1.0;
+            *p.add(1) = 2.0;
+            assert_eq!(*p, 1.0);
+            assert_eq!(*p.add(1), 2.0);
+        }
+        let mut q = -1.0;
+        rosy_scrlen(&mut q).unwrap();
+        assert_eq!(q, 1.0, "heap fallback must not grow the queried SCRLEN");
+        reset();
+    }
+
+    #[test]
+    fn zero_scrlen_allocates_on_heap() {
+        reset();
+        let mut c = 0.0;
+        rosy_scrlen(&mut c).unwrap();
+        let mut scope = ScratchScope::enter();
+        let p = scope.alloc(4);
+        unsafe {
+            std::slice::from_raw_parts_mut(p, 4).fill(3.0);
+            assert_eq!(*p, 3.0);
+        }
         reset();
     }
 }

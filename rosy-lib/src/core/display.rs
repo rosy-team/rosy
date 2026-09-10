@@ -54,7 +54,7 @@ fn display_ve_element(x: f64) -> String {
         format!("{}{:>10}    ", sign, value_str)
     }
 }
-fn display_re (
+pub(crate) fn display_re (
     num: RE,
     precision: usize,
     exponent_precision: usize,

@@ -243,17 +243,9 @@ impl FromRule for VarDeclStatement {
             }
         }
 
-        // Extra memsize numbers after the first are array dims (ANY cells).
-        // 0-d untyped stays open for inference; leftover fox cells become ANY.
-        let r#type = if syntax_config::is_cosy_syntax()
-            && r#type.is_none()
-            && !dimension_exprs.is_empty()
-        {
-            Some(RosyType::new(RosyBaseType::ANY, dimension_exprs.len()))
-        } else {
-            r#type
-        };
-
+        // Extra memsize numbers after the first are array dimensions. Leave
+        // the element type open so assignments can infer (DA maps, VE particle
+        // rows, …). Unassigned fox arrays still default to ANY cells.
         let data = VariableDeclarationData {
             name,
             r#type,
@@ -277,6 +269,22 @@ impl TranspileableStatement for VarDeclStatement {
             self.data.r#type.as_ref(),
             Some(source_location),
         );
+        let extra_dims = self.data.dimension_exprs.len();
+        if let Some(node) = resolver.nodes.get_mut(&slot) {
+            node.extra_dims = extra_dims;
+            // COSY library globals (`VARIABLE MAP 4000 8`) are untyped cells
+            // shared across procedures. Inferring DA/VE there breaks captures.
+            // Locals inside a procedure (17's COORD/MAP1) still infer.
+            if extra_dims > 0
+                && self.data.r#type.is_none()
+                && crate::syntax_config::is_cosy_syntax()
+                && ctx.scope_path.is_empty()
+            {
+                let any = RosyType::new(RosyBaseType::ANY, extra_dims);
+                node.rule = crate::resolve::ResolutionRule::Explicit(any);
+                node.resolved = Some(any);
+            }
+        }
         ctx.variables.insert(self.data.name.clone(), slot);
 
         Some(Ok(()))
