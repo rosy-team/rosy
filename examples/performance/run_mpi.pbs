@@ -6,13 +6,16 @@
 #PBS -o rosy_mpi.out
 
 # ============================================================================
-#  Rosy vs COSY — MPI Benchmarks (--release, 20 ranks)
+#  Rosy vs COSY — MPI Benchmarks (--optimized, 20 ranks)
 # ============================================================================
 #  All PLOOP benchmarks use NP=20 (matching MPI world size).
 #  TIER_SCALE is passed as argv[1] / tier_scale.dat (old inner-loop counts).
 # ============================================================================
 
 cd $PBS_O_WORKDIR
+
+source "$HOME/.cargo/env" 2>/dev/null || true
+export PATH="$HOME/.cargo/bin:$PATH"
 
 module purge
 module load openmpi/openmpi-5.0.7-gcc-14.2.0-cuda-12.8
@@ -21,7 +24,7 @@ COSY_BIN="$PBS_O_WORKDIR/../../cosy_mpi"
 NP=20
 MPI_DIR="$PBS_O_WORKDIR/mpi"
 SCALE_OVERRIDE="${SCALE:-}"
-BUILD_FLAGS="--release"
+BUILD_FLAGS="--optimized"
 
 default_scale() {
     case "$1" in
@@ -42,9 +45,22 @@ cleanup_artifacts() {
     rm -f "$MPI_DIR"/*.txt "$MPI_DIR"/*.dat "$MPI_DIR"/*.lis "$MPI_DIR"/bench_rosy* 2>/dev/null || true
 }
 
+# WRITE prints each argument on its own line, so "CPUSEC: " DT becomes
+#   CPUSEC:
+#   1.234567
+parse_cpusec() {
+    local same
+    same=$(grep -oP 'CPUSEC:\s*\K[\d.]+' "$1" 2>/dev/null | tail -1 || true)
+    if [[ -n "$same" ]]; then
+        echo "$same"
+        return
+    fi
+    grep -A1 'CPUSEC:' "$1" 2>/dev/null | grep -vE 'CPUSEC:|^--$' | tail -1 | awk '{printf "%.6f", $1}'
+}
+
 echo ""
 echo "================================================================"
-echo "       Rosy vs COSY — MPI Benchmarks (--release, $NP ranks)"
+echo "       Rosy vs COSY — MPI Benchmarks (--optimized, $NP ranks)"
 echo "================================================================"
 echo "  Date:  $(date)"
 echo "  Nodes: $(cat $PBS_NODEFILE | wc -l)"
@@ -75,11 +91,11 @@ for fox_file in "$MPI_DIR"/*.fox; do
         scale=$(default_scale "$name")
     fi
 
-    BUILD_DIR=$(mktemp -d /tmp/rosy_mpi_rel_XXXXXX)
+    BUILD_DIR=$(mktemp -d /tmp/rosy_mpi_opt_XXXXXX)
     if ! rosy build "$fox_file" $BUILD_FLAGS -d "$BUILD_DIR" -o "$MPI_DIR/bench_rosy" 2>/dev/null; then
         rm -rf "$BUILD_DIR"
         sleep 5
-        BUILD_DIR=$(mktemp -d /tmp/rosy_mpi_rel_XXXXXX)
+        BUILD_DIR=$(mktemp -d /tmp/rosy_mpi_opt_XXXXXX)
         if ! rosy build "$fox_file" $BUILD_FLAGS -d "$BUILD_DIR" -o "$MPI_DIR/bench_rosy" 2>/dev/null; then
             rm -rf "$BUILD_DIR"
             printf "%-30s %12s %11s\n" "$name" "$scale" "BUILD FAIL"
@@ -89,7 +105,7 @@ for fox_file in "$MPI_DIR"/*.fox; do
 
     echo "$scale" > "$MPI_DIR/tier_scale.dat"
     mpirun -np $NP -hostfile $PBS_NODEFILE "$MPI_DIR/bench_rosy" "$scale" > "$MPI_DIR/rosy_${name}_output.txt" 2>&1
-    rosy_cpusec=$(grep -oP 'CPUSEC:\s*\K[\d.]+' "$MPI_DIR/rosy_${name}_output.txt" | tail -1)
+    rosy_cpusec=$(parse_cpusec "$MPI_DIR/rosy_${name}_output.txt")
     if [[ -n "$rosy_cpusec" ]]; then
         TOTAL_ROSY=$(awk "BEGIN { printf \"%.6f\", $TOTAL_ROSY + $rosy_cpusec }")
     fi
@@ -102,7 +118,7 @@ for fox_file in "$MPI_DIR"/*.fox; do
         if grep -qE "### ERROR|ERROR OCCURED" "$MPI_DIR/cosy_${name}_output.txt" 2>/dev/null; then
             printf "%-30s %12s %11s %11s %10s\n" "$name" "$scale" "${rosy_cpusec:-N/A}" "COSY ERR" "N/A"
         else
-            cosy_cpusec=$(grep -A1 'CPUSEC:' "$MPI_DIR/cosy_${name}_output.txt" | grep -v 'CPUSEC:' | tail -1 | awk '{printf "%.6f", $1}')
+            cosy_cpusec=$(parse_cpusec "$MPI_DIR/cosy_${name}_output.txt")
             if [[ -n "$cosy_cpusec" && -n "$rosy_cpusec" ]]; then
                 TOTAL_COSY=$(awk "BEGIN { printf \"%.6f\", $TOTAL_COSY + $cosy_cpusec }")
                 speedup=$(awk "BEGIN { if ($rosy_cpusec > 0.0001) printf \"%.1f\", $cosy_cpusec / $rosy_cpusec; else print \"INF\" }")

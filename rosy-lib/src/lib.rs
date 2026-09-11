@@ -34,6 +34,8 @@ pub mod value;
 pub mod intrinsics;
 #[cfg(feature = "mpi")]
 pub mod mpi;
+#[cfg(not(feature = "mpi"))]
+mod mpi_serial;
 pub mod operators;
 pub mod optimizer;
 pub mod registry;
@@ -44,6 +46,8 @@ pub use value::{RosyValue, rosy_dyn_binary};
 pub use intrinsics::*;
 #[cfg(feature = "mpi")]
 pub use mpi::*;
+#[cfg(not(feature = "mpi"))]
+pub use mpi_serial::*;
 pub use operators::*;
 pub use registry::{
     BinaryOp, INTRINSICS, Intrinsic, IntrinsicTyping, UnaryOp, binary_return_type,

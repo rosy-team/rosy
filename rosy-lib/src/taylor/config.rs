@@ -5,11 +5,11 @@
 //! `epsilon` and `max_order` can be changed at runtime via `set_epsilon()` /
 //! `set_truncation_order()`.
 
-use std::sync::RwLock;
-use anyhow::{Result, Context, bail};
+use anyhow::{bail, Context, Result};
 use rustc_hash::FxHashMap;
+use std::sync::RwLock;
 
-use super::{DEFAULT_EPSILON, MAX_VARS, Monomial, monomial::enumerate_monomials};
+use super::{monomial::enumerate_monomials, Monomial, DEFAULT_EPSILON, MAX_VARS};
 
 /// Scalar configuration for Taylor series computations.
 #[derive(Debug, Clone, Copy)]
@@ -27,10 +27,15 @@ impl TaylorConfig {
         if num_vars > MAX_VARS {
             bail!(
                 "Number of variables ({}) exceeds maximum ({})",
-                num_vars, MAX_VARS
+                num_vars,
+                MAX_VARS
             );
         }
-        Ok(Self { max_order, num_vars, epsilon })
+        Ok(Self {
+            max_order,
+            num_vars,
+            epsilon,
+        })
     }
 }
 
@@ -82,6 +87,11 @@ pub struct TaylorRuntime {
     /// is the homogeneous block of degree `d`. Length is `init_order + 2`
     /// (`degree_offset[init_order + 1] == num_monomials`).
     pub degree_offset: Vec<usize>,
+    /// POLVAL / Horner factorization: monomial `k` = monomial `horner_parent[k]`
+    /// times variable `horner_var[k]` (0-based). `horner_parent[0] = 0`.
+    /// Parent always has a strictly smaller flat index (graded order).
+    pub horner_parent: Vec<u32>,
+    pub horner_var: Vec<u8>,
 }
 
 /// Read guard wrapper that dereferences directly to `TaylorRuntime`.
@@ -108,10 +118,15 @@ static WEIGHT_VECTOR: RwLock<Option<Vec<u32>>> = RwLock::new(None);
 pub fn set_weight_vector(weights: Vec<u32>) -> Result<()> {
     for (i, &w) in weights.iter().enumerate() {
         if w < 1 {
-            anyhow::bail!("DANOTW: weight for variable {} is {} — weights must be positive integers ≥ 1", i + 1, w);
+            anyhow::bail!(
+                "DANOTW: weight for variable {} is {} — weights must be positive integers ≥ 1",
+                i + 1,
+                w
+            );
         }
     }
-    let mut guard = WEIGHT_VECTOR.write()
+    let mut guard = WEIGHT_VECTOR
+        .write()
         .map_err(|e| anyhow::anyhow!("Failed to acquire weight vector lock: {}", e))?;
     *guard = Some(weights);
     Ok(())
@@ -119,7 +134,8 @@ pub fn set_weight_vector(weights: Vec<u32>) -> Result<()> {
 
 /// Take and clear the weight vector (consumed by init_taylor).
 fn take_weight_vector() -> Result<Option<Vec<u32>>> {
-    let mut guard = WEIGHT_VECTOR.write()
+    let mut guard = WEIGHT_VECTOR
+        .write()
         .map_err(|e| anyhow::anyhow!("Failed to acquire weight vector lock: {}", e))?;
     Ok(guard.take())
 }
@@ -131,7 +147,8 @@ pub static FILTER_DA: RwLock<Option<Vec<super::da::DA<f64>>>> = RwLock::new(None
 
 /// Set the DAFILT template (DAFSET). Pass `None` to disable filtering.
 pub fn set_filter_da(template: Option<Vec<super::da::DA<f64>>>) -> Result<()> {
-    let mut guard = FILTER_DA.write()
+    let mut guard = FILTER_DA
+        .write()
         .map_err(|e| anyhow::anyhow!("Failed to acquire filter lock: {}", e))?;
     *guard = template;
     Ok(())
@@ -139,7 +156,8 @@ pub fn set_filter_da(template: Option<Vec<super::da::DA<f64>>>) -> Result<()> {
 
 /// Get a snapshot of the current filter template (cloned).
 pub fn get_filter_da() -> Result<Option<Vec<super::da::DA<f64>>>> {
-    let guard = FILTER_DA.read()
+    let guard = FILTER_DA
+        .read()
         .map_err(|e| anyhow::anyhow!("Failed to acquire filter lock: {}", e))?;
     Ok(guard.clone())
 }
@@ -155,7 +173,8 @@ pub fn get_filter_da() -> Result<Option<Vec<super::da::DA<f64>>>> {
 /// * `max_order` - Maximum order of Taylor expansions
 /// * `num_vars` - Number of variables (≤ MAX_VARS)
 pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
-    let mut guard = TAYLOR_RUNTIME.write()
+    let mut guard = TAYLOR_RUNTIME
+        .write()
         .map_err(|e| anyhow::anyhow!("Failed to acquire runtime lock: {}", e))?;
 
     if guard.is_some() {
@@ -259,6 +278,41 @@ pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
 
     let degree_offset = build_degree_offset(&monomial_orders, num_monomials, max_order);
 
+    // Monomial k = parent * x_v, with parent at a strictly smaller index.
+    // Subtract one factor of variable v (its unit exponent, which is the
+    // DANOTW weight when weights are in use).
+    let mut horner_parent = vec![0u32; num_monomials];
+    let mut horner_var = vec![0u8; num_monomials];
+    for k in 1..num_monomials {
+        let mono = &monomial_list[k];
+        let mut chosen = false;
+        for v in (0..num_vars).rev() {
+            let unit_exp = monomial_list[variable_indices[v] as usize].exponents[v];
+            if unit_exp == 0 || mono.exponents[v] < unit_exp {
+                continue;
+            }
+            let mut new_exp = mono.exponents;
+            new_exp[v] -= unit_exp;
+            let parent_mono = Monomial::new(new_exp);
+            if let Some(&idx) = monomial_index.get(&parent_mono) {
+                horner_parent[k] = idx;
+                horner_var[k] = v as u8;
+                chosen = true;
+                break;
+            }
+        }
+        if !chosen {
+            for v in (0..num_vars).rev() {
+                let t = deriv_target[v * num_monomials + k];
+                if t != DERIV_INVALID {
+                    horner_parent[k] = t;
+                    horner_var[k] = v as u8;
+                    break;
+                }
+            }
+        }
+    }
+
     *guard = Some(TaylorRuntime {
         config,
         init_order: max_order,
@@ -272,6 +326,8 @@ pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
         deriv_exponent,
         integ_target,
         degree_offset,
+        horner_parent,
+        horner_var,
     });
 
     Ok(num_monomials)
@@ -311,7 +367,12 @@ pub fn dump_addressing_arrays() -> Result<()> {
             .iter()
             .map(|e| format!("{}", e))
             .collect();
-        eprintln!("    {:>6}  {:>6}  {}", i + 1, mono.total_order, exps.join(" "));
+        eprintln!(
+            "    {:>6}  {:>6}  {}",
+            i + 1,
+            mono.total_order,
+            exps.join(" ")
+        );
     }
     Ok(())
 }
@@ -322,7 +383,8 @@ pub fn dump_addressing_arrays() -> Result<()> {
 /// In single-threaded Rosy programs, this has no contention.
 #[inline]
 pub fn get_runtime() -> Result<RuntimeRef> {
-    let guard = TAYLOR_RUNTIME.read()
+    let guard = TAYLOR_RUNTIME
+        .read()
         .map_err(|e| anyhow::anyhow!("Failed to acquire runtime lock: {}", e))?;
     if guard.is_none() {
         bail!("Taylor system not initialized. Call init_taylor() first.");
@@ -341,9 +403,11 @@ pub fn get_config() -> Result<TaylorConfig> {
 /// # Returns
 /// The previous epsilon value
 pub fn set_epsilon(epsilon: f64) -> Result<f64> {
-    let mut guard = TAYLOR_RUNTIME.write()
+    let mut guard = TAYLOR_RUNTIME
+        .write()
         .map_err(|e| anyhow::anyhow!("Failed to acquire runtime lock: {}", e))?;
-    let rt = guard.as_mut()
+    let rt = guard
+        .as_mut()
         .ok_or_else(|| anyhow::anyhow!("Taylor system not initialized"))?;
     let old = rt.config.epsilon;
     rt.config.epsilon = epsilon;
@@ -357,14 +421,17 @@ pub fn set_epsilon(epsilon: f64) -> Result<f64> {
 /// # Returns
 /// The previous truncation order
 pub fn set_truncation_order(order: u32) -> Result<u32> {
-    let mut guard = TAYLOR_RUNTIME.write()
+    let mut guard = TAYLOR_RUNTIME
+        .write()
         .map_err(|e| anyhow::anyhow!("Failed to acquire runtime lock: {}", e))?;
-    let rt = guard.as_mut()
+    let rt = guard
+        .as_mut()
         .ok_or_else(|| anyhow::anyhow!("Taylor system not initialized"))?;
     if order > rt.init_order {
         bail!(
             "Cannot set truncation order ({}) above init order ({})",
-            order, rt.init_order
+            order,
+            rt.init_order
         );
     }
     let old = rt.config.max_order;
@@ -374,9 +441,7 @@ pub fn set_truncation_order(order: u32) -> Result<u32> {
 
 /// Check if Taylor system is initialized.
 pub fn is_initialized() -> bool {
-    TAYLOR_RUNTIME.read()
-        .map(|g| g.is_some())
-        .unwrap_or(false)
+    TAYLOR_RUNTIME.read().map(|g| g.is_some()).unwrap_or(false)
 }
 
 /// Clean up the Taylor system (for re-initialization).
@@ -433,7 +498,7 @@ mod tests {
         // Variable indices are populated
         assert!(rt.variable_indices[0] > 0); // x1 is not the constant
         assert!(rt.variable_indices[1] > 0); // x2 is not the constant
-        // C(d+1, 1) monomials of degree d in 2 vars: offsets 0,1,3,6,10,15,21
+                                             // C(d+1, 1) monomials of degree d in 2 vars: offsets 0,1,3,6,10,15,21
         assert_eq!(&rt.degree_offset, &[0, 1, 3, 6, 10, 15, 21]);
 
         drop(rt);
@@ -457,10 +522,18 @@ mod tests {
                 let product = rt.monomial_list[i].multiply(&rt.monomial_list[j]);
                 let k = table[i * n + j];
                 if product.within_order(3) {
-                    assert_ne!(k, MULT_INVALID, "Product of monomials {} and {} should be valid", i, j);
+                    assert_ne!(
+                        k, MULT_INVALID,
+                        "Product of monomials {} and {} should be valid",
+                        i, j
+                    );
                     assert_eq!(rt.monomial_list[k as usize], product);
                 } else {
-                    assert_eq!(k, MULT_INVALID, "Product of monomials {} and {} should be INVALID", i, j);
+                    assert_eq!(
+                        k, MULT_INVALID,
+                        "Product of monomials {} and {} should be INVALID",
+                        i, j
+                    );
                 }
             }
         }

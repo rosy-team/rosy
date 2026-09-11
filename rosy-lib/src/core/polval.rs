@@ -5,16 +5,19 @@
 //! Lets the polynomial described by NP DA vectors stored in the array P
 //! act on the NA arguments A, and stores the NR results in R.
 //!
-//! In the normal case L == 1 (Horner evaluation).
-//! The current implementation supports RE (f64) arguments (plain polynomial evaluation)
-//! and returns an error for other argument types at runtime.
+//! L == 1 is Horner evaluation (the COSY default). Rosy always uses a
+//! Horner factorization of the monomial addressing: each monomial is
+//! `parent * x_v`, so real / particle evaluation and DA/CD composition
+//! share intermediate products instead of powering every term from scratch.
 
 use crate::taylor::{CD, DA};
 use crate::RosyValue;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 #[cfg(feature = "nightly-simd")]
 use std::simd::prelude::*;
+#[cfg(feature = "nightly-simd")]
+use std::simd::StdFloat;
 
 #[cfg(feature = "nightly-simd")]
 const LANES: usize = 4;
@@ -51,6 +54,29 @@ impl PolvalAnySrc for [RosyValue] {
         self.to_vec()
     }
 }
+impl PolvalAnySrc for Vec<DA> {
+    fn polval_any_cells(&self) -> Vec<RosyValue> {
+        self.iter().cloned().map(RosyValue::DA).collect()
+    }
+}
+impl PolvalAnySrc for [DA] {
+    fn polval_any_cells(&self) -> Vec<RosyValue> {
+        self.iter().cloned().map(RosyValue::DA).collect()
+    }
+}
+impl PolvalAnySrc for Vec<f64> {
+    fn polval_any_cells(&self) -> Vec<RosyValue> {
+        self.iter().copied().map(RosyValue::RE).collect()
+    }
+}
+impl PolvalAnySrc for Vec<Vec<f64>> {
+    fn polval_any_cells(&self) -> Vec<RosyValue> {
+        self.iter()
+            .cloned()
+            .map(|col| RosyValue::Arr(col.into_iter().map(RosyValue::RE).collect()))
+            .collect()
+    }
+}
 
 pub trait PolvalAnyDst {
     fn store_polval_any(&mut self, v: Vec<RosyValue>);
@@ -72,6 +98,31 @@ impl PolvalAnyDst for RosyValue {
         } else {
             *self = RosyValue::Arr(v);
         }
+    }
+}
+impl PolvalAnyDst for Vec<DA> {
+    fn store_polval_any(&mut self, v: Vec<RosyValue>) {
+        *self = v
+            .into_iter()
+            .map(|x| x.expect_da().unwrap_or_else(|_| DA::zero()))
+            .collect();
+    }
+}
+impl PolvalAnyDst for Vec<f64> {
+    fn store_polval_any(&mut self, v: Vec<RosyValue>) {
+        *self = v.into_iter().map(|x| x.as_f64()).collect();
+    }
+}
+impl PolvalAnyDst for Vec<Vec<f64>> {
+    fn store_polval_any(&mut self, v: Vec<RosyValue>) {
+        *self = v
+            .into_iter()
+            .map(|c| match c {
+                RosyValue::VE(col) => col,
+                RosyValue::Arr(col) => col.into_iter().map(|x| x.as_f64()).collect(),
+                other => vec![other.as_f64()],
+            })
+            .collect();
     }
 }
 
@@ -174,17 +225,25 @@ pub fn rosy_polval_re(
     if np < nr {
         bail!("POLVAL: NP ({}) must be >= NR ({})", np, nr);
     }
+    if nr > p_array.len() {
+        bail!(
+            "POLVAL: polynomial array too short at index {}",
+            p_array.len()
+        );
+    }
 
     let mut out = r_array.load_re_vec();
     while out.len() < nr {
         out.push(0.0);
     }
 
+    let cols: Vec<Vec<f64>> = (0..na)
+        .map(|v| vec![if v < a_array.len() { a_array[v] } else { 0.0 }])
+        .collect();
+    let mut tmp = vec![vec![0.0]; nr];
+    eval_polys_at_points(&p_array[..nr], &cols, na, 1, &mut tmp)?;
     for i in 0..nr {
-        if i >= p_array.len() {
-            bail!("POLVAL: polynomial array too short at index {}", i);
-        }
-        out[i] = evaluate_da_at_re(&p_array[i], &a_array, na)?;
+        out[i] = tmp[i][0];
     }
     r_array.store_re_vec(out);
 
@@ -200,7 +259,7 @@ pub fn rosy_polval_re(
 /// Results are written the same way: `r_array\[i\]` will hold the i-th result
 /// component for all particles.
 ///
-/// With `nightly-simd`: processes 4 particles per monomial using f64x4 SIMD.
+/// With `nightly-simd`: processes 4 particles per Horner node using f64x4 SIMD.
 pub fn rosy_polval_ve(
     _l: f64,
     p_array: &[DA],
@@ -220,166 +279,27 @@ pub fn rosy_polval_ve(
             na
         );
     }
+    if nr > p_array.len() {
+        bail!(
+            "POLVAL: polynomial array too short at index {}",
+            p_array.len()
+        );
+    }
 
-    let num_particles = if na > 0 { a_array[0].len() } else { 0 };
+    let mut num_particles = if na > 0 { a_array[0].len() } else { 0 };
+    for v in 1..na {
+        num_particles = num_particles.min(a_array[v].len());
+    }
 
     while r_array.len() < nr {
         r_array.push(Vec::new());
     }
-
     for i in 0..nr {
-        if i >= p_array.len() {
-            bail!("POLVAL: polynomial array too short at index {}", i);
-        }
         r_array[i].resize(num_particles, 0.0);
-        evaluate_poly_batch(&p_array[i], a_array, na, num_particles, &mut r_array[i]);
     }
 
+    eval_polys_at_points(&p_array[..nr], a_array, na, num_particles, r_array)?;
     Ok(())
-}
-
-/// Evaluate a single DA polynomial at all particles, writing results into `out`.
-///
-/// Iterates monomials once, processing particles in SIMD chunks of 4.
-#[inline]
-fn evaluate_poly_batch(
-    poly: &DA,
-    a_array: &[Vec<f64>],
-    na: usize,
-    num_particles: usize,
-    out: &mut [f64],
-) {
-    // Zero the output
-    out.iter_mut().for_each(|v| *v = 0.0);
-
-    for (monomial, coeff) in poly.coeffs_iter().into_iter() {
-        let exponents = &monomial.exponents;
-
-        // Collect active variables (non-zero exponents) for this monomial
-        let mut active_vars: [(usize, u8); 6] = [(0, 0); 6];
-        let mut num_active = 0;
-        for (var_idx, &exp) in exponents.iter().enumerate() {
-            if exp != 0 && var_idx < na {
-                active_vars[num_active] = (var_idx, exp);
-                num_active += 1;
-                if num_active >= 6 {
-                    break;
-                }
-            }
-        }
-
-        // Constant monomial (no variables) — just add coefficient to all particles
-        if num_active == 0 {
-            for j in 0..num_particles {
-                out[j] += coeff;
-            }
-            continue;
-        }
-
-        #[cfg(feature = "nightly-simd")]
-        {
-            let chunks = num_particles / LANES;
-            let coeff_v = Simd::<f64, LANES>::splat(coeff);
-
-            for c in 0..chunks {
-                let base = c * LANES;
-                let mut term = coeff_v;
-
-                for a in 0..num_active {
-                    let (var_idx, exp) = active_vars[a];
-                    let vals = Simd::<f64, LANES>::from_slice(&a_array[var_idx][base..]);
-                    term *= simd_powi(vals, exp);
-                }
-
-                let current = Simd::<f64, LANES>::from_slice(&out[base..]);
-                (current + term).copy_to_slice(&mut out[base..base + LANES]);
-            }
-
-            // Scalar remainder
-            for j in (chunks * LANES)..num_particles {
-                let mut term = coeff;
-                for a in 0..num_active {
-                    let (var_idx, exp) = active_vars[a];
-                    term *= scalar_powi(a_array[var_idx][j], exp);
-                }
-                out[j] += term;
-            }
-        }
-
-        #[cfg(not(feature = "nightly-simd"))]
-        {
-            for j in 0..num_particles {
-                let mut term = coeff;
-                for a in 0..num_active {
-                    let (var_idx, exp) = active_vars[a];
-                    term *= scalar_powi(a_array[var_idx][j], exp);
-                }
-                out[j] += term;
-            }
-        }
-    }
-}
-
-/// SIMD power: compute vals^exp for small exponents via repeated multiply.
-#[cfg(feature = "nightly-simd")]
-#[inline(always)]
-fn simd_powi(vals: Simd<f64, LANES>, exp: u8) -> Simd<f64, LANES> {
-    match exp {
-        0 => Simd::<f64, LANES>::splat(1.0),
-        1 => vals,
-        2 => vals * vals,
-        3 => vals * vals * vals,
-        4 => {
-            let v2 = vals * vals;
-            v2 * v2
-        }
-        5 => {
-            let v2 = vals * vals;
-            v2 * v2 * vals
-        }
-        6 => {
-            let v2 = vals * vals;
-            v2 * v2 * v2
-        }
-        _ => {
-            // General case via repeated squaring
-            let mut result = Simd::<f64, LANES>::splat(1.0);
-            let mut base = vals;
-            let mut e = exp;
-            while e > 0 {
-                if e & 1 == 1 {
-                    result *= base;
-                }
-                base *= base;
-                e >>= 1;
-            }
-            result
-        }
-    }
-}
-
-/// Scalar power for small exponents.
-#[inline(always)]
-fn scalar_powi(val: f64, exp: u8) -> f64 {
-    match exp {
-        0 => 1.0,
-        1 => val,
-        2 => val * val,
-        3 => val * val * val,
-        4 => {
-            let v2 = val * val;
-            v2 * v2
-        }
-        5 => {
-            let v2 = val * val;
-            v2 * v2 * val
-        }
-        6 => {
-            let v2 = val * val;
-            v2 * v2 * v2
-        }
-        _ => val.powi(exp as i32),
-    }
 }
 
 /// Substitute NA Taylor-series arguments into NP Taylor-series polynomials,
@@ -390,6 +310,9 @@ fn scalar_powi(val: f64, exp: u8) -> f64 {
 /// (typically a saved map's j-th component). The output `r_array[i]` is the
 /// composition `p_array[i] ∘ a_array`, truncated automatically to the current
 /// truncation order via DA's overloaded `*` and `+`.
+///
+/// Intermediate monomial values are computed once and reused across all NR
+/// polynomials (and across terms of each polynomial).
 ///
 /// COSY's `ANM N M O` lowers to `POLVAL 1 N TWOND MM NV O TWOND` where MM is N's
 /// map padded with identity DAs for non-physical slots — see libcosy/physics/map_ops.rosy.
@@ -412,53 +335,23 @@ pub fn rosy_polval_da(
             na
         );
     }
+    if nr > p_array.len() {
+        bail!(
+            "POLVAL: polynomial array too short at index {}",
+            p_array.len()
+        );
+    }
 
     while r_array.len() < nr {
         r_array.push(DA::zero());
     }
 
+    let values = compose_monomial_values_da(&p_array[..nr], a_array, na)?;
     for i in 0..nr {
-        if i >= p_array.len() {
-            bail!("POLVAL: polynomial array too short at index {}", i);
-        }
-        r_array[i] = evaluate_da_at_da(&p_array[i], a_array, na)?;
+        r_array[i] = dot_poly_da(&p_array[i], &values)?;
     }
 
     Ok(())
-}
-
-/// Compose a single DA polynomial with NA Taylor-series substitutions.
-///
-/// For each monomial `c · x_1^{e_1} · … · x_na^{e_na}` of `poly` we form
-/// `c · args[0]^{e_1} · … · args[na-1]^{e_na}` (DA × DA), then sum across
-/// monomials. DA `*` and `+` return `Result` (truncation-buffer overflow is
-/// rare but surfaceable), so we propagate with `?` rather than panic.
-fn evaluate_da_at_da(poly: &DA, args: &[DA], na: usize) -> Result<DA> {
-    let mut result = DA::zero();
-
-    for (monomial, coeff) in poly.coeffs_iter().into_iter() {
-        let exponents = &monomial.exponents;
-        let mut term = DA::from_coeff(coeff);
-
-        for (var_idx, &exp) in exponents.iter().enumerate() {
-            if exp == 0 {
-                continue;
-            }
-            if var_idx >= na || var_idx >= args.len() {
-                bail!(
-                    "POLVAL: variable index {} out of range (NA={})",
-                    var_idx + 1,
-                    na
-                );
-            }
-            let pow = da_powi(&args[var_idx], exp)?;
-            term = (term * pow)?;
-        }
-
-        result = (result + term)?;
-    }
-
-    Ok(result)
 }
 
 /// CPOLVAL — complex-DA polynomial composition. Companion to `rosy_polval_da`
@@ -503,45 +396,255 @@ pub fn rosy_polval_cd(
         out.push(CD::zero());
     }
 
+    if nr > p_array.len() {
+        bail!(
+            "CPOLVAL: polynomial array too short at index {}",
+            p_array.len()
+        );
+    }
+
+    let values = compose_monomial_values_cd(&p_array[..nr], &a_array, na)?;
     for i in 0..nr {
-        if i >= p_array.len() {
-            bail!("CPOLVAL: polynomial array too short at index {}", i);
-        }
-        out[i] = evaluate_cd_at_cd(&p_array[i], &a_array, na)?;
+        out[i] = dot_poly_cd(&p_array[i], &values)?;
     }
     r_array.store_cd_vec(out);
 
     Ok(())
 }
 
-/// Compose a single CD polynomial with NA Taylor-series substitutions over
-/// the complex-DA algebra. Mirrors `evaluate_da_at_da` exactly — see its
-/// header for the per-monomial substitution logic.
-fn evaluate_cd_at_cd(poly: &CD, args: &[CD], na: usize) -> Result<CD> {
-    let mut result = CD::zero();
+// ============================================================================
+// Horner factorization — shared by RE, VE, DA, and CD paths
+// ============================================================================
 
-    for (monomial, coeff) in poly.coeffs_iter().into_iter() {
-        let exponents = &monomial.exponents;
-        let mut term = CD::from_coeff(coeff);
+/// Compact Horner tree for the union of nonzero monomials in `polys`.
+///
+/// Node 0 is the constant 1. Node `k>0` is node `parent[k]` times `x_{var[k]}`.
+struct HornerPlan {
+    /// compact id → original monomial index
+    ids: Vec<u32>,
+    /// compact id → parent compact id
+    parent: Vec<u32>,
+    /// compact id → variable (0-based) to multiply by
+    var: Vec<u8>,
+    /// original monomial index → compact id (`u32::MAX` if unused)
+    compact: Vec<u32>,
+}
 
-        for (var_idx, &exp) in exponents.iter().enumerate() {
-            if exp == 0 {
+fn horner_plan(polys: &[DA], na: usize) -> Result<HornerPlan> {
+    horner_plan_from_nonzero(polys.iter().map(|p| p.nonzero.as_slice()), na)
+}
+
+fn horner_plan_from_nonzero<'a>(
+    nonzero_lists: impl Iterator<Item = &'a [u32]>,
+    na: usize,
+) -> Result<HornerPlan> {
+    let rt = crate::taylor::get_runtime()?;
+    let n = rt.num_monomials;
+    let mut needed = vec![false; n];
+    needed[0] = true;
+    for nz in nonzero_lists {
+        for &i in nz {
+            let mut k = i as usize;
+            if k >= n {
                 continue;
             }
-            if var_idx >= na || var_idx >= args.len() {
-                bail!(
-                    "CPOLVAL: variable index {} out of range (NA={})",
-                    var_idx + 1,
-                    na
-                );
+            while k != 0 && !needed[k] {
+                let v = rt.horner_var[k] as usize;
+                if v >= na {
+                    bail!("POLVAL: variable index {} out of range (NA={})", v + 1, na);
+                }
+                needed[k] = true;
+                k = rt.horner_parent[k] as usize;
             }
-            let pow = cd_powi(&args[var_idx], exp)?;
-            term = (term * pow)?;
         }
-
-        result = (result + term)?;
     }
 
+    let mut compact = vec![u32::MAX; n];
+    let mut ids = Vec::new();
+    compact[0] = 0;
+    ids.push(0);
+    for k in 1..n {
+        if needed[k] {
+            compact[k] = ids.len() as u32;
+            ids.push(k as u32);
+        }
+    }
+
+    let mut parent = vec![0u32; ids.len()];
+    let mut var = vec![0u8; ids.len()];
+    for (c, &k) in ids.iter().enumerate().skip(1) {
+        let k = k as usize;
+        parent[c] = compact[rt.horner_parent[k] as usize];
+        var[c] = rt.horner_var[k];
+    }
+
+    Ok(HornerPlan {
+        ids,
+        parent,
+        var,
+        compact,
+    })
+}
+
+fn eval_polys_at_points(
+    polys: &[DA],
+    a_array: &[Vec<f64>],
+    na: usize,
+    npart: usize,
+    outs: &mut [Vec<f64>],
+) -> Result<()> {
+    if polys.is_empty() {
+        return Ok(());
+    }
+    let plan = horner_plan(polys, na)?;
+    let n_nodes = plan.ids.len();
+
+    if npart == 0 {
+        for out in outs.iter_mut().take(polys.len()) {
+            out.clear();
+        }
+        return Ok(());
+    }
+
+    let mut mval = vec![0.0; n_nodes * npart];
+    for p in 0..npart {
+        mval[p] = 1.0;
+    }
+
+    for k in 1..n_nodes {
+        let v = plan.var[k] as usize;
+        let xs = &a_array[v];
+        let o = k * npart;
+        let po = plan.parent[k] as usize * npart;
+
+        #[cfg(feature = "nightly-simd")]
+        {
+            let chunks = npart / LANES;
+            for c in 0..chunks {
+                let base = c * LANES;
+                let pv = Simd::<f64, LANES>::from_slice(&mval[po + base..]);
+                let xv = Simd::<f64, LANES>::from_slice(&xs[base..]);
+                (pv * xv).copy_to_slice(&mut mval[o + base..o + base + LANES]);
+            }
+            for p in (chunks * LANES)..npart {
+                mval[o + p] = mval[po + p] * xs[p];
+            }
+        }
+
+        #[cfg(not(feature = "nightly-simd"))]
+        {
+            for p in 0..npart {
+                mval[o + p] = mval[po + p] * xs[p];
+            }
+        }
+    }
+
+    for (i, poly) in polys.iter().enumerate() {
+        let out = &mut outs[i];
+        out.fill(0.0);
+        for &idx in &poly.nonzero {
+            let c = poly.coeffs[idx as usize];
+            if c == 0.0 {
+                continue;
+            }
+            let mk = plan.compact[idx as usize] as usize * npart;
+
+            #[cfg(feature = "nightly-simd")]
+            {
+                let chunks = npart / LANES;
+                let cv = Simd::<f64, LANES>::splat(c);
+                for ch in 0..chunks {
+                    let base = ch * LANES;
+                    let acc = Simd::<f64, LANES>::from_slice(&out[base..]);
+                    let mv = Simd::<f64, LANES>::from_slice(&mval[mk + base..]);
+                    mv.mul_add(cv, acc)
+                        .copy_to_slice(&mut out[base..base + LANES]);
+                }
+                for p in (chunks * LANES)..npart {
+                    out[p] = f64::mul_add(c, mval[mk + p], out[p]);
+                }
+            }
+
+            #[cfg(not(feature = "nightly-simd"))]
+            {
+                for p in 0..npart {
+                    out[p] = f64::mul_add(c, mval[mk + p], out[p]);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+struct DaMonomialValues {
+    compact: Vec<u32>,
+    values: Vec<DA>,
+}
+
+fn compose_monomial_values_da(polys: &[DA], args: &[DA], na: usize) -> Result<DaMonomialValues> {
+    let plan = horner_plan(polys, na)?;
+    let mut values = Vec::with_capacity(plan.ids.len());
+    values.push(DA::from_coeff(1.0));
+    for k in 1..plan.ids.len() {
+        let parent = &values[plan.parent[k] as usize];
+        let arg = &args[plan.var[k] as usize];
+        values.push((parent * arg)?);
+    }
+    Ok(DaMonomialValues {
+        compact: plan.compact,
+        values,
+    })
+}
+
+fn dot_poly_da(poly: &DA, values: &DaMonomialValues) -> Result<DA> {
+    let mut result = DA::from_coeff(poly.coeffs.first().copied().unwrap_or(0.0));
+    for &idx in &poly.nonzero {
+        if idx == 0 {
+            continue;
+        }
+        let c = poly.coeffs[idx as usize];
+        let node = values.compact[idx as usize] as usize;
+        result = (&result + &(&values.values[node] * c)?)?;
+    }
+    Ok(result)
+}
+
+struct CdMonomialValues {
+    compact: Vec<u32>,
+    values: Vec<CD>,
+}
+
+fn compose_monomial_values_cd(polys: &[CD], args: &[CD], na: usize) -> Result<CdMonomialValues> {
+    let plan = horner_plan_from_nonzero(polys.iter().map(|p| p.nonzero.as_slice()), na)?;
+    let mut values = Vec::with_capacity(plan.ids.len());
+    values.push(CD::from_coeff(num_complex::Complex64::new(1.0, 0.0)));
+    for k in 1..plan.ids.len() {
+        let parent = &values[plan.parent[k] as usize];
+        let arg = &args[plan.var[k] as usize];
+        values.push((parent * arg)?);
+    }
+    Ok(CdMonomialValues {
+        compact: plan.compact,
+        values,
+    })
+}
+
+fn dot_poly_cd(poly: &CD, values: &CdMonomialValues) -> Result<CD> {
+    let c0 = poly
+        .coeffs
+        .first()
+        .copied()
+        .unwrap_or(num_complex::Complex64::new(0.0, 0.0));
+    let mut result = CD::from_coeff(c0);
+    for &idx in &poly.nonzero {
+        if idx == 0 {
+            continue;
+        }
+        let c = poly.coeffs[idx as usize];
+        let node = values.compact[idx as usize] as usize;
+        result = (&result + &(&values.values[node] * c)?)?;
+    }
     Ok(result)
 }
 
@@ -627,38 +730,6 @@ pub fn da_powi(base: &DA, exp: u8) -> Result<DA> {
     })
 }
 
-/// Evaluate a single DA polynomial at the given real-valued point.
-///
-/// For each monomial c * x1^e1 * x2^e2 * ... we substitute the values from
-/// `args` (1-based variable indices mapped to 0-based slice positions) and
-/// sum all contributions.
-fn evaluate_da_at_re(poly: &DA, args: &[f64], na: usize) -> Result<f64> {
-    let mut result = 0.0_f64;
-
-    for (monomial, coeff) in poly.coeffs_iter().into_iter() {
-        let exponents = &monomial.exponents;
-        let mut term = coeff;
-
-        for (var_idx, &exp) in exponents.iter().enumerate() {
-            if exp == 0 {
-                continue;
-            }
-            if var_idx >= na || var_idx >= args.len() {
-                bail!(
-                    "POLVAL: variable index {} out of range (NA={})",
-                    var_idx + 1,
-                    na
-                );
-            }
-            term *= args[var_idx].powi(exp as i32);
-        }
-
-        result += term;
-    }
-
-    Ok(result)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -687,6 +758,101 @@ mod tests {
             }
         }
         assert!((x2_coeff - 1.0).abs() < 1e-12, "x2 coeff {x2_coeff}");
+        crate::taylor::cleanup_taylor();
+        Ok(())
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn polval_re_quadratic() -> anyhow::Result<()> {
+        crate::taylor::cleanup_taylor();
+        crate::taylor::init_taylor(3, 1)?;
+        let x = DA::variable(1)?;
+        let p = (&DA::from_coeff(2.0) + &(&x * 3.0)?)?;
+        let p = (&p + &(&x * &x)?)?;
+        let mut r = vec![0.0];
+        rosy_polval_re(1.0, &vec![p], 1.0, &vec![2.0], 1.0, &mut r, 1.0)?;
+        assert!((r[0] - 12.0).abs() < 1e-12, "got {}", r[0]);
+        crate::taylor::cleanup_taylor();
+        Ok(())
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn polval_ve_matches_re_and_closed_form() -> anyhow::Result<()> {
+        crate::taylor::cleanup_taylor();
+        crate::taylor::init_taylor(4, 2)?;
+        let x = DA::variable(1)?;
+        let y = DA::variable(2)?;
+        let p = (&DA::from_coeff(3.0) + &((&(&x * &x)? * &y)?))?;
+        let xs = vec![1.0, 2.0, -1.0];
+        let ys = vec![4.0, 5.0, 6.0];
+        let mut out = vec![vec![]];
+        rosy_polval_ve(
+            1.0,
+            &[p.clone()],
+            1,
+            &[xs.clone(), ys.clone()],
+            2,
+            &mut out,
+            1,
+        )?;
+        for i in 0..3 {
+            let mut r = vec![0.0];
+            rosy_polval_re(
+                1.0,
+                &vec![p.clone()],
+                1.0,
+                &vec![xs[i], ys[i]],
+                2.0,
+                &mut r,
+                1.0,
+            )?;
+            let expect = xs[i] * xs[i] * ys[i] + 3.0;
+            assert!(
+                (out[0][i] - r[0]).abs() < 1e-12,
+                "ve {} vs re {}",
+                out[0][i],
+                r[0]
+            );
+            assert!((r[0] - expect).abs() < 1e-12, "re {} vs {expect}", r[0]);
+        }
+        crate::taylor::cleanup_taylor();
+        Ok(())
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn polval_da_compose_square() -> anyhow::Result<()> {
+        crate::taylor::cleanup_taylor();
+        crate::taylor::init_taylor(3, 2)?;
+        let x = DA::variable(1)?;
+        let y = DA::variable(2)?;
+        let p = (&x * &x)?;
+        let a1 = (&DA::from_coeff(1.0) + &y)?;
+        let mut r = Vec::new();
+        rosy_polval_da(1.0, &[p], 1, &[a1, DA::zero()], 2, &mut r, 1)?;
+        // (1+y)^2 = 1 + 2y + y^2
+        assert!((r[0].constant_part() - 1.0).abs() < 1e-12);
+        let y_idx = crate::taylor::get_runtime()?.variable_indices[1] as usize;
+        assert!((r[0].coeffs[y_idx] - 2.0).abs() < 1e-12, "2y coeff");
+        crate::taylor::cleanup_taylor();
+        Ok(())
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn polval_two_polys_share_horner_nodes() -> anyhow::Result<()> {
+        crate::taylor::cleanup_taylor();
+        crate::taylor::init_taylor(3, 2)?;
+        let x = DA::variable(1)?;
+        let y = DA::variable(2)?;
+        let p1 = (&x * &y)?;
+        let p2 = (&x * &x)?;
+        let mut r = vec![0.0, 0.0];
+        rosy_polval_re(1.0, &vec![p1, p2], 2.0, &vec![3.0, 4.0], 2.0, &mut r, 2.0)?;
+        assert!((r[0] - 12.0).abs() < 1e-12);
+        assert!((r[1] - 9.0).abs() < 1e-12);
         crate::taylor::cleanup_taylor();
         Ok(())
     }

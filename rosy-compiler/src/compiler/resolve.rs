@@ -13,12 +13,12 @@
 //! 4. Report cycles as errors
 
 use crate::errors::RosyError;
-use crate::program::Program;
 use crate::program::expressions::*;
 use crate::program::statements::*;
+use crate::program::Program;
 use crate::syntax_config;
 use crate::transpile::{TranspileableExpr, TranspileableStatement};
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use rosy_lib::RosyType;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -179,6 +179,9 @@ pub struct GraphNode {
     pub declared_at: Option<SourceLocation>,
     /// Where the assignment that established the type inference rule is.
     pub assigned_at: Option<SourceLocation>,
+    /// Fox `VARIABLE X mem d1 d2…` extra dimension count. Unused arrays with
+    /// extra dims stay ANY cells (COSY scratch/maps); assigned arrays infer.
+    pub extra_dims: usize,
 }
 
 // ─── Scope Context (used during graph construction) ─────────────────────────
@@ -271,6 +274,9 @@ impl TypeResolver {
             if let Some(loc) = &node.assigned_at {
                 eprintln!("     assigned:  {loc}");
             }
+            if node.extra_dims > 0 {
+                eprintln!("     extra_dims: {}", node.extra_dims);
+            }
             if !node.depends_on.is_empty() {
                 let mut deps: Vec<String> = node.depends_on.iter().map(|d| d.to_string()).collect();
                 deps.sort();
@@ -298,6 +304,7 @@ impl TypeResolver {
                     resolved: Some(*t),
                     declared_at,
                     assigned_at: None,
+                    extra_dims: 0,
                 },
             );
         } else {
@@ -309,6 +316,7 @@ impl TypeResolver {
                 resolved: None,
                 declared_at,
                 assigned_at: None,
+                extra_dims: 0,
             });
         }
     }
@@ -442,10 +450,7 @@ impl TypeResolver {
                             }
                         }
                         Some(t) => {
-                            let refine = node
-                                .resolved
-                                .map(|cur| cur.is_any())
-                                .unwrap_or(true);
+                            let refine = node.resolved.map(|cur| cur.is_any()).unwrap_or(true);
                             if refine {
                                 node.resolved = Some(t);
                                 node.rule = ResolutionRule::InferredFrom {
@@ -529,16 +534,33 @@ impl TypeResolver {
                 };
 
                 if is_unused {
-                    // Default unresolved variables and arguments to RE (standard COSY behavior).
-                    // Fall through to the dependents-decrement block below so any node
-                    // depending on this slot (e.g. a function body that references an
-                    // uncalled function's argument) still progresses through the queue.
+                    // 0-d untyped fox scalars default to RE. Extra-dimension
+                    // fox arrays that were never assigned stay ANY cells so
+                    // COSY maps/scratch (written only by library procedures)
+                    // can still hold DA.
+                    let extra_dims = self.nodes.get(&slot).map(|n| n.extra_dims).unwrap_or(0);
+                    let fox_array = extra_dims > 0
+                        && self
+                            .nodes
+                            .get(&slot)
+                            .and_then(|n| n.declared_at.as_ref())
+                            .and_then(|l| l.file.as_deref())
+                            .is_some_and(syntax_config::is_fox_path);
+                    let default_type = if fox_array {
+                        RosyType::new(rosy_lib::RosyBaseType::ANY, extra_dims)
+                    } else {
+                        RosyType::RE()
+                    };
+                    let reason = if fox_array {
+                        "unassigned fox array defaults to ANY cells"
+                    } else {
+                        "untyped variables default to RE"
+                    };
                     let node = self.nodes.get_mut(&slot).unwrap();
-                    let default_type = RosyType::RE();
                     node.resolved = Some(default_type);
                     node.rule = ResolutionRule::InferredFrom {
                         recipe: ExprRecipe::Literal(default_type),
-                        reason: "untyped variables default to RE".to_string(),
+                        reason: reason.to_string(),
                     };
                     warned_slots.insert(slot.clone());
                 } else {
@@ -784,7 +806,13 @@ impl TypeResolver {
                 match self.evaluate_recipe(&recipe) {
                     Ok(t) => t,
                     Err(_) if self_referential && syntax_config::is_cosy_syntax() => {
-                        RosyType::RE()
+                        let extra = self.nodes.get(slot).map(|n| n.extra_dims).unwrap_or(0);
+                        if extra > 0 {
+                            // `SSL(I) := SSL(I) + DA(...)` — COSY cell array, not a real.
+                            RosyType::new(rosy_lib::RosyBaseType::ANY, extra)
+                        } else {
+                            RosyType::RE()
+                        }
                     }
                     Err(e) => {
                         let hint = if self_referential {

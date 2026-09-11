@@ -7,4 +7,4 @@
 
 cd $PBS_O_WORKDIR
 COSY_BIN="$PBS_O_WORKDIR/../../cosy"
-exec ./run_local.sh --cosy "$COSY_BIN"
+exec ./run_local.sh --cosy "$COSY_BIN" --scale 500000

@@ -23,15 +23,16 @@
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/math/polval.rosy"))]
 //! ```
 
-use anyhow::{Context, Error, Result, ensure};
+use anyhow::{ensure, Context, Error, Result};
 use std::collections::BTreeSet;
 
 use crate::{
     ast::*,
-    program::expressions::Expr,
+    program::{expressions::Expr, statements::SourceLocation},
+    resolve::{ExprRecipe, ResolutionRule, ScopeContext, TypeResolver},
     transpile::{
-        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
-        TranspileableStatement, add_context_to_all,
+        add_context_to_all, TranspilationInputContext, TranspilationOutput, Transpile,
+        TranspileableExpr, TranspileableStatement,
     },
 };
 use rosy_lib::RosyBaseType;
@@ -159,8 +160,16 @@ impl Transpile for PolvalStatement {
             .a_expr
             .type_of(context)
             .map_err(|e| vec![e.context("...while determining type of A in POLVAL")])?;
+        let r_type = self
+            .r_expr
+            .type_of(context)
+            .map_err(|e| vec![e.context("...while determining type of R in POLVAL")])?;
+        let p_type = self
+            .p_expr
+            .type_of(context)
+            .map_err(|e| vec![e.context("...while determining type of P in POLVAL")])?;
 
-        let polval_fn = if a_type.is_any() {
+        let polval_fn = if a_type.is_any() || r_type.is_any() || p_type.is_any() {
             "rosy_polval_any"
         } else if a_type.base_type == RosyBaseType::DA && a_type.dimensions > 0 {
             "rosy_polval_da"
@@ -215,4 +224,42 @@ impl Transpile for PolvalStatement {
     }
 }
 
-impl TranspileableStatement for PolvalStatement {}
+impl TranspileableStatement for PolvalStatement {
+    fn wire_inference_edges(
+        &self,
+        resolver: &mut TypeResolver,
+        ctx: &mut ScopeContext,
+        source_location: SourceLocation,
+    ) -> Option<Result<()>> {
+        let r_name = self.r_expr.as_bare_variable_name()?;
+        let a_name = self.a_expr.as_bare_variable_name()?;
+        let r_slot = ctx.variables.get(r_name)?.clone();
+        let a_slot = ctx.variables.get(a_name)?.clone();
+        if r_slot == a_slot {
+            return Some(Ok(()));
+        }
+        let a_ty = resolver.nodes.get(&a_slot).and_then(|n| n.resolved);
+        let Some(node) = resolver.nodes.get_mut(&r_slot) else {
+            return Some(Ok(()));
+        };
+        if !matches!(node.rule, ResolutionRule::Unresolved) {
+            return Some(Ok(()));
+        }
+        if let Some(a_ty) = a_ty {
+            node.rule = ResolutionRule::InferredFrom {
+                recipe: ExprRecipe::Literal(a_ty),
+                reason: "POLVAL result matches argument array".to_string(),
+            };
+            node.resolved = Some(a_ty);
+            node.assigned_at = Some(source_location);
+        } else {
+            node.rule = ResolutionRule::Mirror {
+                source: a_slot.clone(),
+                reason: "POLVAL result matches argument array".to_string(),
+            };
+            node.depends_on.insert(a_slot);
+            node.assigned_at = Some(source_location);
+        }
+        Some(Ok(()))
+    }
+}

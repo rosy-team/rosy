@@ -8,7 +8,11 @@ BEGIN;
     A(1) := 2;
     A(2) := 3;
     POLVAL 1 P 2 A 2 R 2;
-    WRITE 6 'polval ok';
+    IF ABS(R(1)-3) < 1e-10;
+        IF ABS(R(2)-4) < 1e-10;
+            WRITE 6 'polval ok';
+        ENDIF;
+    ENDIF;
 END;
 
 ======= expect

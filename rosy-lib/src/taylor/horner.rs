@@ -13,7 +13,7 @@ use std::simd::StdFloat;
 
 use super::da::{DA, DACoefficient, bitset_pool_alloc, bitset_pool_return, multiply_truncated_into};
 use super::config::{get_runtime, MULT_INVALID, TaylorRuntime};
-use super::scratch::{ScratchFrame, scratch_alloc, scratch_reserve};
+use super::scratch::{ScratchScope, scratch_reserve};
 
 // ============================================================================
 // FixedMultiplier — Cache-optimized multiply for a fixed RHS operand
@@ -203,13 +203,13 @@ impl DA<f64> {
         let full_order = rt.config.max_order;
         let words = (n + 63) / 64;
 
-        let _frame = ScratchFrame::enter();
-        let acc_ptr = scratch_alloc(n)?;
-        let tmp_ptr = scratch_alloc(n)?;
+        let mut scope = ScratchScope::enter();
+        let acc_ptr = scope.alloc(n);
+        let tmp_ptr = scope.alloc(n);
         let mut written = bitset_pool_alloc(words);
 
-        // SAFETY: both pointers are `n` words from the bump arena; `_frame`
-        // keeps the cursor from being reused until we copy out.
+        // SAFETY: both pointers are `n` words (bump or heap fallback); `scope`
+        // keeps them alive until we copy out.
         let result = unsafe {
             let acc = std::slice::from_raw_parts_mut(acc_ptr, n);
             let tmp = std::slice::from_raw_parts_mut(tmp_ptr, n);
@@ -333,7 +333,7 @@ impl DA<Complex64> {
 
         let rt = get_runtime()?;
         let full_order = rt.config.max_order;
-        let _slots = scratch_reserve(2 * rt.num_monomials)?;
+        let _slots = scratch_reserve(2 * rt.num_monomials);
 
         let mut result = DA::from_coeff(taylor_coeffs[n - 1]);
         for i in (0..n - 1).rev() {

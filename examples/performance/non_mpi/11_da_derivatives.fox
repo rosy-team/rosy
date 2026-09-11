@@ -68,6 +68,7 @@ CPUSEC T2 ;
 
 DT := T2 - T1 ;
 WRITE 6 'Result constant part: ' CONS(F) ;
+WRITE 6 'Result: ' CONS(F) ;
 WRITE 6 'CPUSEC: ' DT ;
 
 END ;
