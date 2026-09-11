@@ -1,6 +1,6 @@
 [package]
 name = "rosy-cli"
-version = "1.13.2"
+version = "1.13.3"
 edition = "2024"
 authors = ["hiibolt <rust@hiibolt.com>"]
 license = "MIT"

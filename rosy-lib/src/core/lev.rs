@@ -5,7 +5,8 @@
 //!
 //! 1. Reduce to upper Hessenberg form via Householder reflections.
 //! 2. Iterate QR steps with implicit double shifts until convergence.
-//! 3. Extract eigenvalues; back-substitute for eigenvectors.
+//! 3. Extract eigenvalues from the real Schur form.
+//! 4. Recover eigenvectors as a nullspace of `A − λI`.
 //!
 //! When the i-th eigenvalue is complex (positive imaginary part),
 //! columns i and i+1 of V contain the real and imaginary parts of
@@ -47,24 +48,15 @@ pub fn rosy_lev(
     }
     let original = h.clone();
 
-    // Accumulator for similarity transforms (will hold eigenvectors of original matrix)
-    let mut q_accum = eye(n);
+    // Eigenvalues only: skip accumulating the Schur orthogonal factor.
+    hessenberg_reduce(&mut h, None, n);
+    francis_qr(&mut h, None, n)?;
 
-    // 1. Reduce to upper Hessenberg form: Q^T A Q = H
-    hessenberg_reduce(&mut h, &mut q_accum, n);
-
-    // 2. Francis QR iteration on H, accumulating transforms into q_accum
-    francis_qr(&mut h, &mut q_accum, n)?;
-
-    // 3. Extract eigenvalues from the quasi-upper-triangular H
     let mut eig_real = vec![0.0; alloc_dim];
     let mut eig_imag = vec![0.0; alloc_dim];
     extract_eigenvalues(&h, n, &mut eig_real, &mut eig_imag);
 
-    // 4. Recover eigenvectors directly from the original matrix.  A real
-    // Schur 2x2 block is not generally of the special [[a,b],[-b,a]] form,
-    // so seeding its real/imaginary vectors as coordinate axes (the former
-    // implementation) does not solve the eigenvector equation.
+    // Nullspace of A−λI after QR has supplied λ.
     let mut eigvecs = vec![vec![0.0; alloc_dim]; alloc_dim];
     let mut col = 0;
     while col < n {
@@ -172,17 +164,9 @@ fn complex_null_vector(matrix: &[Vec<f64>], lambda: Complex64) -> Vec<Complex64>
     vector
 }
 
-fn eye(n: usize) -> Vec<Vec<f64>> {
-    let mut m = vec![vec![0.0; n]; n];
-    for i in 0..n {
-        m[i][i] = 1.0;
-    }
-    m
-}
-
 /// Reduce A to upper Hessenberg form via Householder reflections.
-/// Accumulates transforms: q_accum = q_accum * P1 * P2 * ...
-fn hessenberg_reduce(a: &mut Vec<Vec<f64>>, q: &mut Vec<Vec<f64>>, n: usize) {
+/// When `q` is `Some`, accumulates transforms: q = q * P1 * P2 * ...
+fn hessenberg_reduce(a: &mut Vec<Vec<f64>>, mut q: Option<&mut Vec<Vec<f64>>>, n: usize) {
     for k in 0..n.saturating_sub(2) {
         // Build Householder vector for column k, rows k+1..n
         let mut x = vec![0.0; n - k - 1];
@@ -230,15 +214,16 @@ fn hessenberg_reduce(a: &mut Vec<Vec<f64>>, q: &mut Vec<Vec<f64>>, n: usize) {
             }
         }
 
-        // Accumulate into Q: Q <- Q * P
-        for i in 0..n {
-            let mut dot = 0.0;
-            for j in 0..x.len() {
-                dot += q[i][k + 1 + j] * x[j];
-            }
-            let two_dot = 2.0 * dot;
-            for j in 0..x.len() {
-                q[i][k + 1 + j] -= two_dot * x[j];
+        if let Some(q) = q.as_deref_mut() {
+            for i in 0..n {
+                let mut dot = 0.0;
+                for j in 0..x.len() {
+                    dot += q[i][k + 1 + j] * x[j];
+                }
+                let two_dot = 2.0 * dot;
+                for j in 0..x.len() {
+                    q[i][k + 1 + j] -= two_dot * x[j];
+                }
             }
         }
     }
@@ -246,7 +231,7 @@ fn hessenberg_reduce(a: &mut Vec<Vec<f64>>, q: &mut Vec<Vec<f64>>, n: usize) {
 
 /// Francis QR iteration with implicit double shifts.
 /// Converges H to quasi-upper-triangular (real Schur) form.
-fn francis_qr(h: &mut Vec<Vec<f64>>, q: &mut Vec<Vec<f64>>, n: usize) -> Result<()> {
+fn francis_qr(h: &mut Vec<Vec<f64>>, mut q: Option<&mut Vec<Vec<f64>>>, n: usize) -> Result<()> {
     let max_iter = 100 * n;
     let mut p = n; // active submatrix is rows/cols 0..p
 
@@ -288,7 +273,7 @@ fn francis_qr(h: &mut Vec<Vec<f64>>, q: &mut Vec<Vec<f64>>, n: usize) -> Result<
         }
 
         // Wilkinson shift from bottom-right 2×2
-        implicit_qr_step(h, q, l, p, n);
+        implicit_qr_step(h, q.as_deref_mut(), l, p, n);
     }
 
     // If we didn't fully converge, return what we have — eigenvalues may be approximate
@@ -308,7 +293,13 @@ fn is_2x2_converged(h: &Vec<Vec<f64>>, p: usize) -> bool {
 }
 
 /// Single implicit QR step with Wilkinson shift on H[l..p, l..p].
-fn implicit_qr_step(h: &mut Vec<Vec<f64>>, q: &mut Vec<Vec<f64>>, l: usize, p: usize, n: usize) {
+fn implicit_qr_step(
+    h: &mut Vec<Vec<f64>>,
+    mut q: Option<&mut Vec<Vec<f64>>>,
+    l: usize,
+    p: usize,
+    n: usize,
+) {
     // Wilkinson shift: eigenvalues of bottom-right 2×2
     let a = h[p - 2][p - 2];
     let b = h[p - 2][p - 1];
@@ -365,18 +356,19 @@ fn implicit_qr_step(h: &mut Vec<Vec<f64>>, q: &mut Vec<Vec<f64>>, l: usize, p: u
             }
         }
 
-        // Accumulate into Q: Q <- Q * P
-        for i in 0..n {
-            let mut dot = v[0] * q[i][k];
-            dot += v[1] * q[i][k + 1];
-            if k + 2 < p {
-                dot += v[2] * q[i][k + 2];
-            }
-            let bd = beta * dot;
-            q[i][k] -= bd * v[0];
-            q[i][k + 1] -= bd * v[1];
-            if k + 2 < p {
-                q[i][k + 2] -= bd * v[2];
+        if let Some(q) = q.as_deref_mut() {
+            for i in 0..n {
+                let mut dot = v[0] * q[i][k];
+                dot += v[1] * q[i][k + 1];
+                if k + 2 < p {
+                    dot += v[2] * q[i][k + 2];
+                }
+                let bd = beta * dot;
+                q[i][k] -= bd * v[0];
+                q[i][k + 1] -= bd * v[1];
+                if k + 2 < p {
+                    q[i][k + 2] -= bd * v[2];
+                }
             }
         }
 

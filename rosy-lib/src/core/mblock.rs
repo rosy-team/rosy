@@ -3,9 +3,8 @@
 //! Transforms a real matrix with distinct eigenvalues to 2x2/1x1
 //! block-diagonal form using its real eigenvector basis.
 //!
-//! This follows COSY's `MBLOC`/`EVPREP`: complex conjugate pairs are placed
-//! first, real eigenvectors second, and each adjacent pair is symplectically
-//! normalized before the inverse is formed.
+//! Complex conjugate pairs are placed first, then real eigenvectors.
+//! Only conjugate pairs are scaled to a symplectic (q, p) pairing.
 
 use anyhow::{Result, bail};
 
@@ -28,13 +27,15 @@ pub fn rosy_mblock(
 
     let (_eig_real, eig_imag, eigvecs) = super::lev::rosy_lev(&matrix, n, n)?;
 
-    // EVPREP ordering: complete complex pairs first, then real roots.
+    // Complex pairs first, then real roots.
     let mut columns = Vec::with_capacity(n);
+    let mut complex_cols = 0;
     let mut col = 0;
     while col < n {
         if eig_imag[col].abs() >= 1e-10 && col + 1 < n {
             columns.push(col);
             columns.push(col + 1);
+            complex_cols += 2;
             col += 2;
         } else {
             col += 1;
@@ -57,16 +58,16 @@ pub fn rosy_mblock(
         }
     }
 
-    // COSY EVPREP normalization.  Besides making T symplectic for a
-    // symplectic input map, the sign of FAC selects ν versus 1-ν.
-    for pair_col in (0..n.saturating_sub(1)).step_by(2) {
+    // Scale only conjugate pairs; skip a ~0 symplectic factor rather than
+    // dividing by 1e-10 (which can explode a leftover real column).
+    for pair_col in (0..complex_cols).step_by(2) {
         let mut factor = 0.0;
         for row in (0..n.saturating_sub(1)).step_by(2) {
             factor += transform[row][pair_col] * transform[row + 1][pair_col + 1]
                 - transform[row][pair_col + 1] * transform[row + 1][pair_col];
         }
         if factor.abs() < 1e-10 {
-            factor = 1e-10;
+            continue;
         }
         for row in 0..n {
             transform[row][pair_col + 1] /= factor;

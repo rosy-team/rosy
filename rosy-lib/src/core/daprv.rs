@@ -137,8 +137,7 @@ fn format_daprv(
         )
     });
 
-    // COSY transposes the visual layout: each monomial is one row and each
-    // map component occupies one G14.7 field in that row.
+    // One row per monomial; each component is one G14.7 field.
     let nv = daprv_exponent_digits(max_vars);
     let components = num_components.min(array.len());
     for monomial in &all_monomials {
@@ -185,6 +184,75 @@ fn parse_daprv_coefficient(field: &str) -> Result<f64> {
         .with_context(|| format!("Invalid DAPRV coefficient field '{field}'"))
 }
 
+fn exponent_token_is_digits(token: &str, nv: usize) -> bool {
+    !token.is_empty()
+        && token.len() <= nv.max(1)
+        && token.chars().all(|c| c.is_ascii_digit())
+}
+
+/// COSY row: optional leading pad, `components` G14.7 fields, then `nv` digit exponents.
+fn is_cosy_daprv_row(line: &str, components: usize, nv: usize) -> bool {
+    let line = line.trim_end();
+    let body = line.strip_prefix(' ').unwrap_or(line);
+    let coeff_end = 14 * components;
+    if body.len() < coeff_end {
+        return false;
+    }
+    for i in 0..components {
+        let field = &body[i * 14..(i + 1) * 14];
+        if field.chars().all(|c| c == '*') {
+            continue;
+        }
+        if parse_daprv_coefficient(field).is_err() {
+            return false;
+        }
+    }
+    let rest = body[coeff_end..].trim();
+    rest.len() == nv && rest.chars().all(|c| c.is_ascii_digit())
+}
+
+/// Legacy Rosy row: whitespace-separated coefficient and exponent token.
+fn is_legacy_daprv_row(line: &str, nv: usize) -> bool {
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    tokens.len() >= 2
+        && parse_daprv_coefficient(tokens[0]).is_ok()
+        && exponent_token_is_digits(tokens[1], nv)
+}
+
+fn parse_cosy_daprv_row(line: &str, components: usize, nv: usize) -> Result<(Monomial, Vec<f64>)> {
+    let line = line.trim_end();
+    let body = line.strip_prefix(' ').unwrap_or(line);
+    let coeff_end = 14 * components;
+    if body.len() < coeff_end {
+        bail!("DAPRV row is too short for {components} components: '{line}'");
+    }
+    let exponent_token = body[coeff_end..]
+        .split_whitespace()
+        .next()
+        .context("DAPRV row is missing its exponent field")?;
+    if !exponent_token_is_digits(exponent_token, nv) && exponent_token.len() != nv {
+        bail!("DAPRV row has a malformed exponent field '{exponent_token}'");
+    }
+    let monomial = daprv_exponents(exponent_token, nv);
+    let mut coeffs = Vec::with_capacity(components);
+    for i in 0..components {
+        coeffs.push(parse_daprv_coefficient(&body[i * 14..(i + 1) * 14])?);
+    }
+    Ok((monomial, coeffs))
+}
+
+fn parse_legacy_daprv_row(line: &str, nv: usize) -> Result<(Monomial, f64)> {
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    if tokens.len() < 2 {
+        bail!("Legacy DAPRV row needs a coefficient and an exponent: '{line}'");
+    }
+    if !exponent_token_is_digits(tokens[1], nv) {
+        bail!("Legacy DAPRV row has a malformed exponent field '{}'", tokens[1]);
+    }
+    let coeff = parse_daprv_coefficient(tokens[0])?;
+    Ok((daprv_exponents(tokens[1], nv), coeff))
+}
+
 /// Read an array of DA vectors from COSY DAPRV format.
 ///
 /// Arguments:
@@ -228,11 +296,17 @@ pub fn rosy_darev(
             break line;
         }
     };
-    let cosy_row_width = 1 + 14 * components + 1 + nv;
 
-    if first_data_line.trim_end().len() != cosy_row_width {
-        // Backward compatibility for files produced by older Rosy versions,
-        // which wrote one single-coefficient block per component.
+    let use_cosy = is_cosy_daprv_row(&first_data_line, components, nv);
+    let use_legacy = is_legacy_daprv_row(&first_data_line, nv);
+    if !use_cosy && !use_legacy {
+        bail!(
+            "DAREV could not recognize DAPRV layout in '{}'",
+            first_data_line.trim_end()
+        );
+    }
+
+    if use_legacy && !use_cosy {
         let mut comp_idx = 0;
         let mut line = first_data_line;
         loop {
@@ -242,41 +316,25 @@ pub fn rosy_darev(
                     break;
                 }
             } else if !line.trim().is_empty() {
-                let tokens: Vec<&str> = line.split_whitespace().collect();
-                if tokens.len() >= 2 {
-                    let coeff = parse_daprv_coefficient(tokens[0])?;
-                    let monomial = daprv_exponents(tokens[1], nv);
-                    if coeff.abs() > 1e-15 {
-                        array[comp_idx].set_coeff(monomial, coeff);
-                    }
+                let (monomial, coeff) = parse_legacy_daprv_row(&line, nv)?;
+                if coeff.abs() > 1e-15 {
+                    array[comp_idx].set_coeff(monomial, coeff);
                 }
             }
             line = crate::core::file_io::rosy_read_from_unit(unit)
                 .context("Failed to read legacy Rosy DAPRV data in DAREV")?;
         }
     } else {
-        // Native COSY layout: one fixed-width row containing every component.
         let mut line = first_data_line;
         loop {
             if is_daprv_separator(&line) {
                 break;
             }
             if !line.trim().is_empty() {
-                let coeff_end = 1 + 14 * components;
-                if line.len() < coeff_end {
-                    bail!("DAPRV row is too short for {components} components: '{line}'");
-                }
-                let exponent_token = line[coeff_end..]
-                    .split_whitespace()
-                    .next()
-                    .context("DAPRV row is missing its exponent field")?;
-                let monomial = daprv_exponents(exponent_token, nv);
-
-                for (comp_idx, component) in array.iter_mut().enumerate().take(components) {
-                    let start = 1 + 14 * comp_idx;
-                    let coeff = parse_daprv_coefficient(&line[start..start + 14])?;
+                let (monomial, coeffs) = parse_cosy_daprv_row(&line, components, nv)?;
+                for (comp_idx, coeff) in coeffs.into_iter().enumerate() {
                     if coeff.abs() > 1e-15 {
-                        component.set_coeff(monomial, coeff);
+                        array[comp_idx].set_coeff(monomial, coeff);
                     }
                 }
             }
@@ -743,5 +801,20 @@ mod tests {
         assert!(exponents[1..].iter().all(|&e| e == 0));
 
         cleanup_taylor();
+    }
+
+    #[test]
+    fn layout_detection_prefers_cosy_columns_over_line_length() {
+        let cosy = "  0.9999439    -0.1785528E-03-0.1059182E-01 0.1891319E-05 0.0000000E+00 100000";
+        assert!(is_cosy_daprv_row(cosy, 5, 6));
+        assert!(!is_legacy_daprv_row(cosy, 6));
+
+        let legacy = "  0.9999439 100000";
+        assert!(!is_cosy_daprv_row(legacy, 5, 6));
+        assert!(is_legacy_daprv_row(legacy, 6));
+
+        let garbage = "hello world";
+        assert!(!is_cosy_daprv_row(garbage, 5, 6));
+        assert!(!is_legacy_daprv_row(garbage, 6));
     }
 }
