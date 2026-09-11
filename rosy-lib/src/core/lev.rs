@@ -5,13 +5,15 @@
 //!
 //! 1. Reduce to upper Hessenberg form via Householder reflections.
 //! 2. Iterate QR steps with implicit double shifts until convergence.
-//! 3. Extract eigenvalues; back-substitute for eigenvectors.
+//! 3. Extract eigenvalues from the real Schur form.
+//! 4. Recover eigenvectors as a nullspace of `A − λI`.
 //!
 //! When the i-th eigenvalue is complex (positive imaginary part),
 //! columns i and i+1 of V contain the real and imaginary parts of
 //! the corresponding eigenvector (COSY convention).
 
 use anyhow::Result;
+use num_complex::Complex64;
 
 /// Compute eigenvalues and eigenvectors of the n×n leading submatrix of `matrix`.
 ///
@@ -31,7 +33,9 @@ pub fn rosy_lev(
         return Ok((vec![0.0; alloc_dim], vec![0.0; alloc_dim], empty_matrix));
     }
 
-    // Extract n×n working copy
+    // Extract n×n working copy.  Keep the original matrix because the
+    // eigenvectors are most robustly recovered from (A - lambda I)v = 0
+    // after the QR iteration has supplied the eigenvalues.
     let mut h = vec![vec![0.0; n]; n];
     for i in 0..n {
         for j in 0..n {
@@ -42,49 +46,127 @@ pub fn rosy_lev(
             };
         }
     }
+    let original = h.clone();
 
-    // Accumulator for similarity transforms (will hold eigenvectors of original matrix)
-    let mut q_accum = eye(n);
+    // Eigenvalues only: skip accumulating the Schur orthogonal factor.
+    hessenberg_reduce(&mut h, None, n);
+    francis_qr(&mut h, None, n)?;
 
-    // 1. Reduce to upper Hessenberg form: Q^T A Q = H
-    hessenberg_reduce(&mut h, &mut q_accum, n);
-
-    // 2. Francis QR iteration on H, accumulating transforms into q_accum
-    francis_qr(&mut h, &mut q_accum, n)?;
-
-    // 3. Extract eigenvalues from the quasi-upper-triangular H
     let mut eig_real = vec![0.0; alloc_dim];
     let mut eig_imag = vec![0.0; alloc_dim];
     extract_eigenvalues(&h, n, &mut eig_real, &mut eig_imag);
 
-    // 4. Compute eigenvectors by back-substitution on the Schur form,
-    //    then transform back to original basis via q_accum.
-    let eigvecs_schur = schur_eigenvectors(&h, &eig_real, &eig_imag, n);
-
-    // Transform: V = Q * V_schur
+    // Nullspace of A−λI after QR has supplied λ.
     let mut eigvecs = vec![vec![0.0; alloc_dim]; alloc_dim];
-    for i in 0..n {
-        for j in 0..n {
-            let mut s = 0.0;
-            for k in 0..n {
-                s += q_accum[i][k] * eigvecs_schur[k][j];
+    let mut col = 0;
+    while col < n {
+        let lambda = Complex64::new(eig_real[col], eig_imag[col]);
+        let vector = complex_null_vector(&original, lambda);
+        if eig_imag[col].abs() >= 1e-14 && col + 1 < n {
+            for row in 0..n {
+                eigvecs[row][col] = vector[row].re;
+                eigvecs[row][col + 1] = vector[row].im;
             }
-            eigvecs[i][j] = s;
+            col += 2;
+        } else {
+            for row in 0..n {
+                eigvecs[row][col] = vector[row].re;
+            }
+            col += 1;
         }
     }
 
     Ok((eig_real, eig_imag, eigvecs))
 }
 
-fn eye(n: usize) -> Vec<Vec<f64>> {
-    let mut m = vec![vec![0.0; n]; n];
-    for i in 0..n { m[i][i] = 1.0; }
-    m
+/// Find a right null vector of `A - lambda I` by rank-revealing Gaussian
+/// elimination.  MBLOCK requires distinct eigenvalues, so forcing at most
+/// `n - 1` pivots leaves the one-dimensional eigenspace as the free column.
+fn complex_null_vector(matrix: &[Vec<f64>], lambda: Complex64) -> Vec<Complex64> {
+    let n = matrix.len();
+    if n == 0 {
+        return Vec::new();
+    }
+
+    let mut a = vec![vec![Complex64::new(0.0, 0.0); n]; n];
+    let mut scale = 0.0_f64;
+    for row in 0..n {
+        for col in 0..n {
+            a[row][col] = Complex64::new(matrix[row][col], 0.0);
+            if row == col {
+                a[row][col] -= lambda;
+            }
+            scale = scale.max(a[row][col].norm());
+        }
+    }
+
+    let tolerance = 1e-12 * scale.max(1.0);
+    let mut pivot_columns = Vec::with_capacity(n.saturating_sub(1));
+    let mut pivot_row = 0;
+    for col in 0..n {
+        if pivot_row >= n.saturating_sub(1) {
+            break;
+        }
+
+        let mut best_row = pivot_row;
+        let mut best_norm = a[pivot_row][col].norm();
+        for row in (pivot_row + 1)..n {
+            let candidate = a[row][col].norm();
+            if candidate > best_norm {
+                best_norm = candidate;
+                best_row = row;
+            }
+        }
+        if best_norm <= tolerance {
+            continue;
+        }
+
+        a.swap(pivot_row, best_row);
+        let pivot = a[pivot_row][col];
+        for row in (pivot_row + 1)..n {
+            let factor = a[row][col] / pivot;
+            a[row][col] = Complex64::new(0.0, 0.0);
+            for trailing_col in (col + 1)..n {
+                let pivot_value = a[pivot_row][trailing_col];
+                a[row][trailing_col] -= factor * pivot_value;
+            }
+        }
+        pivot_columns.push(col);
+        pivot_row += 1;
+    }
+
+    let free_col = (0..n)
+        .rev()
+        .find(|col| !pivot_columns.contains(col))
+        .unwrap_or(n - 1);
+    let mut vector = vec![Complex64::new(0.0, 0.0); n];
+    vector[free_col] = Complex64::new(1.0, 0.0);
+
+    for row in (0..pivot_columns.len()).rev() {
+        let col = pivot_columns[row];
+        let mut sum = Complex64::new(0.0, 0.0);
+        for trailing_col in (col + 1)..n {
+            sum += a[row][trailing_col] * vector[trailing_col];
+        }
+        vector[col] = -sum / a[row][col];
+    }
+
+    let norm = vector
+        .iter()
+        .map(|value| value.norm_sqr())
+        .sum::<f64>()
+        .sqrt();
+    if norm > 0.0 {
+        for value in &mut vector {
+            *value /= norm;
+        }
+    }
+    vector
 }
 
 /// Reduce A to upper Hessenberg form via Householder reflections.
-/// Accumulates transforms: q_accum = q_accum * P1 * P2 * ...
-fn hessenberg_reduce(a: &mut Vec<Vec<f64>>, q: &mut Vec<Vec<f64>>, n: usize) {
+/// When `q` is `Some`, accumulates transforms: q = q * P1 * P2 * ...
+fn hessenberg_reduce(a: &mut Vec<Vec<f64>>, mut q: Option<&mut Vec<Vec<f64>>>, n: usize) {
     for k in 0..n.saturating_sub(2) {
         // Build Householder vector for column k, rows k+1..n
         let mut x = vec![0.0; n - k - 1];
@@ -92,50 +174,71 @@ fn hessenberg_reduce(a: &mut Vec<Vec<f64>>, q: &mut Vec<Vec<f64>>, n: usize) {
             x[i] = a[k + 1 + i][k];
         }
         let norm_x = x.iter().map(|v| v * v).sum::<f64>().sqrt();
-        if norm_x < 1e-15 { continue; }
+        if norm_x < 1e-15 {
+            continue;
+        }
 
         let sign = if x[0] >= 0.0 { 1.0 } else { -1.0 };
         x[0] += sign * norm_x;
         let norm_v = x.iter().map(|v| v * v).sum::<f64>().sqrt();
-        if norm_v < 1e-15 { continue; }
-        for v in x.iter_mut() { *v /= norm_v; }
+        if norm_v < 1e-15 {
+            continue;
+        }
+        for v in x.iter_mut() {
+            *v /= norm_v;
+        }
 
         // Apply P = I - 2vv^T to A from left: A <- P * A
         // Affects rows k+1..n
         for j in 0..n {
             let mut dot = 0.0;
-            for i in 0..x.len() { dot += x[i] * a[k + 1 + i][j]; }
+            for i in 0..x.len() {
+                dot += x[i] * a[k + 1 + i][j];
+            }
             let two_dot = 2.0 * dot;
-            for i in 0..x.len() { a[k + 1 + i][j] -= two_dot * x[i]; }
+            for i in 0..x.len() {
+                a[k + 1 + i][j] -= two_dot * x[i];
+            }
         }
 
         // Apply P to A from right: A <- A * P
         // Affects columns k+1..n
         for i in 0..n {
             let mut dot = 0.0;
-            for j in 0..x.len() { dot += a[i][k + 1 + j] * x[j]; }
+            for j in 0..x.len() {
+                dot += a[i][k + 1 + j] * x[j];
+            }
             let two_dot = 2.0 * dot;
-            for j in 0..x.len() { a[i][k + 1 + j] -= two_dot * x[j]; }
+            for j in 0..x.len() {
+                a[i][k + 1 + j] -= two_dot * x[j];
+            }
         }
 
-        // Accumulate into Q: Q <- Q * P
-        for i in 0..n {
-            let mut dot = 0.0;
-            for j in 0..x.len() { dot += q[i][k + 1 + j] * x[j]; }
-            let two_dot = 2.0 * dot;
-            for j in 0..x.len() { q[i][k + 1 + j] -= two_dot * x[j]; }
+        if let Some(q) = q.as_deref_mut() {
+            for i in 0..n {
+                let mut dot = 0.0;
+                for j in 0..x.len() {
+                    dot += q[i][k + 1 + j] * x[j];
+                }
+                let two_dot = 2.0 * dot;
+                for j in 0..x.len() {
+                    q[i][k + 1 + j] -= two_dot * x[j];
+                }
+            }
         }
     }
 }
 
 /// Francis QR iteration with implicit double shifts.
 /// Converges H to quasi-upper-triangular (real Schur) form.
-fn francis_qr(h: &mut Vec<Vec<f64>>, q: &mut Vec<Vec<f64>>, n: usize) -> Result<()> {
+fn francis_qr(h: &mut Vec<Vec<f64>>, mut q: Option<&mut Vec<Vec<f64>>>, n: usize) -> Result<()> {
     let max_iter = 100 * n;
     let mut p = n; // active submatrix is rows/cols 0..p
 
     for _iter in 0..max_iter {
-        if p <= 1 { return Ok(()); }
+        if p <= 1 {
+            return Ok(());
+        }
 
         // Deflation: check if h[p-1][p-2] is negligible
         let tol = 1e-14 * (h[p - 2][p - 2].abs() + h[p - 1][p - 1].abs()).max(1e-30);
@@ -170,7 +273,7 @@ fn francis_qr(h: &mut Vec<Vec<f64>>, q: &mut Vec<Vec<f64>>, n: usize) -> Result<
         }
 
         // Wilkinson shift from bottom-right 2×2
-        implicit_qr_step(h, q, l, p, n);
+        implicit_qr_step(h, q.as_deref_mut(), l, p, n);
     }
 
     // If we didn't fully converge, return what we have — eigenvalues may be approximate
@@ -192,7 +295,7 @@ fn is_2x2_converged(h: &Vec<Vec<f64>>, p: usize) -> bool {
 /// Single implicit QR step with Wilkinson shift on H[l..p, l..p].
 fn implicit_qr_step(
     h: &mut Vec<Vec<f64>>,
-    q: &mut Vec<Vec<f64>>,
+    mut q: Option<&mut Vec<Vec<f64>>>,
     l: usize,
     p: usize,
     n: usize,
@@ -208,7 +311,11 @@ fn implicit_qr_step(
     // First column of (H - s1*I)(H - s2*I) where s1,s2 are shifts
     let mut x = h[l][l] * h[l][l] + h[l][l + 1] * h[l + 1][l] - tr * h[l][l] + det;
     let mut y = h[l + 1][l] * (h[l][l] + h[l + 1][l + 1] - tr);
-    let mut z = if l + 2 < p { h[l + 2][l + 1] * h[l + 1][l] } else { 0.0 };
+    let mut z = if l + 2 < p {
+        h[l + 2][l + 1] * h[l + 1][l]
+    } else {
+        0.0
+    };
 
     for k in l..p.saturating_sub(1) {
         // Build Householder to zero out [y, z] in [x, y, z]
@@ -219,34 +326,50 @@ fn implicit_qr_step(
         for j in r_start..n {
             let mut dot = v[0] * h[k][j];
             dot += v[1] * h[k + 1][j];
-            if k + 2 < p { dot += v[2] * h[k + 2][j]; }
+            if k + 2 < p {
+                dot += v[2] * h[k + 2][j];
+            }
             let bd = beta * dot;
             h[k][j] -= bd * v[0];
             h[k + 1][j] -= bd * v[1];
-            if k + 2 < p { h[k + 2][j] -= bd * v[2]; }
+            if k + 2 < p {
+                h[k + 2][j] -= bd * v[2];
+            }
         }
 
         // Apply from right: H <- H * P (all rows, columns k..min(k+3,p))
-        let c_end = (k + 3).min(p).min(n);
+        // Row k+3 can contain the last non-zero entry touched by this
+        // right-side reflector (the subdiagonal in column k+2).  Omitting it
+        // breaks H <- P H P similarity and corrupts the eigenvalues.
+        let c_end = (k + 4).min(p).min(n);
         for i in 0..c_end {
             let mut dot = v[0] * h[i][k];
             dot += v[1] * h[i][k + 1];
-            if k + 2 < p { dot += v[2] * h[i][k + 2]; }
+            if k + 2 < p {
+                dot += v[2] * h[i][k + 2];
+            }
             let bd = beta * dot;
             h[i][k] -= bd * v[0];
             h[i][k + 1] -= bd * v[1];
-            if k + 2 < p { h[i][k + 2] -= bd * v[2]; }
+            if k + 2 < p {
+                h[i][k + 2] -= bd * v[2];
+            }
         }
 
-        // Accumulate into Q: Q <- Q * P
-        for i in 0..n {
-            let mut dot = v[0] * q[i][k];
-            dot += v[1] * q[i][k + 1];
-            if k + 2 < p { dot += v[2] * q[i][k + 2]; }
-            let bd = beta * dot;
-            q[i][k] -= bd * v[0];
-            q[i][k + 1] -= bd * v[1];
-            if k + 2 < p { q[i][k + 2] -= bd * v[2]; }
+        if let Some(q) = q.as_deref_mut() {
+            for i in 0..n {
+                let mut dot = v[0] * q[i][k];
+                dot += v[1] * q[i][k + 1];
+                if k + 2 < p {
+                    dot += v[2] * q[i][k + 2];
+                }
+                let bd = beta * dot;
+                q[i][k] -= bd * v[0];
+                q[i][k + 1] -= bd * v[1];
+                if k + 2 < p {
+                    q[i][k + 2] -= bd * v[2];
+                }
+            }
         }
 
         // Prepare for next bulge chase
@@ -286,10 +409,17 @@ fn householder3(x: f64, y: f64, z: f64, use_z: bool) -> ([f64; 3], f64) {
 }
 
 /// Extract eigenvalues from quasi-upper-triangular (real Schur) form.
-fn extract_eigenvalues(h: &Vec<Vec<f64>>, n: usize, eig_real: &mut Vec<f64>, eig_imag: &mut Vec<f64>) {
+fn extract_eigenvalues(
+    h: &Vec<Vec<f64>>,
+    n: usize,
+    eig_real: &mut Vec<f64>,
+    eig_imag: &mut Vec<f64>,
+) {
     let mut i = 0;
     while i < n {
-        if i + 1 < n && h[i + 1][i].abs() > 1e-14 * (h[i][i].abs() + h[i + 1][i + 1].abs()).max(1e-30) {
+        if i + 1 < n
+            && h[i + 1][i].abs() > 1e-14 * (h[i][i].abs() + h[i + 1][i + 1].abs()).max(1e-30)
+        {
             // 2×2 block: complex conjugate pair
             let a = h[i][i];
             let b = h[i][i + 1];
@@ -320,108 +450,36 @@ fn extract_eigenvalues(h: &Vec<Vec<f64>>, n: usize, eig_real: &mut Vec<f64>, eig
     }
 }
 
-/// Compute eigenvectors of the quasi-upper-triangular (Schur) matrix T.
-///
-/// For real eigenvalues, solves (T - λI)x = 0 by back-substitution.
-/// For complex pairs, solves (T - (σ+iω)I)(u + iv) = 0.
-/// Returns columns in the COSY convention: for complex pair at i,i+1,
-/// column i = Re(eigvec), column i+1 = Im(eigvec).
-fn schur_eigenvectors(t: &Vec<Vec<f64>>, eig_real: &[f64], eig_imag: &[f64], n: usize) -> Vec<Vec<f64>> {
-    let mut vecs = vec![vec![0.0; n]; n];
-    let mut i = 0;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    while i < n {
-        if eig_imag[i].abs() < 1e-14 {
-            // Real eigenvalue: back-substitution on (T - λI)
-            real_eigenvector(t, eig_real[i], i, n, &mut vecs);
-            i += 1;
-        } else {
-            // Complex pair at i, i+1
-            complex_eigenvector_pair(t, eig_real[i], eig_imag[i], i, n, &mut vecs);
-            i += 2;
+    #[test]
+    fn coupled_ring_eigenpairs_satisfy_original_matrix() {
+        let matrix = vec![
+            vec![-0.3798553, -0.03918255, -0.6712767, -0.06924235],
+            vec![2.507634, -0.3798501, 4.431523, -0.6712692],
+            vec![0.6712784, 0.06924260, -0.3798552, -0.03918181],
+            vec![-4.431506, 0.6712676, 2.507681, -0.3798501],
+        ];
+        let (real, imag, vectors) = rosy_lev(&matrix, 4, 4).unwrap();
+
+        assert!((real[0] - 0.1740868812).abs() < 1e-9);
+        assert!((imag[0] - 0.9847302887).abs() < 1e-9);
+        assert!((real[2] + 0.9337922312).abs() < 1e-9);
+        assert!((imag[2] - 0.3578156612).abs() < 1e-9);
+
+        for col in [0, 2] {
+            let lambda = Complex64::new(real[col], imag[col]);
+            let vector: Vec<_> = (0..4)
+                .map(|row| Complex64::new(vectors[row][col], vectors[row][col + 1]))
+                .collect();
+            for row in 0..4 {
+                let applied = (0..4)
+                    .map(|inner| matrix[row][inner] * vector[inner])
+                    .sum::<Complex64>();
+                assert!((applied - lambda * vector[row]).norm() < 1e-10);
+            }
         }
     }
-    vecs
-}
-
-/// Back-substitution for a real eigenvector of quasi-upper-triangular T.
-fn real_eigenvector(t: &Vec<Vec<f64>>, lambda: f64, col: usize, n: usize, vecs: &mut Vec<Vec<f64>>) {
-    // Work array
-    let mut x = vec![0.0; n];
-    x[col] = 1.0;
-
-    // Back-substitute: for j = col-1 down to 0
-    for j in (0..col).rev() {
-        let diag = t[j][j] - lambda;
-        let mut sum = 0.0;
-        for k in (j + 1)..=col {
-            sum += t[j][k] * x[k];
-        }
-        if diag.abs() > 1e-30 {
-            x[j] = -sum / diag;
-        } else {
-            x[j] = -sum / 1e-30;
-        }
-    }
-
-    // Normalize
-    let norm = x.iter().map(|v| v * v).sum::<f64>().sqrt();
-    if norm > 1e-30 {
-        for v in x.iter_mut() { *v /= norm; }
-    }
-
-    for j in 0..n { vecs[j][col] = x[j]; }
-}
-
-/// Back-substitution for a complex eigenvector pair.
-/// Column `col` gets Re(v), column `col+1` gets Im(v).
-fn complex_eigenvector_pair(
-    t: &Vec<Vec<f64>>,
-    sigma: f64,
-    omega: f64,
-    col: usize,
-    n: usize,
-    vecs: &mut Vec<Vec<f64>>,
-) {
-    let mut xr = vec![0.0; n]; // real part
-    let mut xi = vec![0.0; n]; // imaginary part
-    xr[col] = 1.0;
-    xi[col + 1] = 1.0;
-
-    // Back-substitute in 2×2 blocks: (T - (σ+iω)I)(xr + i·xi) = 0
-    for j in (0..col).rev() {
-        let mut sum_r = 0.0;
-        let mut sum_i = 0.0;
-        for k in (j + 1)..=col + 1 {
-            sum_r += t[j][k] * xr[k];
-            sum_i += t[j][k] * xi[k];
-        }
-        let dr = t[j][j] - sigma;
-        let di = -omega;
-        let denom = dr * dr + di * di;
-        if denom > 1e-60 {
-            xr[j] = -(sum_r * dr + sum_i * di) / denom;
-            xi[j] = -(sum_i * dr - sum_r * di) / denom;
-        }
-    }
-
-    // Normalize
-    let norm = (xr.iter().zip(xi.iter()).map(|(r, i)| r * r + i * i).sum::<f64>()).sqrt();
-    if norm > 1e-30 {
-        for v in xr.iter_mut() { *v /= norm; }
-        for v in xi.iter_mut() { *v /= norm; }
-    }
-
-    for j in 0..n {
-        vecs[j][col] = xr[j];
-        vecs[j][col + 1] = xi[j];
-    }
-}
-
-// Public wrappers for MBLOCK reuse
-pub fn hessenberg_reduce_pub(a: &mut Vec<Vec<f64>>, q: &mut Vec<Vec<f64>>, n: usize) {
-    hessenberg_reduce(a, q, n);
-}
-pub fn francis_qr_pub(h: &mut Vec<Vec<f64>>, q: &mut Vec<Vec<f64>>, n: usize) -> Result<()> {
-    francis_qr(h, q, n)
 }

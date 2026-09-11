@@ -1,21 +1,17 @@
 //! # MBLOCK Runtime Helper
 //!
-//! Transforms a quadratic matrix to block-diagonal form using
-//! real Schur decomposition.
+//! Transforms a real matrix with distinct eigenvalues to 2x2/1x1
+//! block-diagonal form using its real eigenvector basis.
 //!
-//! Computes orthogonal Q such that Q^T A Q = T is quasi-upper-triangular
-//! (block-diagonal with 1×1 and 2×2 blocks).
-//!
-//! Returns `(Q, Q^{-1})` where Q^{-1} = Q^T (since Q is orthogonal).
+//! Complex conjugate pairs are placed first, then real eigenvectors.
+//! Only conjugate pairs are scaled to a symplectic (q, p) pairing.
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 
 /// Block-diagonalize the n×n leading submatrix of `matrix`.
 ///
 /// Returns `(transform, inverse_transform)` both sized `alloc_dim × alloc_dim`.
-/// `inverse_transform^T * matrix * transform` is block-diagonal.
-///
-/// Uses the same Hessenberg + Francis QR infrastructure as LEV.
+/// `inverse_transform * matrix * transform` is block-diagonal.
 pub fn rosy_mblock(
     matrix: &impl crate::AsReMat,
     n: impl crate::IntoF64,
@@ -29,70 +25,100 @@ pub fn rosy_mblock(
         return Ok((empty.clone(), empty));
     }
 
-    // Extract n×n working copy
-    let mut h = vec![vec![0.0; n]; n];
-    for i in 0..n {
-        for j in 0..n {
-            h[i][j] = if i < matrix.len() && j < matrix[i].len() {
-                matrix[i][j]
-            } else {
-                0.0
-            };
-        }
-    }
+    let (_eig_real, eig_imag, eigvecs) = super::lev::rosy_lev(&matrix, n, n)?;
 
-    // Accumulator for similarity transforms
-    let mut q = eye(n);
-
-    // 1. Reduce to upper Hessenberg form
-    super::lev::hessenberg_reduce_pub(&mut h, &mut q, n);
-
-    // 2. Francis QR iteration → quasi-upper-triangular (real Schur) form
-    super::lev::francis_qr_pub(&mut h, &mut q, n)?;
-
-    // COSY plane orientation: each 2×2 block should have T[i,i+1] ≥ 0
-    // so COEF(map_i, p_i) matches the usual rotation sense (else TS yields 1-ν).
-    let mut k = 0;
-    while k + 1 < n {
-        let is_pair = h[k + 1][k].abs() > 1e-12 || h[k][k + 1].abs() > 1e-12;
-        if is_pair {
-            if h[k][k + 1] < 0.0 {
-                let j = k + 1;
-                for i in 0..n {
-                    q[i][j] = -q[i][j];
-                }
-                for i in 0..n {
-                    if i != j {
-                        h[i][j] = -h[i][j];
-                        h[j][i] = -h[j][i];
-                    }
-                }
-            }
-            k += 2;
+    // Complex pairs first, then real roots.
+    let mut columns = Vec::with_capacity(n);
+    let mut complex_cols = 0;
+    let mut col = 0;
+    while col < n {
+        if eig_imag[col].abs() >= 1e-10 && col + 1 < n {
+            columns.push(col);
+            columns.push(col + 1);
+            complex_cols += 2;
+            col += 2;
         } else {
-            k += 1;
+            col += 1;
+        }
+    }
+    for (col, imag) in eig_imag.iter().take(n).enumerate() {
+        if imag.abs() < 1e-10 {
+            columns.push(col);
         }
     }
 
-    // Q is the transformation matrix: Q^T * A * Q = T (block-diagonal)
-    // Q^{-1} = Q^T for orthogonal Q
+    if columns.len() != n {
+        bail!("MBLOCK: failed to pair all {} eigenvectors", n);
+    }
 
-    // Pad into alloc_dim × alloc_dim
     let mut transform = vec![vec![0.0; alloc_dim]; alloc_dim];
-    let mut inverse = vec![vec![0.0; alloc_dim]; alloc_dim];
-
-    for i in 0..n {
-        for j in 0..n {
-            transform[i][j] = q[i][j];
-            inverse[i][j] = q[j][i]; // transpose
+    for row in 0..n {
+        for (dest_col, source_col) in columns.iter().copied().enumerate() {
+            transform[row][dest_col] = eigvecs[row][source_col];
         }
+    }
+
+    // Scale only conjugate pairs; skip a ~0 symplectic factor rather than
+    // dividing by 1e-10 (which can explode a leftover real column).
+    for pair_col in (0..complex_cols).step_by(2) {
+        let mut factor = 0.0;
+        for row in (0..n.saturating_sub(1)).step_by(2) {
+            factor += transform[row][pair_col] * transform[row + 1][pair_col + 1]
+                - transform[row][pair_col + 1] * transform[row + 1][pair_col];
+        }
+        if factor.abs() < 1e-10 {
+            continue;
+        }
+        for row in 0..n {
+            transform[row][pair_col + 1] /= factor;
+        }
+    }
+
+    let (inverse, error) = super::linv::rosy_linv(&transform, n, alloc_dim)?;
+    if error != 0.0 {
+        bail!("MBLOCK: eigenvector matrix is singular");
     }
 
     Ok((transform, inverse))
 }
 
-fn eye(n: usize) -> Vec<Vec<f64>> {
-    let mut m = vec![vec![0.0; n]; n];
-    for i in 0..n { m[i][i] = 1.0; }
-    m
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn coupled_ring_matrix() -> Vec<Vec<f64>> {
+        vec![
+            vec![-0.3798553, -0.03918255, -0.6712767, -0.06924235],
+            vec![2.507634, -0.3798501, 4.431523, -0.6712692],
+            vec![0.6712784, 0.06924260, -0.3798552, -0.03918181],
+            vec![-4.431506, 0.6712676, 2.507681, -0.3798501],
+        ]
+    }
+
+    #[test]
+    fn coupled_ring_is_block_diagonal_with_cosy_orientation() {
+        let matrix = coupled_ring_matrix();
+        let (transform, inverse) = rosy_mblock(&matrix, 4.0, 4.0).unwrap();
+
+        let mut blocked = vec![vec![0.0; 4]; 4];
+        for row in 0..4 {
+            for col in 0..4 {
+                for i in 0..4 {
+                    for j in 0..4 {
+                        blocked[row][col] += inverse[row][i] * matrix[i][j] * transform[j][col];
+                    }
+                }
+            }
+        }
+
+        for row in 0..4 {
+            for col in 0..4 {
+                if row / 2 != col / 2 {
+                    assert!(blocked[row][col].abs() < 1e-10);
+                }
+            }
+        }
+        assert!(blocked[0][1] < 0.0);
+        assert!(blocked[2][3] > 0.0);
+    }
 }
