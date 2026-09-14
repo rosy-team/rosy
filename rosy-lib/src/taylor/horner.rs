@@ -221,6 +221,10 @@ impl DA<f64> {
             acc[0] = taylor_coeffs[nxf - 1];
             if acc[0].abs() > epsilon {
                 acc_nz.push(0);
+            } else {
+                // Reused buffers are cleared through their nonzero lists.
+                // Untracked coefficients must therefore be physically zero.
+                acc[0] = 0.0;
             }
 
             let mut acc_is_a = true;
@@ -295,6 +299,54 @@ impl DA<f64> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::taylor::config::{cleanup_taylor, init_taylor, set_epsilon};
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn horner_discards_sub_epsilon_initial_constant_before_buffer_reuse() {
+        cleanup_taylor();
+        init_taylor(3, 1).unwrap();
+        set_epsilon(1e-16).unwrap();
+        let x = (DA::<f64>::variable(1).unwrap() * 10.0).unwrap();
+        let rt = get_runtime().unwrap();
+        let linear = rt.variable_indices[0] as usize;
+
+        for discarded in [5e-17, -5e-17, 1e-16, -1e-16] {
+            // A discarded cubic coefficient must not leak into the linear term.
+            let coefficients = [0.0, 4e-10, 8e-15, discarded];
+            let result = DA::<f64>::horner_eval_with_rt(&x, &coefficients, &rt).unwrap();
+            assert_eq!(result.coeffs[linear], 10.0 * coefficients[1]);
+        }
+        drop(rt);
+        cleanup_taylor();
+    }
+
+    #[test]
+    #[serial]
+    fn horner_discards_sub_epsilon_added_constant_before_buffer_reuse() {
+        cleanup_taylor();
+        init_taylor(4, 1).unwrap();
+        set_epsilon(1e-16).unwrap();
+        let x = (DA::<f64>::variable(1).unwrap() * 10.0).unwrap();
+        let rt = get_runtime().unwrap();
+        let linear = rt.variable_indices[0] as usize;
+
+        for discarded in [5e-17, -5e-17, 1e-16, -1e-16] {
+            // Starting from zero exercises a constant added later in Horner,
+            // independently of the initial accumulator's cutoff handling.
+            let coefficients = [0.0, 4e-10, 8e-15, discarded, 0.0];
+            let result = DA::<f64>::horner_eval_with_rt(&x, &coefficients, &rt).unwrap();
+            assert_eq!(result.coeffs[linear], 10.0 * coefficients[1]);
+        }
+        drop(rt);
+        cleanup_taylor();
+    }
+}
+
 fn add_const_into(buf: &mut [f64], nz: &mut Vec<u32>, c: f64, epsilon: f64) {
     if c == 0.0 {
         return;
@@ -306,8 +358,11 @@ fn add_const_into(buf: &mut [f64], nz: &mut Vec<u32>, c: f64, epsilon: f64) {
         if pos.is_none() {
             nz.push(0);
         }
-    } else if let Some(p) = pos {
-        nz.swap_remove(p);
+    } else {
+        if let Some(p) = pos {
+            nz.swap_remove(p);
+        }
+        // Also clear a newly added sub-epsilon constant with no tracked index.
         buf[0] = 0.0;
     }
 }
