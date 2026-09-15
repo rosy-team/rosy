@@ -82,3 +82,31 @@ fn da_atan(da: &DA) -> anyhow::Result<DA> {
     DA::horner_eval_with_rt(&da_prime, &xf, &rt)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::taylor::config::{cleanup_taylor, get_runtime, init_taylor, set_epsilon};
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn atan_far_field_linear_coefficient_matches_analytic_derivative() {
+        cleanup_taylor();
+        init_taylor(3, 1).unwrap();
+        set_epsilon(1e-16).unwrap();
+
+        // First CML field evaluation: atan(-50000 + 10*x).
+        let mut argument = (DA::variable(1).unwrap() * 10.0).unwrap();
+        argument.add_constant_in_place(-50000.0);
+        let result = argument.rosy_atan().unwrap();
+        let linear = get_runtime().unwrap().variable_indices[0] as usize;
+        let expected = 10.0 / (1.0 + 50000.0 * 50000.0);
+        assert!(
+            (result.coeffs[linear] - expected).abs() <= 2.0 * f64::EPSILON * expected,
+            "expected {expected:.17e}, got {:.17e}",
+            result.coeffs[linear]
+        );
+
+        cleanup_taylor();
+    }
+}
