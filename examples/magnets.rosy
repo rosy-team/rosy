@@ -1,0 +1,99 @@
+BEGIN;
+
+INCLUDE '../cosy.fox'; { Requires COSY INFINITY }
+
+PROCEDURE RUN;
+
+    OV 2 2 0;
+    RPP 100;
+    {RP 10*PARA(1) 4*PARA(2) 2*PARA(3) ;}
+    UM;
+    {DI 10 90 0.05 0 0 0 0;}
+    {DP 10 90*PARA(1) -.05;}
+    {MS 10 24 0.05 0.5 0 0 0 0;}
+    {MQK 0.4 -1.29 0.05;}
+    {CMS -0.3519504 0.05 0.73;}
+    {CML 0.1 0.1;}
+
+    {ESET 10^(-12);}
+
+    CML 0.1 0.1;
+
+    {FR 3 ;}
+    {MQ 0.2 0.1*PARA(2) 0.05*PARA(1) ;}
+    {FR 0 ;}
+
+    PM 6;
+    WRITE 6 CONS(GTRA(1)) CONS(GTRA(3));
+
+ENDPROCEDURE;
+
+PROCEDURE RUN2 ;
+    VARIABLE (CD 2) A ; VARIABLE (CD 2) Bt ; VARIABLE (CD 2) G ;
+    VARIABLE (CD 2) R ; VARIABLE (CD 2) MU ; VARIABLE (DA 2) F ;
+    VARIABLE (DA 1) CELL ; VARIABLE (DA 1) CELL2 ; VARIABLE (DA 1) CELL3 ;
+    PROCEDURE SQ PHI L B D ;
+    PROCEDURE ROTATE PHI ;
+    VARIABLE M ; VARIABLE I ;
+    M(1) := COS(PHI*DEGRAD)*MAP(1) + SIN(PHI*DEGRAD)*MAP(3) ;
+    M(3) := -SIN(PHI*DEGRAD)*MAP(1) + COS(PHI*DEGRAD)*MAP(3) ;
+    M(2) := COS(PHI*DEGRAD)*MAP(2) + SIN(PHI*DEGRAD)*MAP(4) ;
+    M(4) := -SIN(PHI*DEGRAD)*MAP(2) + COS(PHI*DEGRAD)*MAP(4) ;
+    LOOP I 1 4 ; MAP(I) := M(I) ; ENDLOOP ; ENDPROCEDURE ;
+    ROTATE -PHI ; MQ L B D ; ROTATE PHI ; ENDPROCEDURE ;
+    OV 2 2 0 ; RP 1 1 1 ;
+    UM ; DL .1 ; SQ -30 .2 .1 .1 ; DL .1 ; SQ 30 .2 .1 .1 ; {PM 6 ;}
+    TS MU;
+    {GT MAP F MU A Bt G R ;
+    WRITE 6 ' ALPHAS ' A(1) A(2) ;
+    WRITE 6 ' BETAS ' Bt(1) Bt(2) ;
+    WRITE 6 ' GAMMAS ' G(1) G(2) ;}
+    WRITE 6 ' MUS ' MU(1) MU(2) ;
+ENDPROCEDURE ;
+
+PROCEDURE RUN3 ; VARIABLE QS ;
+    VARIABLE Q1 ; VARIABLE Q2 ; VARIABLE OBJ  ;
+    PROCEDURE TRIPLET A B ;
+        MQ .1 A .05 ; DL .05 ; MQ .1 -B .05 ; DL .05 ; MQ .1 A .05 ;
+    ENDPROCEDURE ;
+    OV 1 2 0 ; RP 1 1 1 ;
+    SB .15 .15 0 .15 .15 0 0 0 0 0 0 ;
+    Q1 := .59 ; Q2 := .76 ;
+    FIT Q1 Q2 ;
+        UM ; CR ;
+        ER 1 3 1 3 1 1 1 1 ;
+        DL .2 ; TRIPLET Q1 Q2 ; DL .2 ;
+        OBJ := ABS(ME(1,2))+ABS(ME(3,4)) ;
+        WRITE 6 'Q1, Q2: ' Q1 Q2 'OBJECTIVE: ' OBJ ;
+    ENDFIT 1E-5 1000 1 OBJ ;
+ENDPROCEDURE ;
+
+PROCEDURE RUN4 ;
+    VARIABLE Q1  ; VARIABLE Q2  ; VARIABLE L1  ; VARIABLE L2  ;
+    VARIABLE OBJ  ; VARIABLE ISTOP  ;
+    PROCEDURE TRIPLET ;
+        UM ; CR ; ER 1 4 1 4 1 1 1 1 ;
+        DL L1 ; MQ .1 Q1 .05 ; DL L2 ; MQ .1 -Q2 .05 ;
+        DL L2 ; MQ .1 Q1 .05 ; DL L1 ;
+    ENDPROCEDURE ;
+    OV 3 2 0 ; RP 1 1 1 ; SB .08 .08 0 .08 .08 0 0 0 0 0 0 ; ISTOP := 1 ;
+    WHILE ISTOP#0 ;
+        WRITE 6 ' GIVE VALUES FOR L1, L2: ' ; READ 5 L1 ; READ 5 L2 ;
+        Q1 := .5 ; Q2 := .5 ; CO 1 ;
+        FIT Q1 Q2 ; TRIPLET ; OBJ := ABS(ME(1,2))+ABS(ME(3,4)) ;
+        ENDFIT 1E-5 1000 1 OBJ ;
+        WRITE 6 'Q1 Q2: ' Q1 Q2 ;
+        CO 3 ; TRIPLET ;
+        WRITE 6 ' SPHERICAL ABERRATION FOR THIS SYSTEM: ' ME(1,222) ;
+        WRITE 6 ' CONTINUE SEARCH? (1/0) ' ; READ 5 ISTOP ;
+    ENDWHILE ;
+ENDPROCEDURE ;
+
+{RUN4 ;}
+
+{RUN3;}
+
+{RUN2 ;}
+
+RUN;
+END;
