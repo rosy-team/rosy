@@ -93,12 +93,15 @@ impl Transpile for RecstStatement {
         })?;
         requested_variables.extend(output_id_output.requested_variables.clone());
 
-        let dest_var = context.variables.get(&self.output_var.name).ok_or_else(|| {
-            vec![anyhow::anyhow!(
-                "Variable '{}' is not defined in this scope!",
-                self.output_var.name
-            )]
-        })?;
+        let dest_var = context
+            .variables
+            .get(&self.output_var.name)
+            .ok_or_else(|| {
+                vec![anyhow::anyhow!(
+                    "Variable '{}' is not defined in this scope!",
+                    self.output_var.name
+                )]
+            })?;
         let dereference = match dest_var.scope {
             VariableScope::Local => "",
             VariableScope::Arg => "*",

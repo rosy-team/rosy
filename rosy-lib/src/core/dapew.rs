@@ -10,8 +10,8 @@
 use anyhow::{Context, Result};
 
 use crate::core::display::RosyDisplay;
-use crate::taylor::{DA, MAX_VARS, get_runtime};
 use crate::taylor::Monomial;
+use crate::taylor::{DA, MAX_VARS, get_runtime};
 
 // ============================================================================
 // Helpers
@@ -140,7 +140,8 @@ pub fn rosy_dapew(
 
     let num_vars = get_runtime()
         .context("DAPEW requires DA initialized")?
-        .config.num_vars;
+        .config
+        .num_vars;
 
     let da0 = &da[0];
     let mut output = String::new();
@@ -215,7 +216,11 @@ pub fn rosy_dapew(
 /// - `da`: DA array — operates on element 0
 /// - `id`: TRANSPORT notation integer
 /// - `result`: written with the extracted coefficient
-pub fn rosy_dapee(da: &impl crate::AsDaRef, id: impl crate::AsF64, result: &mut impl crate::SetF64) -> Result<()> {
+pub fn rosy_dapee(
+    da: &impl crate::AsDaRef,
+    id: impl crate::AsF64,
+    result: &mut impl crate::SetF64,
+) -> Result<()> {
     let da = da.as_da_vec();
     let id = crate::rosy_as_u64(&id);
     if da.is_empty() {

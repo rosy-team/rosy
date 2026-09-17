@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, CM, VE, DA};
+use crate::{CM, DA, RE, VE};
 
 /// Get the return type of SQRT for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -55,4 +55,3 @@ impl RosySQRT for DA {
 fn da_sqrt(da: &DA) -> anyhow::Result<DA> {
     crate::taylor::compose::compose_sqrt(da)
 }
-

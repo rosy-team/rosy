@@ -13,12 +13,12 @@
 //! 4. Report cycles as errors
 
 use crate::errors::RosyError;
+use crate::program::Program;
 use crate::program::expressions::*;
 use crate::program::statements::*;
-use crate::program::Program;
 use crate::syntax_config;
 use crate::transpile::{TranspileableExpr, TranspileableStatement};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use rosy_lib::RosyType;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -787,6 +787,15 @@ impl TypeResolver {
 
     /// Resolve a single node by evaluating its rule.
     fn resolve_node(&mut self, slot: &TypeSlot) -> Result<()> {
+        let file = self
+            .nodes
+            .get(slot)
+            .and_then(|n| n.declared_at.as_ref())
+            .and_then(|l| l.file.clone());
+        syntax_config::with_path(file.as_deref(), || self.resolve_node_inner(slot))
+    }
+
+    fn resolve_node_inner(&mut self, slot: &TypeSlot) -> Result<()> {
         let node = self
             .nodes
             .get(slot)

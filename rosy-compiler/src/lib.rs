@@ -24,9 +24,10 @@ pub use compiler::transpile;
 pub use program::syntax_config;
 
 /// VS Code language-configuration.json generated from the Pest grammar.
-pub const VSCODE_LANGUAGE_CONFIGURATION: &str =
-    include_str!(concat!(env!("OUT_DIR"), "/vscode_language_configuration.json"));
+pub const VSCODE_LANGUAGE_CONFIGURATION: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/vscode_language_configuration.json"
+));
 
 /// Tree-sitter highlights.scm generated from the Pest grammar.
-pub const TREE_SITTER_HIGHLIGHTS: &str =
-    include_str!(concat!(env!("OUT_DIR"), "/highlights.scm"));
+pub const TREE_SITTER_HIGHLIGHTS: &str = include_str!(concat!(env!("OUT_DIR"), "/highlights.scm"));

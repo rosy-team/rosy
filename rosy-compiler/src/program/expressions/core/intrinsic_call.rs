@@ -49,7 +49,9 @@ impl Transpile for IntrinsicCallExpr {
 
         let q = if spec.fallible { "?" } else { "" };
         let result_ty = match spec.arity {
-            1 => spec.unary_return_type(&arg_types[0]).unwrap_or_else(RosyType::ANY),
+            1 => spec
+                .unary_return_type(&arg_types[0])
+                .unwrap_or_else(RosyType::ANY),
             2 => spec
                 .binary_return_type(&arg_types[0], &arg_types[1])
                 .unwrap_or_else(RosyType::ANY),
@@ -67,10 +69,7 @@ impl Transpile for IntrinsicCallExpr {
         };
         if result_ty.is_any() {
             serialization = format!("RosyValue::from({serialization})");
-        } else if !result_ty.is_any()
-            && arg_types.iter().any(|t| t.is_any())
-            && spec.name != "ST"
-        {
+        } else if !result_ty.is_any() && arg_types.iter().any(|t| t.is_any()) && spec.name != "ST" {
             serialization = crate::transpile::emit_unwrap_rosy_value(serialization, &result_ty);
         }
 

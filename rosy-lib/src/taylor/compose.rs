@@ -106,7 +106,10 @@ fn with_scratch_buf<R>(n: usize, f: impl FnOnce(&mut [f64]) -> Result<R>) -> Res
     f(buf)
 }
 
-fn with_scratch_pair<R>(n: usize, f: impl FnOnce(&mut [f64], &mut [f64]) -> Result<R>) -> Result<R> {
+fn with_scratch_pair<R>(
+    n: usize,
+    f: impl FnOnce(&mut [f64], &mut [f64]) -> Result<R>,
+) -> Result<R> {
     let mut scope = ScratchScope::enter();
     let pa = scope.alloc(n);
     let pb = scope.alloc(n);
@@ -151,7 +154,10 @@ pub fn compose_log(da: &DA<f64>) -> Result<DA<f64>> {
     let order = rt.config.max_order as usize;
     let epsilon = rt.config.epsilon;
     let f0 = da.constant_part();
-    ensure!(f0 != 0.0, "LOG: constant part of DA argument must be non-zero");
+    ensure!(
+        f0 != 0.0,
+        "LOG: constant part of DA argument must be non-zero"
+    );
     let ln0 = f0.ln();
     let inv_f0 = 1.0 / f0;
 
@@ -179,7 +185,10 @@ pub fn compose_sqrt(da: &DA<f64>) -> Result<DA<f64>> {
     let order = rt.config.max_order as usize;
     let epsilon = rt.config.epsilon;
     let f0 = da.constant_part();
-    ensure!(f0 > 0.0, "SQRT: constant part of DA must be positive, got {f0}");
+    ensure!(
+        f0 > 0.0,
+        "SQRT: constant part of DA must be positive, got {f0}"
+    );
     let sqrt0 = f0.sqrt();
     let inv_den = 0.5 / sqrt0;
 
@@ -225,10 +234,7 @@ fn compose_sin_cos(da: &DA<f64>) -> Result<(DA<f64>, DA<f64>)> {
                 homog_mul_scaled_add(cp, fp, sp, k, deg - k, -sk, &rt);
             }
         }
-        Ok((
-            copy_buf_to_da(n, s, epsilon),
-            copy_buf_to_da(n, c, epsilon),
-        ))
+        Ok((copy_buf_to_da(n, s, epsilon), copy_buf_to_da(n, c, epsilon)))
     })
 }
 

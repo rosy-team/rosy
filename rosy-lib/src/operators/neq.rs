@@ -1,8 +1,8 @@
 //! Not-equals operator for Rosy types.
 
-use anyhow::Result;
 use crate::RosyType;
-use crate::{RE, ST, LO};
+use crate::{LO, RE, ST};
+use anyhow::Result;
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
     crate::operators::eq::get_return_type(lhs, rhs)

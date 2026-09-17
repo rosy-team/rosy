@@ -256,8 +256,13 @@ impl Transpile for ProcedureCallStatement {
         let mut writeback_decls: Vec<String> = Vec::new();
         // Serialize the requested variables from the procedure context
         for var in &proc_context.requested_variables {
-            if proc_context.args.iter().any(|a| a.name == *var) {
-                continue;
+            if let Some(arg) = proc_context.args.iter().find(|a| a.name == *var) {
+                let wanted = proc_context.requested_types.get(var);
+                let arg_is_the_capture =
+                    wanted.is_none_or(|t| t.as_rust_type() == arg.r#type.as_rust_type());
+                if arg_is_the_capture {
+                    continue;
+                }
             }
             // rosy_mpi_context is the same `&mut RosyMPIContext` shape at
             // top-level (via the template's indirection) and inside procedure
@@ -280,12 +285,19 @@ impl Transpile for ProcedureCallStatement {
                 .get(var)
                 .cloned()
                 .unwrap_or(var_data.data.r#type);
-            let cap_scope = if context.split_rk_h && *var == "H" {
-                VariableScope::Higher
+            let use_outer =
+                context.capture_uses_outer(var, &child_ty) || (context.split_rk_h && *var == "H");
+            let (provided, cap_scope, rust_name) = if use_outer {
+                let outer = context.outer_bindings.get(var).unwrap_or(var_data);
+                (outer.data.r#type, VariableScope::Higher, var.clone())
             } else {
-                var_data.scope.clone()
+                (
+                    var_data.data.r#type,
+                    var_data.scope.clone(),
+                    context.rust_ident(var),
+                )
             };
-            let (pre, pass, wb) = emit_pass_as(var, &var_data.data.r#type, &child_ty, cap_scope);
+            let (pre, pass, wb) = emit_pass_as(&rust_name, &provided, &child_ty, cap_scope);
             prelude_decls.extend(pre);
             writeback_decls.extend(wb);
             serialized_args.push(pass);
@@ -303,33 +315,48 @@ impl Transpile for ProcedureCallStatement {
             std::collections::HashMap::new();
 
         // Captured globals already occupy a mut slot. An explicit arg
-        // with the same name is a duplicate (LINE(..., PLOC, ..., PLOC)).
+        // with the same *rust* name is a duplicate (LINE(..., PLOC, ..., PLOC)).
+        // A rosy arg that shadows a typed-differently outer (`__loc_B` vs `B`)
+        // is not a duplicate.
         for var in &proc_context.requested_variables {
-            first_occurrence.insert(var.clone(), usize::MAX);
+            let child_ty = proc_context
+                .requested_types
+                .get(var)
+                .cloned()
+                .or_else(|| context.variables.get(var).map(|v| v.data.r#type));
+            let rust = if child_ty
+                .as_ref()
+                .is_some_and(|t| context.capture_uses_outer(var, t))
+            {
+                var.clone()
+            } else {
+                context.rust_ident(var)
+            };
+            first_occurrence.insert(rust, usize::MAX);
         }
 
         // Pass 1 — record (a) bare-variable duplicates.
         for (i, arg_expr) in args.iter().enumerate() {
             if let Some(arg_name) = arg_expr.as_bare_variable_name() {
-                if first_occurrence.contains_key(arg_name) {
+                let rust = context.rust_ident(arg_name);
+                if first_occurrence.contains_key(&rust) {
                     if let Some(var_data) = context.variables.get(arg_name) {
                         let temp_name = format!("__rosy_dup_arg_{}", i);
                         let (value_expr, writeback) = match var_data.scope {
                             VariableScope::Higher | VariableScope::Arg => (
-                                format!("(*{}).clone()", arg_name),
-                                format!("*{} = {};", arg_name, temp_name),
+                                format!("(*{rust}).clone()"),
+                                format!("*{rust} = {temp_name};"),
                             ),
-                            VariableScope::Local => (
-                                format!("{}.clone()", arg_name),
-                                format!("{} = {};", arg_name, temp_name),
-                            ),
+                            VariableScope::Local => {
+                                (format!("{rust}.clone()"), format!("{rust} = {temp_name};"))
+                            }
                         };
                         prelude_decls.push(format!("let mut {} = {};", temp_name, value_expr));
                         prelude_overrides.insert(i, format!("&mut {}", temp_name));
                         writeback_decls.push(writeback);
                     }
                 } else {
-                    first_occurrence.insert(arg_name.to_string(), i);
+                    first_occurrence.insert(rust, i);
                 }
             }
         }
@@ -367,12 +394,8 @@ impl Transpile for ProcedureCallStatement {
                                     .get(name)
                                     .map(|v| v.scope.clone())
                                     .unwrap_or(VariableScope::Local);
-                                let (pre, pass, wb) = emit_pass_as(
-                                    name,
-                                    &provided_type,
-                                    &expected_type,
-                                    scope,
-                                );
+                                let (pre, pass, wb) =
+                                    emit_pass_as(name, &provided_type, &expected_type, scope);
                                 prelude_decls.extend(pre);
                                 writeback_decls.extend(wb);
                                 serialized_args.push(pass);
@@ -403,15 +426,13 @@ impl Transpile for ProcedureCallStatement {
                         serialized_args.push(format!("&mut {}", temp_name));
                         requested_variables.extend(arg_output.requested_variables);
                         if let Some(name) = arg_expr.as_bare_variable_name() {
-                            let star = match context.variables.get(name).map(|v| v.scope.clone())
-                            {
+                            let rust = context.rust_ident(name);
+                            let star = match context.variables.get(name).map(|v| v.scope.clone()) {
                                 Some(VariableScope::Local) | None => "",
                                 Some(VariableScope::Arg | VariableScope::Higher) => "*",
                             };
                             writeback_decls.push(format!(
-                                "{}{} = {};",
-                                star,
-                                name,
+                                "{star}{rust} = {};",
                                 emit_unwrap_rosy_value(temp_name.clone(), &provided_type)
                             ));
                         }
@@ -462,7 +483,7 @@ impl Transpile for ProcedureCallStatement {
         // temps are needed so they're scoped to this single call). Writebacks
         // run *after* the call to copy duplicate-arg clones back into their
         // source variables (see writeback_decls comment above).
-        let rust_name = if crate::syntax_config::is_cosy_syntax() {
+        let rust_name = if proc_context.cosy_syntax {
             format!("__proc_{}", self.name)
         } else {
             self.name.clone()

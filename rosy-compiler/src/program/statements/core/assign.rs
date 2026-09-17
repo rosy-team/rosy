@@ -40,10 +40,8 @@ use rosy_lib::{RosyBaseType, RosyType};
 /// container (like `A(1) := A(1) & 3` on `(VE n)`). Same base, rhs is one
 /// dim thicker than the peeled/old type.
 fn da_concat_nest_promote(elem_or_old: &RosyType, rhs_or_new: &RosyType) -> bool {
-    matches!(
-        elem_or_old.base_type,
-        RosyBaseType::DA | RosyBaseType::CD
-    ) && elem_or_old.base_type == rhs_or_new.base_type
+    matches!(elem_or_old.base_type, RosyBaseType::DA | RosyBaseType::CD)
+        && elem_or_old.base_type == rhs_or_new.base_type
         && rhs_or_new.dimensions == elem_or_old.dimensions + 1
 }
 
@@ -391,8 +389,7 @@ impl TranspileableStatement for AssignStatement {
                                     &mut visiting,
                                 );
                             }
-                            new_type_result =
-                                resolver.evaluate_recipe(&dimensioned_recipe);
+                            new_type_result = resolver.evaluate_recipe(&dimensioned_recipe);
                             old_type_result = Ok(old_type);
                         }
                     }
@@ -411,96 +408,96 @@ impl TranspileableStatement for AssignStatement {
                     let old_type = *old_type;
                     let new_type = *new_type;
                     if old_type != new_type {
-                    if da_concat_nest_promote(&old_type, &new_type) {
-                        bump_da_array_nesting(resolver, &var_slot, new_type);
-                        return Some(Ok(()));
-                    }
-                    if let Some(promoted) = re_da_assignment_type(old_type, new_type) {
-                        if promoted != old_type
-                            && let Some(node) = resolver.nodes.get_mut(&var_slot)
+                        if da_concat_nest_promote(&old_type, &new_type) {
+                            bump_da_array_nesting(resolver, &var_slot, new_type);
+                            return Some(Ok(()));
+                        }
+                        if let Some(promoted) = re_da_assignment_type(old_type, new_type) {
+                            if promoted != old_type
+                                && let Some(node) = resolver.nodes.get_mut(&var_slot)
+                            {
+                                node.rule = ResolutionRule::InferredFrom {
+                                    recipe: ExprRecipe::Literal(promoted),
+                                    reason: "RE promoted to DA".to_string(),
+                                };
+                                node.depends_on.clear();
+                            }
+                            return Some(Ok(()));
+                        }
+                        if let Some(promoted) = re_ve_assignment_type(old_type, new_type) {
+                            if promoted != old_type
+                                && let Some(node) = resolver.nodes.get_mut(&var_slot)
+                            {
+                                node.rule = ResolutionRule::InferredFrom {
+                                    recipe: ExprRecipe::Literal(promoted),
+                                    reason: "RE promoted to VE".to_string(),
+                                };
+                                node.resolved = Some(promoted);
+                                node.depends_on.clear();
+                            }
+                            return Some(Ok(()));
+                        }
+                        // Cosy cells are untyped. Rosy ANY only for 0-d base conflicts.
+                        let any_ok = crate::syntax_config::is_cosy_syntax()
+                            || (old_type.dimensions == 0 && new_type.dimensions == 0);
+                        if any_ok
+                            && (crate::syntax_config::is_cosy_syntax()
+                                || old_type.is_any()
+                                || new_type.is_any()
+                                || old_type.base_type != new_type.base_type)
                         {
-                            node.rule = ResolutionRule::InferredFrom {
-                                recipe: ExprRecipe::Literal(promoted),
-                                reason: "RE promoted to DA".to_string(),
-                            };
-                            node.depends_on.clear();
+                            if let Some(node) = resolver.nodes.get_mut(&var_slot) {
+                                node.rule = ResolutionRule::InferredFrom {
+                                    recipe: ExprRecipe::Literal(RosyType::ANY()),
+                                    reason: "reused as multiple types".to_string(),
+                                };
+                                node.resolved = Some(RosyType::ANY());
+                                node.depends_on.clear();
+                            }
+                            return Some(Ok(()));
                         }
-                        return Some(Ok(()));
-                    }
-                    if let Some(promoted) = re_ve_assignment_type(old_type, new_type) {
-                        if promoted != old_type
-                            && let Some(node) = resolver.nodes.get_mut(&var_slot)
-                        {
-                            node.rule = ResolutionRule::InferredFrom {
-                                recipe: ExprRecipe::Literal(promoted),
-                                reason: "RE promoted to VE".to_string(),
-                            };
-                            node.resolved = Some(promoted);
-                            node.depends_on.clear();
-                        }
-                        return Some(Ok(()));
-                    }
-                    // Cosy cells are untyped. Rosy ANY only for 0-d base conflicts.
-                    let any_ok = crate::syntax_config::is_cosy_syntax()
-                        || (old_type.dimensions == 0 && new_type.dimensions == 0);
-                    if any_ok
-                        && (crate::syntax_config::is_cosy_syntax()
-                            || old_type.is_any()
-                            || new_type.is_any()
-                            || old_type.base_type != new_type.base_type)
-                    {
-                        if let Some(node) = resolver.nodes.get_mut(&var_slot) {
-                            node.rule = ResolutionRule::InferredFrom {
-                                recipe: ExprRecipe::Literal(RosyType::ANY()),
-                                reason: "reused as multiple types".to_string(),
-                            };
-                            node.resolved = Some(RosyType::ANY());
-                            node.depends_on.clear();
-                        }
-                        return Some(Ok(()));
-                    }
-                    let scope_str = if ctx.scope_path.is_empty() {
-                        "global scope".to_string()
-                    } else {
-                        format!("'{}'", ctx.scope_path.join(" > "))
-                    };
-                    let first_assign_hint = resolver
-                        .nodes
-                        .get(&var_slot)
-                        .and_then(|n| n.assigned_at.as_ref())
-                        .map(|loc| format!("\n│  📍 First assigned at:  {}", loc))
-                        .unwrap_or_default();
-                    let second_assign_hint =
-                        format!("\n│  📍 Then assigned at:   {}", source_location);
-                    // Migration hint for RE→VE pattern
-                    let ve_hint = {
-                        let re = RosyType::RE();
-                        let ve = RosyType::VE();
-                        if old_type == re && new_type == ve {
-                            if crate::syntax_config::is_cosy_syntax() {
-                                format!(
-                                    "\n│\n\
+                        let scope_str = if ctx.scope_path.is_empty() {
+                            "global scope".to_string()
+                        } else {
+                            format!("'{}'", ctx.scope_path.join(" > "))
+                        };
+                        let first_assign_hint = resolver
+                            .nodes
+                            .get(&var_slot)
+                            .and_then(|n| n.assigned_at.as_ref())
+                            .map(|loc| format!("\n│  📍 First assigned at:  {}", loc))
+                            .unwrap_or_default();
+                        let second_assign_hint =
+                            format!("\n│  📍 Then assigned at:   {}", source_location);
+                        // Migration hint for RE→VE pattern
+                        let ve_hint = {
+                            let re = RosyType::RE();
+                            let ve = RosyType::VE();
+                            if old_type == re && new_type == ve {
+                                if crate::syntax_config::is_cosy_syntax() {
+                                    format!(
+                                        "\n│\n\
                                          │  📖 In COSY, RE values were implicitly upcast to VE.\n\
                                          │     In Rosy, make the first assignment a VE explicitly:\n\
                                          │     • Wrap the value:            {} := VE(<expr>);\n\
                                          │     • Build via concatenation:   {} := 0 & 1 & 2;",
-                                    var_name, var_name
-                                )
-                            } else {
-                                format!(
-                                    "\n│\n\
+                                        var_name, var_name
+                                    )
+                                } else {
+                                    format!(
+                                        "\n│\n\
                                          │  📖 To make '{}' a VE, ensure the first assignment is a VE:\n\
                                          │     • Wrap the value:            {} := VE(<expr>);\n\
                                          │     • Build via concatenation:   {} := 0 & 1 & 2;",
-                                    var_name, var_name, var_name
-                                )
+                                        var_name, var_name, var_name
+                                    )
+                                }
+                            } else {
+                                String::new()
                             }
-                        } else {
-                            String::new()
-                        }
-                    };
-                    let msg = format!(
-                        "\n╭─ Type Conflict ──────────────────────────────────────────\n\
+                        };
+                        let msg = format!(
+                            "\n╭─ Type Conflict ──────────────────────────────────────────\n\
                                 │\n\
                                 │  Variable '{}' (in {}) is assigned conflicting types:\n\
                                 │     • First inferred as:  {}\n\
@@ -513,25 +510,23 @@ impl TranspileableStatement for AssignStatement {
                                 │     • Split into separate variables: {}_{:?}  and  {}_{:?}\n\
                                 │{}\n\
                                 ╰──────────────────────────────────────────────────────────",
-                        var_name,
-                        scope_str,
-                        old_type,
-                        new_type,
-                        first_assign_hint,
-                        second_assign_hint,
-                        old_type.base_type,
-                        var_name,
-                        var_name,
-                        old_type.base_type,
-                        var_name,
-                        new_type.base_type,
-                        ve_hint,
-                    );
-                    return Some(Err(RosyError::at(source_location.clone(), msg).into()));
+                            var_name,
+                            scope_str,
+                            old_type,
+                            new_type,
+                            first_assign_hint,
+                            second_assign_hint,
+                            old_type.base_type,
+                            var_name,
+                            var_name,
+                            old_type.base_type,
+                            var_name,
+                            new_type.base_type,
+                            ve_hint,
+                        );
+                        return Some(Err(RosyError::at(source_location.clone(), msg).into()));
                     }
-                } else if crate::syntax_config::is_cosy_syntax()
-                    && old_type_result.is_err()
-                {
+                } else if crate::syntax_config::is_cosy_syntax() && old_type_result.is_err() {
                     // First assignment still has unresolved deps (e.g. `X := 10^(-2)*J`
                     // before J is typed). Keep that recipe; do not lock the cell to ANY
                     // or `X := X & …` can never RE→VE promote.
@@ -658,11 +653,10 @@ impl Transpile for AssignStatement {
         let value_type = value.type_of(context).map_err(|e| {
             vec![e.context("...while determining type of value expression for assignment")]
         })?;
-        let da_singleton_wrap = matches!(
-            variable_type.base_type,
-            RosyBaseType::DA | RosyBaseType::CD
-        ) && variable_type.base_type == value_type.base_type
-            && variable_type.dimensions == value_type.dimensions + 1;
+        let da_singleton_wrap =
+            matches!(variable_type.base_type, RosyBaseType::DA | RosyBaseType::CD)
+                && variable_type.base_type == value_type.base_type
+                && variable_type.dimensions == value_type.dimensions + 1;
         if variable_type != value_type
             && !variable_type.is_any()
             && !value_type.is_any()
@@ -681,12 +675,10 @@ impl Transpile for AssignStatement {
         // `X := X & expr` / `X(I) := X(I) & expr` → push/extend on the cell
         if let Ok((dest, idx_serials, mut dest_vars)) =
             assignment_append_dest(&self.identifier, context)
-            && let Some(result) = value.inner.try_inplace_append(
-                &self.identifier.name,
-                &idx_serials,
-                &dest,
-                context,
-            )
+            && let Some(result) =
+                value
+                    .inner
+                    .try_inplace_append(&self.identifier.name, &idx_serials, &dest, context)
         {
             return match result {
                 Ok(mut out) => {
@@ -768,10 +760,8 @@ impl Transpile for AssignStatement {
             format!("rosy_as_f64(&({}))", value_output.as_owned(&value_type))
         } else if variable_type == RosyType::ST() && value_type != RosyType::ST() {
             format!("RosyST::rosy_to_string(&{})", value_output.as_ref())
-        } else if matches!(
-            variable_type.base_type,
-            RosyBaseType::DA | RosyBaseType::CD
-        ) && variable_type.base_type == value_type.base_type
+        } else if matches!(variable_type.base_type, RosyBaseType::DA | RosyBaseType::CD)
+            && variable_type.base_type == value_type.base_type
             && variable_type.dimensions == value_type.dimensions + 1
         {
             format!("vec![{}]", value_output.as_owned(&value_type))
@@ -910,12 +900,7 @@ fn temp_resolve_inferred(
     if visiting.contains(slot) {
         return;
     }
-    if resolver
-        .nodes
-        .get(slot)
-        .and_then(|n| n.resolved)
-        .is_some()
-    {
+    if resolver.nodes.get(slot).and_then(|n| n.resolved).is_some() {
         return;
     }
     let is_unresolved = resolver
@@ -1003,10 +988,7 @@ fn assignment_append_dest(
             Some(VariableScope::Arg | VariableScope::Higher) => rust_name,
         };
         for idx in &idx_serials {
-            cell = format!(
-                "rosy_get_mut({cell}, {idx}, \"{name}\")",
-                name = ident.name
-            );
+            cell = format!("rosy_get_mut({cell}, {idx}, \"{name}\")", name = ident.name);
         }
         cell
     };
@@ -1022,10 +1004,7 @@ mod fox_reassignment_tests {
 
     fn resolve_fox(src: &str) -> TypeResolver {
         syntax_config::with_path(Some(Path::new("t.fox")), || {
-            let program = ast::parse_source(src)
-                .unwrap()
-                .next()
-                .expect("program");
+            let program = ast::parse_source(src).unwrap().next().expect("program");
             let mut ast = Program::from_rule_with_includes(
                 program,
                 Some(Path::new("t.fox")),

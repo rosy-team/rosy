@@ -153,8 +153,7 @@ impl VarExpr {
                             // parentheses must be a function call (e.g. recursion where
                             // the function name doubles as the return variable).
                             let var_data = context.variables.get(&ident.name).unwrap();
-                            if var_data.data.r#type.dimensions > 0
-                                || var_data.data.r#type.is_any()
+                            if var_data.data.r#type.dimensions > 0 || var_data.data.r#type.is_any()
                             {
                                 // Array or untyped COSY cell — prefer indexing
                                 Ok(VarExprKind::Variable)
@@ -479,7 +478,7 @@ pub fn function_call_transpile_helper(
         let serialized_arg = match var_data.scope {
             VariableScope::Higher => var.to_string(),
             VariableScope::Arg => var.to_string(),
-            VariableScope::Local => format!("&mut {}", var),
+            VariableScope::Local => format!("&mut {}", context.rust_ident(var)),
         };
         serialized_args.push(serialized_arg);
     }
@@ -530,10 +529,9 @@ pub fn function_call_transpile_helper(
                             format!("(*{rust}).clone()"),
                             format!("*{rust} = {temp_name};"),
                         ),
-                        VariableScope::Local => (
-                            format!("{rust}.clone()"),
-                            format!("{rust} = {temp_name};"),
-                        ),
+                        VariableScope::Local => {
+                            (format!("{rust}.clone()"), format!("{rust} = {temp_name};"))
+                        }
                     };
                     prelude_decls.push(format!("let mut {} = {};", temp_name, value_expr));
                     prelude_overrides.insert(i, format!("&mut {}", temp_name));
@@ -638,11 +636,7 @@ pub fn function_call_transpile_helper(
     // Uses the `__fn_` prefix to match the generated Rust function name
     // (the prefix avoids shadowing by the implicit return variable).
     let rust_fn_name = format!("__fn_{}", name);
-    let raw_call = format!(
-        "{}({})?",
-        rust_fn_name,
-        serialized_args.join(", ")
-    );
+    let raw_call = format!("{}({})?", rust_fn_name, serialized_args.join(", "));
     let call = if func_context.return_type.is_any() {
         format!("RosyValue::from({raw_call})")
     } else {

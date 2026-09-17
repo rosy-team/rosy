@@ -23,7 +23,7 @@
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/math/polval.rosy"))]
 //! ```
 
-use anyhow::{ensure, Context, Error, Result};
+use anyhow::{Context, Error, Result, ensure};
 use std::collections::BTreeSet;
 
 use crate::{
@@ -31,8 +31,8 @@ use crate::{
     program::{expressions::Expr, statements::SourceLocation},
     resolve::{ExprRecipe, ResolutionRule, ScopeContext, TypeResolver},
     transpile::{
-        add_context_to_all, TranspilationInputContext, TranspilationOutput, Transpile,
-        TranspileableExpr, TranspileableStatement,
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement, add_context_to_all,
     },
 };
 use rosy_lib::RosyBaseType;

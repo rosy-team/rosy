@@ -1,5 +1,5 @@
-use crate::{RE, ST, LO, CM, VE, DA, CD};
 use crate::taylor::{MAX_VARS, cosy_display_rank, get_config, get_runtime};
+use crate::{CD, CM, DA, LO, RE, ST, VE};
 
 const ALL_COMPONENTS_ZERO: &str = "     ALL COMPONENTS ZERO\n     -------------------";
 
@@ -36,29 +36,36 @@ fn display_ve_element(x: f64) -> String {
             let m = abs_x / 10f64.powi(e);
             (m, e)
         };
-        let digits: String = format!("{:.7}", mantissa)
-            .chars().skip(2).take(7)
-            .collect();
+        let digits: String = format!("{:.7}", mantissa).chars().skip(2).take(7).collect();
         format!("{}0.{}E{:+04}", sign, digits, exp)
     } else {
         // Fixed: sign + right-justified-10 + 4 blanks = 15 chars (G15.7 = F11.7 + 4 blanks)
-        let dec_places: usize = if abs_x < 1.0 { 7 }
-            else if abs_x < 10.0 { 6 }
-            else if abs_x < 100.0 { 5 }
-            else if abs_x < 1_000.0 { 4 }
-            else if abs_x < 10_000.0 { 3 }
-            else if abs_x < 100_000.0 { 2 }
-            else if abs_x < 1_000_000.0 { 1 }
-            else { 0 };
-        let value_str = format!("{:.prec$}", abs_x, prec=dec_places);
+        let dec_places: usize = if abs_x < 1.0 {
+            7
+        } else if abs_x < 10.0 {
+            6
+        } else if abs_x < 100.0 {
+            5
+        } else if abs_x < 1_000.0 {
+            4
+        } else if abs_x < 10_000.0 {
+            3
+        } else if abs_x < 100_000.0 {
+            2
+        } else if abs_x < 1_000_000.0 {
+            1
+        } else {
+            0
+        };
+        let value_str = format!("{:.prec$}", abs_x, prec = dec_places);
         format!("{}{:>10}    ", sign, value_str)
     }
 }
-pub(crate) fn display_re (
+pub(crate) fn display_re(
     num: RE,
     precision: usize,
     exponent_precision: usize,
-    spaces: usize
+    spaces: usize,
 ) -> String {
     if num.abs() < 1f64 && num != 0f64 {
         let (mantissa, exponent) = sci(num.abs());
@@ -66,7 +73,7 @@ pub(crate) fn display_re (
         if num.is_sign_positive() {
             format!(
                 " 0.{}{}",
-                format!("{:.precision$}", mantissa, precision=precision)
+                format!("{:.precision$}", mantissa, precision = precision)
                     .chars()
                     .skip(2) // Skip "0."
                     .take(precision)
@@ -75,7 +82,7 @@ pub(crate) fn display_re (
                     format!(
                         "E{:+0exponent_precision$}",
                         exponent,
-                        exponent_precision=exponent_precision
+                        exponent_precision = exponent_precision
                     )
                 } else {
                     " ".repeat(spaces)
@@ -84,7 +91,7 @@ pub(crate) fn display_re (
         } else {
             format!(
                 "-.{}{}",
-                format!("{:.precision$}", mantissa, precision=precision)
+                format!("{:.precision$}", mantissa, precision = precision)
                     .chars()
                     .skip(2) // Skip "0."
                     .take(precision)
@@ -93,7 +100,7 @@ pub(crate) fn display_re (
                     format!(
                         "E{:+0exponent_precision$}",
                         exponent,
-                        exponent_precision=exponent_precision
+                        exponent_precision = exponent_precision
                     )
                 } else {
                     " ".repeat(spaces)
@@ -108,11 +115,11 @@ pub(crate) fn display_re (
 
         format!(
             "{}{}{}",
-            if num.is_sign_negative() {"-"} else {" "},
-            format!(
-                "{:.precision$}",
-                rounded_num.abs(),
-            ).chars().take(precision + 1).collect::<String>(),
+            if num.is_sign_negative() { "-" } else { " " },
+            format!("{:.precision$}", rounded_num.abs(),)
+                .chars()
+                .take(precision + 1)
+                .collect::<String>(),
             " ".repeat(spaces),
         )
     }
@@ -155,7 +162,7 @@ impl RosyDisplay for &CM {
     fn rosy_display(self) -> String {
         // COSY format: (  real     ,  imag     )
         format!(
-            " ( {}, {})", 
+            " ( {}, {})",
             display_re(self.re, 9, 4, 5),
             display_re(self.im, 9, 4, 5)
         )
@@ -174,7 +181,7 @@ impl RosyDisplay for &VE {
 impl RosyDisplay for &DA {
     fn rosy_display(self) -> String {
         // Output in COSY format: multi-line with all coefficients
-        
+
         // Get all coefficients
         let coeffs: Vec<_> = self.coeffs_iter();
         if coeffs.is_empty() {
@@ -192,14 +199,16 @@ impl RosyDisplay for &DA {
                 m.exponents,
             )
         });
-        
+
         let mut output = String::new();
         output.push_str("I  COEFFICIENT            ORDER EXPONENTS\n");
         for (idx, (monomial, coeff)) in sorted.iter().enumerate() {
             let order = monomial.total_order;
             let exp_str = {
                 let exps = &monomial.exponents;
-                let nv = get_runtime().map(|rt| rt.config.num_vars).unwrap_or(exps.len());
+                let nv = get_runtime()
+                    .map(|rt| rt.config.num_vars)
+                    .unwrap_or(exps.len());
                 build_exp_str(exps, nv)
             };
             output.push_str(&format!(
@@ -213,7 +222,8 @@ impl RosyDisplay for &DA {
 
         let last_line_length = output.lines().last().unwrap_or("").len();
         output.push_str(&"-".repeat(last_line_length));
-        output.lines()
+        output
+            .lines()
             .map(|st| format!("     {}", st))
             .collect::<Vec<String>>()
             .join("\n")
@@ -223,11 +233,11 @@ impl RosyDisplay for &DA {
 impl RosyDisplay for &CD {
     fn rosy_display(self) -> String {
         // Output in COSY format: multi-line with all complex coefficients
-        
+
         // Get real and imaginary parts
         let real_part = self.real_part();
         let imag_part = self.imag_part();
-        
+
         // Combine all monomials from both parts
         let mut all_monomials = std::collections::HashSet::new();
         for (m, _) in real_part.coeffs_iter() {
@@ -236,7 +246,7 @@ impl RosyDisplay for &CD {
         for (m, _) in imag_part.coeffs_iter() {
             all_monomials.insert(m);
         }
-        
+
         if all_monomials.is_empty() {
             return ALL_COMPONENTS_ZERO.to_string();
         }
@@ -252,7 +262,7 @@ impl RosyDisplay for &CD {
                 m.exponents,
             )
         });
-        
+
         let mut output = String::new();
         output.push_str("     I  COEFFICIENTS                           ORDER EXPONENTS\n");
         for (idx, monomial) in sorted.iter().enumerate() {
@@ -261,7 +271,9 @@ impl RosyDisplay for &CD {
             let order = monomial.total_order;
             let exp_str = {
                 let exps = &monomial.exponents;
-                let nv = get_runtime().map(|rt| rt.config.num_vars).unwrap_or(exps.len());
+                let nv = get_runtime()
+                    .map(|rt| rt.config.num_vars)
+                    .unwrap_or(exps.len());
                 build_exp_str(exps, nv)
             };
             output.push_str(&format!(

@@ -115,16 +115,14 @@ impl TranspileableExpr for BinaryExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
         let left_type = self.left.type_of(context)?;
         let right_type = self.right.type_of(context)?;
-        self.op
-            .return_type(&left_type, &right_type)
-            .ok_or_else(|| {
-                anyhow!(
-                    "Cannot apply {:?} to types '{}' and '{}'!",
-                    self.op,
-                    left_type,
-                    right_type
-                )
-            })
+        self.op.return_type(&left_type, &right_type).ok_or_else(|| {
+            anyhow!(
+                "Cannot apply {:?} to types '{}' and '{}'!",
+                self.op,
+                left_type,
+                right_type
+            )
+        })
     }
 
     fn discover_expr_function_calls(
@@ -228,9 +226,7 @@ impl TranspileableExpr for BinaryExpr {
             }
         } else {
             let val_ref = right_output.as_ref();
-            format!(
-                "{{ let __v: Vec<_> = ({val_ref}).to_vec(); {dest}.extend_from_slice(&__v); }}"
-            )
+            format!("{{ let __v: Vec<_> = ({val_ref}).to_vec(); {dest}.extend_from_slice(&__v); }}")
         };
 
         Some(Ok(TranspilationOutput {
@@ -307,10 +303,7 @@ impl Transpile for BinaryExpr {
                 &result_type,
             )
         } else if self.op == BinaryOp::Derive {
-            format!(
-                "RosyDerive::rosy_derive({}, ({}).clone() as i64)?",
-                lref, r
-            )
+            format!("RosyDerive::rosy_derive({}, ({}).clone() as i64)?", lref, r)
         } else if self.op == BinaryOp::Extract {
             format!(
                 "RosyExtract::rosy_extract({}, {}).context(\"...while trying to extract an element\")?",
@@ -327,7 +320,11 @@ impl Transpile for BinaryExpr {
                 (BinaryOp::And, (RosyBaseType::LO, RosyBaseType::LO)) => format!("({l} && {r})"),
                 (BinaryOp::Or, (RosyBaseType::LO, RosyBaseType::LO)) => format!("({l} || {r})"),
                 (
-                    BinaryOp::Lt | BinaryOp::Gt | BinaryOp::Lte | BinaryOp::Gte | BinaryOp::Eq
+                    BinaryOp::Lt
+                    | BinaryOp::Gt
+                    | BinaryOp::Lte
+                    | BinaryOp::Gte
+                    | BinaryOp::Eq
                     | BinaryOp::Neq,
                     (RosyBaseType::RE, RosyBaseType::RE) | (RosyBaseType::ST, RosyBaseType::ST),
                 ) => {

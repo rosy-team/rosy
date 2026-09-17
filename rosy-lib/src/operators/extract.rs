@@ -2,9 +2,9 @@
 
 use anyhow::{Result, bail};
 
-use crate::{RosyType, RosyBaseType};
-use crate::{RE, ST, VE, CM, DA, CD};
 use crate::taylor::monomial::Monomial;
+use crate::{CD, CM, DA, RE, ST, VE};
+use crate::{RosyBaseType, RosyType};
 
 pub fn get_return_type(base: &RosyType, index: &RosyType) -> Option<RosyType> {
     use RosyBaseType::*;
@@ -27,17 +27,19 @@ pub trait RosyExtract<T> {
 // ST | RE -> ST (extract i-th character)
 impl RosyExtract<&RE> for &ST {
     type Output = ST;
-    
+
     fn rosy_extract(self, index: &RE) -> Result<Self::Output> {
         let idx = index.round() as usize;
         if idx == 0 || idx > self.len() {
             bail!("String index {} out of bounds (1-{})", idx, self.len());
         }
-        
+
         // Rosy uses 1-based indexing
-        let char_at_idx = self.chars().nth(idx - 1)
+        let char_at_idx = self
+            .chars()
+            .nth(idx - 1)
             .ok_or_else(|| anyhow::anyhow!("Character at index {} not found", idx))?;
-        
+
         Ok(char_at_idx.to_string())
     }
 }
@@ -45,22 +47,29 @@ impl RosyExtract<&RE> for &ST {
 // ST | VE -> ST (extract substring by range)
 impl RosyExtract<&VE> for &ST {
     type Output = ST;
-    
+
     fn rosy_extract(self, index: &VE) -> Result<Self::Output> {
         if index.len() != 2 {
-            bail!("String extraction with vector index requires exactly two elements (start and end)");
+            bail!(
+                "String extraction with vector index requires exactly two elements (start and end)"
+            );
         }
-        
+
         let start = index[0].round() as usize;
         let end = index[1].round() as usize;
 
         if start == 0 || end == 0 || start > self.len() || end > self.len() || start > end {
-            bail!("String index range {}-{} out of bounds (1-{})", start, end, self.len());
+            bail!(
+                "String index range {}-{} out of bounds (1-{})",
+                start,
+                end,
+                self.len()
+            );
         }
-        
+
         // Rosy uses 1-based indexing
         let substring: String = self.chars().skip(start - 1).take(end - start + 1).collect();
-        
+
         Ok(substring)
     }
 }
@@ -87,12 +96,15 @@ impl RosyExtract<&VE> for &RE {
 // CM | RE -> RE (extract real or imaginary part)
 impl RosyExtract<&RE> for &CM {
     type Output = RE;
-    
+
     fn rosy_extract(self, index: &RE) -> Result<Self::Output> {
         match *index as i32 {
             1 => Ok(self.re), // Real part
             2 => Ok(self.im), // Imaginary part
-            _ => bail!("Complex number index must be 1 (real) or 2 (imaginary), found {}", index),
+            _ => bail!(
+                "Complex number index must be 1 (real) or 2 (imaginary), found {}",
+                index
+            ),
         }
     }
 }
@@ -100,13 +112,13 @@ impl RosyExtract<&RE> for &CM {
 // VE | RE -> RE (extract i-th component)
 impl RosyExtract<&RE> for &VE {
     type Output = RE;
-    
+
     fn rosy_extract(self, index: &RE) -> Result<Self::Output> {
         let idx = index.round() as usize;
         if idx == 0 || idx > self.len() {
             bail!("Vector index {} out of bounds (1-{})", idx, self.len());
         }
-        
+
         // Rosy uses 1-based indexing
         Ok(self[idx - 1])
     }
@@ -118,16 +130,23 @@ impl RosyExtract<&VE> for &VE {
 
     fn rosy_extract(self, index: &VE) -> Result<Self::Output> {
         if index.len() != 2 {
-            bail!("Vector extraction with vector index requires exactly two elements (start and end)");
+            bail!(
+                "Vector extraction with vector index requires exactly two elements (start and end)"
+            );
         }
-        
+
         let start = index[0].round() as usize;
         let end = index[1].round() as usize;
 
         if start == 0 || end == 0 || start > self.len() || end > self.len() || start > end {
-            bail!("Vector index range {}-{} out of bounds (1-{})", start, end, self.len());
+            bail!(
+                "Vector index range {}-{} out of bounds (1-{})",
+                start,
+                end,
+                self.len()
+            );
         }
-        
+
         // Rosy uses 1-based indexing
         Ok(self[start - 1..end].to_vec())
     }
@@ -160,7 +179,8 @@ impl RosyExtract<&VE> for &DA {
         if index.len() > config.num_vars as usize {
             bail!(
                 "Exponent vector length {} exceeds number of DA variables {}",
-                index.len(), config.num_vars
+                index.len(),
+                config.num_vars
             );
         }
         let mut exponents = [0u8; crate::taylor::MAX_VARS];
@@ -199,7 +219,8 @@ impl RosyExtract<&VE> for &CD {
         if index.len() > config.num_vars as usize {
             bail!(
                 "Exponent vector length {} exceeds number of CD variables {}",
-                index.len(), config.num_vars
+                index.len(),
+                config.num_vars
             );
         }
         let mut exponents = [0u8; crate::taylor::MAX_VARS];

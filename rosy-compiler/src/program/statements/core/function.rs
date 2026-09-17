@@ -162,14 +162,11 @@ impl TranspileableStatement for FunctionStatement {
         // Return type slot
         let ret_slot = TypeSlot::FunctionReturn(ctx.scope_path.clone(), self.name.clone());
         let fox_ret = RosyType::ANY();
-        let ret_ty = self.return_type.as_ref().or_else(|| {
-            crate::syntax_config::is_cosy_syntax().then_some(&fox_ret)
-        });
-        resolver.insert_slot(
-            ret_slot.clone(),
-            ret_ty,
-            Some(source_location.clone()),
-        );
+        let ret_ty = self
+            .return_type
+            .as_ref()
+            .or_else(|| crate::syntax_config::is_cosy_syntax().then_some(&fox_ret));
+        resolver.insert_slot(ret_slot.clone(), ret_ty, Some(source_location.clone()));
 
         // Argument slots
         let mut arg_slots = Vec::new();
@@ -177,14 +174,11 @@ impl TranspileableStatement for FunctionStatement {
             let arg_slot =
                 TypeSlot::Argument(ctx.scope_path.clone(), self.name.clone(), arg.name.clone());
             let fox_any = RosyType::ANY();
-            let ty = arg.r#type.as_ref().or_else(|| {
-                crate::syntax_config::is_cosy_syntax().then_some(&fox_any)
-            });
-            resolver.insert_slot(
-                arg_slot.clone(),
-                ty,
-                Some(source_location.clone()),
-            );
+            let ty = arg
+                .r#type
+                .as_ref()
+                .or_else(|| crate::syntax_config::is_cosy_syntax().then_some(&fox_any));
+            resolver.insert_slot(arg_slot.clone(), ty, Some(source_location.clone()));
             arg_slots.push((arg.name.clone(), arg_slot));
         }
 
@@ -216,9 +210,10 @@ impl TranspileableStatement for FunctionStatement {
             TypeSlot::Variable(inner_ctx.scope_path.clone(), self.name.clone());
         // If the return type is known explicitly, the inner return var is also known
         let fox_inner = RosyType::ANY();
-        let inner_ty = self.return_type.as_ref().or_else(|| {
-            crate::syntax_config::is_cosy_syntax().then_some(&fox_inner)
-        });
+        let inner_ty = self
+            .return_type
+            .as_ref()
+            .or_else(|| crate::syntax_config::is_cosy_syntax().then_some(&fox_inner));
         resolver.insert_slot(
             inner_ret_var_slot.clone(),
             inner_ty,

@@ -7,16 +7,16 @@
 //! Invariant: entries NOT in the `nonzero` list are ALWAYS zero.
 //! This is maintained by all operations and by the pool's clear-on-return.
 
-use std::cell::RefCell;
-use std::ops::{Add, Neg, Sub, Mul, Div, AddAssign};
-use std::fmt;
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use num_complex::Complex64;
 use rustc_hash::FxHashMap;
+use std::cell::RefCell;
+use std::fmt;
+use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
 
-use super::{Monomial, MAX_VARS};
-use super::config::{get_runtime, MULT_INVALID, TaylorRuntime};
+use super::config::{MULT_INVALID, TaylorRuntime, get_runtime};
 use super::scratch::scratch_reserve;
+use super::{MAX_VARS, Monomial};
 
 /// Best-effort bump reserve for one operator result. Drop restores the cursor.
 /// Misses fall through: named DA results still live in the coeff pool.
@@ -30,11 +30,18 @@ fn account_result_temp(n: usize) -> super::scratch::ScratchFrame {
 // ============================================================================
 
 pub trait DACoefficient:
-    Clone + Copy +
-    Add<Output=Self> + Sub<Output=Self> + Mul<Output=Self> + Div<Output=Self> +
-    AddAssign + MulAdd +
-    Neg<Output=Self> +
-    PartialEq + fmt::Debug + fmt::Display
+    Clone
+    + Copy
+    + Add<Output = Self>
+    + Sub<Output = Self>
+    + Mul<Output = Self>
+    + Div<Output = Self>
+    + AddAssign
+    + MulAdd
+    + Neg<Output = Self>
+    + PartialEq
+    + fmt::Debug
+    + fmt::Display
 {
     fn zero() -> Self;
     fn one() -> Self;
@@ -69,7 +76,9 @@ pub(crate) fn bitset_pool_alloc(words: usize) -> Vec<u64> {
 
 /// Return a bitset to the pool after clearing the set bits (O(popcount)).
 pub(crate) fn bitset_pool_return(mut v: Vec<u64>) {
-    if v.is_empty() { return; }
+    if v.is_empty() {
+        return;
+    }
     // Clear only the set words — most words are zero
     for w in v.iter_mut() {
         *w = 0;
@@ -78,10 +87,22 @@ pub(crate) fn bitset_pool_return(mut v: Vec<u64>) {
 }
 
 impl DACoefficient for f64 {
-    #[inline(always)] fn zero() -> Self { 0.0 }
-    #[inline(always)] fn one() -> Self { 1.0 }
-    #[inline(always)] fn from_usize(n: usize) -> Self { n as f64 }
-    #[inline(always)] fn abs(&self) -> f64 { f64::abs(*self) }
+    #[inline(always)]
+    fn zero() -> Self {
+        0.0
+    }
+    #[inline(always)]
+    fn one() -> Self {
+        1.0
+    }
+    #[inline(always)]
+    fn from_usize(n: usize) -> Self {
+        n as f64
+    }
+    #[inline(always)]
+    fn abs(&self) -> f64 {
+        f64::abs(*self)
+    }
 
     fn pool_alloc(n: usize) -> Vec<Self> {
         F64_POOL.with(|pool| {
@@ -97,7 +118,9 @@ impl DACoefficient for f64 {
     }
 
     fn pool_return(v: Vec<Self>) {
-        if v.is_empty() { return; }
+        if v.is_empty() {
+            return;
+        }
         F64_POOL.with(|pool| pool.borrow_mut().push(v));
     }
 }
@@ -109,10 +132,22 @@ thread_local! {
 }
 
 impl DACoefficient for Complex64 {
-    #[inline(always)] fn zero() -> Self { Complex64::new(0.0, 0.0) }
-    #[inline(always)] fn one() -> Self { Complex64::new(1.0, 0.0) }
-    #[inline(always)] fn from_usize(n: usize) -> Self { Complex64::new(n as f64, 0.0) }
-    #[inline(always)] fn abs(&self) -> f64 { self.norm() }
+    #[inline(always)]
+    fn zero() -> Self {
+        Complex64::new(0.0, 0.0)
+    }
+    #[inline(always)]
+    fn one() -> Self {
+        Complex64::new(1.0, 0.0)
+    }
+    #[inline(always)]
+    fn from_usize(n: usize) -> Self {
+        Complex64::new(n as f64, 0.0)
+    }
+    #[inline(always)]
+    fn abs(&self) -> f64 {
+        self.norm()
+    }
 
     fn pool_alloc(n: usize) -> Vec<Self> {
         C64_POOL.with(|pool| {
@@ -127,7 +162,9 @@ impl DACoefficient for Complex64 {
     }
 
     fn pool_return(v: Vec<Self>) {
-        if v.is_empty() { return; }
+        if v.is_empty() {
+            return;
+        }
         C64_POOL.with(|pool| pool.borrow_mut().push(v));
     }
 }
@@ -170,7 +207,10 @@ impl<T: DACoefficient> Clone for DA<T> {
     fn clone(&self) -> Self {
         let n = self.coeffs.len();
         if n == 0 {
-            return Self { coeffs: Vec::new(), nonzero: Vec::new() };
+            return Self {
+                coeffs: Vec::new(),
+                nonzero: Vec::new(),
+            };
         }
         let mut coeffs = T::pool_alloc(n);
         let mut nonzero = Vec::with_capacity(self.nonzero.len());
@@ -198,7 +238,9 @@ impl<T: DACoefficient> Clone for DA<T> {
 // Drop: clear nonzero entries O(K) and return array to pool
 impl<T: DACoefficient> Drop for DA<T> {
     fn drop(&mut self) {
-        if self.coeffs.is_empty() { return; }
+        if self.coeffs.is_empty() {
+            return;
+        }
         // Restore invariant: zero out entries we used
         for &i in &self.nonzero {
             self.coeffs[i as usize] = T::zero();
@@ -265,7 +307,8 @@ impl<T: DACoefficient> DA<T> {
         if var_index == 0 || var_index > rt.config.num_vars {
             anyhow::bail!(
                 "Variable index {} out of range [1, {}]",
-                var_index, rt.config.num_vars
+                var_index,
+                rt.config.num_vars
             );
         }
         let flat_idx = rt.variable_indices[var_index - 1];
@@ -326,10 +369,14 @@ impl<T: DACoefficient> DA<T> {
     }
 
     #[inline]
-    pub fn num_terms(&self) -> usize { self.nonzero.len() }
+    pub fn num_terms(&self) -> usize {
+        self.nonzero.len()
+    }
 
     #[inline]
-    pub fn is_zero(&self) -> bool { self.nonzero.is_empty() }
+    pub fn is_zero(&self) -> bool {
+        self.nonzero.is_empty()
+    }
 
     pub fn from_coeffs(hash_coeffs: FxHashMap<Monomial, T>) -> Self {
         let rt = get_runtime().expect("Taylor system not initialized");
@@ -347,19 +394,21 @@ impl<T: DACoefficient> DA<T> {
         Self { coeffs, nonzero }
     }
 
-    pub fn coeffs_entries<'a>(&'a self, rt: &'a TaylorRuntime) -> impl Iterator<Item = (&'a Monomial, T)> + 'a {
-        self.nonzero.iter().map(move |&i| (
-            &rt.monomial_list[i as usize],
-            self.coeffs[i as usize],
-        ))
+    pub fn coeffs_entries<'a>(
+        &'a self,
+        rt: &'a TaylorRuntime,
+    ) -> impl Iterator<Item = (&'a Monomial, T)> + 'a {
+        self.nonzero
+            .iter()
+            .map(move |&i| (&rt.monomial_list[i as usize], self.coeffs[i as usize]))
     }
 
     pub fn coeffs_iter(&self) -> Vec<(Monomial, T)> {
         let rt = get_runtime().expect("Taylor system not initialized");
-        self.nonzero.iter().map(|&i| (
-            rt.monomial_list[i as usize],
-            self.coeffs[i as usize],
-        )).collect()
+        self.nonzero
+            .iter()
+            .map(|&i| (rt.monomial_list[i as usize], self.coeffs[i as usize]))
+            .collect()
     }
 
     /// O(1) amortized. Used by Horner's method.
@@ -478,19 +527,27 @@ impl<T: DACoefficient> Add<&DA<T>> for &DA<T> {
 
 impl<T: DACoefficient> Add<DA<T>> for DA<T> {
     type Output = Result<DA<T>>;
-    fn add(self, rhs: DA<T>) -> Self::Output { &self + &rhs }
+    fn add(self, rhs: DA<T>) -> Self::Output {
+        &self + &rhs
+    }
 }
 impl<T: DACoefficient> Add<&DA<T>> for DA<T> {
     type Output = Result<DA<T>>;
-    fn add(self, rhs: &DA<T>) -> Self::Output { &self + rhs }
+    fn add(self, rhs: &DA<T>) -> Self::Output {
+        &self + rhs
+    }
 }
 impl<T: DACoefficient> Add<DA<T>> for &DA<T> {
     type Output = Result<DA<T>>;
-    fn add(self, rhs: DA<T>) -> Self::Output { self + &rhs }
+    fn add(self, rhs: DA<T>) -> Self::Output {
+        self + &rhs
+    }
 }
 impl<T: DACoefficient> Add<T> for DA<T> {
     type Output = Result<DA<T>>;
-    fn add(self, rhs: T) -> Self::Output { &self + rhs }
+    fn add(self, rhs: T) -> Self::Output {
+        &self + rhs
+    }
 }
 impl<T: DACoefficient> Add<T> for &DA<T> {
     type Output = Result<DA<T>>;
@@ -507,7 +564,9 @@ impl<T: DACoefficient> Add<T> for &DA<T> {
 
 impl<T: DACoefficient> Neg for DA<T> {
     type Output = DA<T>;
-    fn neg(self) -> Self::Output { -&self }
+    fn neg(self) -> Self::Output {
+        -&self
+    }
 }
 
 impl<T: DACoefficient> Neg for &DA<T> {
@@ -519,7 +578,10 @@ impl<T: DACoefficient> Neg for &DA<T> {
         for &i in &self.nonzero {
             coeffs[i as usize] = -self.coeffs[i as usize];
         }
-        DA { coeffs, nonzero: self.nonzero.clone() }
+        DA {
+            coeffs,
+            nonzero: self.nonzero.clone(),
+        }
     }
 }
 
@@ -590,23 +652,33 @@ impl<T: DACoefficient> Sub<&DA<T>> for &DA<T> {
 
 impl<T: DACoefficient> Sub<DA<T>> for DA<T> {
     type Output = Result<DA<T>>;
-    fn sub(self, rhs: DA<T>) -> Self::Output { &self - &rhs }
+    fn sub(self, rhs: DA<T>) -> Self::Output {
+        &self - &rhs
+    }
 }
 impl<T: DACoefficient> Sub<&DA<T>> for DA<T> {
     type Output = Result<DA<T>>;
-    fn sub(self, rhs: &DA<T>) -> Self::Output { &self - rhs }
+    fn sub(self, rhs: &DA<T>) -> Self::Output {
+        &self - rhs
+    }
 }
 impl<T: DACoefficient> Sub<DA<T>> for &DA<T> {
     type Output = Result<DA<T>>;
-    fn sub(self, rhs: DA<T>) -> Self::Output { self - &rhs }
+    fn sub(self, rhs: DA<T>) -> Self::Output {
+        self - &rhs
+    }
 }
 impl<T: DACoefficient> Sub<T> for DA<T> {
     type Output = Result<DA<T>>;
-    fn sub(self, rhs: T) -> Self::Output { &self - rhs }
+    fn sub(self, rhs: T) -> Self::Output {
+        &self - rhs
+    }
 }
 impl<T: DACoefficient> Sub<T> for &DA<T> {
     type Output = Result<DA<T>>;
-    fn sub(self, rhs: T) -> Self::Output { self + (-rhs) }
+    fn sub(self, rhs: T) -> Self::Output {
+        self + (-rhs)
+    }
 }
 
 // ============================================================================
@@ -626,7 +698,12 @@ impl<T: DACoefficient> DA<T> {
 
     /// Inner implementation that takes an already-acquired runtime reference.
     /// Avoids redundant RwLock acquisition when called in a loop (e.g. Horner).
-    pub(crate) fn multiply_truncated_with_rt(lhs: &DA<T>, rhs: &DA<T>, trunc_order: u32, rt: &TaylorRuntime) -> Result<DA<T>> {
+    pub(crate) fn multiply_truncated_with_rt(
+        lhs: &DA<T>,
+        rhs: &DA<T>,
+        trunc_order: u32,
+        rt: &TaylorRuntime,
+    ) -> Result<DA<T>> {
         let n = rt.num_monomials;
         let _scratch = account_result_temp(n);
         let mut result = T::pool_alloc(n);
@@ -645,7 +722,10 @@ impl<T: DACoefficient> DA<T> {
             &mut written,
         );
         bitset_pool_return(written);
-        Ok(DA { coeffs: result, nonzero })
+        Ok(DA {
+            coeffs: result,
+            nonzero,
+        })
     }
 }
 
@@ -776,7 +856,8 @@ impl<T: DACoefficient> Mul<&DA<T>> for &DA<T> {
             for &i in &self.nonzero {
                 let ci = self.coeffs[i as usize];
                 for &j in &rhs.nonzero {
-                    let product = rt.monomial_list[i as usize].multiply(&rt.monomial_list[j as usize]);
+                    let product =
+                        rt.monomial_list[i as usize].multiply(&rt.monomial_list[j as usize]);
                     if product.within_order(max_order) {
                         if let Some(&k) = rt.monomial_index.get(&product) {
                             let ku = k as usize;
@@ -807,27 +888,38 @@ impl<T: DACoefficient> Mul<&DA<T>> for &DA<T> {
 
         bitset_pool_return(written);
 
-        Ok(DA { coeffs: result, nonzero })
+        Ok(DA {
+            coeffs: result,
+            nonzero,
+        })
     }
 }
 
 impl<T: DACoefficient> Mul<DA<T>> for DA<T> {
     type Output = Result<DA<T>>;
-    fn mul(self, rhs: DA<T>) -> Self::Output { &self * &rhs }
+    fn mul(self, rhs: DA<T>) -> Self::Output {
+        &self * &rhs
+    }
 }
 impl<T: DACoefficient> Mul<&DA<T>> for DA<T> {
     type Output = Result<DA<T>>;
-    fn mul(self, rhs: &DA<T>) -> Self::Output { &self * rhs }
+    fn mul(self, rhs: &DA<T>) -> Self::Output {
+        &self * rhs
+    }
 }
 impl<T: DACoefficient> Mul<DA<T>> for &DA<T> {
     type Output = Result<DA<T>>;
-    fn mul(self, rhs: DA<T>) -> Self::Output { self * &rhs }
+    fn mul(self, rhs: DA<T>) -> Self::Output {
+        self * &rhs
+    }
 }
 
 // Scalar multiply: O(K), pool-allocated
 impl<T: DACoefficient> Mul<T> for DA<T> {
     type Output = Result<DA<T>>;
-    fn mul(self, rhs: T) -> Self::Output { &self * rhs }
+    fn mul(self, rhs: T) -> Self::Output {
+        &self * rhs
+    }
 }
 
 impl<T: DACoefficient> Mul<T> for &DA<T> {
@@ -871,7 +963,9 @@ impl<T: DACoefficient> Div<&DA<T>> for &DA<T> {
         let epsilon = rt.config.epsilon;
         let g0_inv = T::one() / g0;
 
-        let mut g_entries: Vec<(u32, T)> = rhs.nonzero.iter()
+        let mut g_entries: Vec<(u32, T)> = rhs
+            .nonzero
+            .iter()
             .filter(|&&i| i != 0)
             .map(|&i| (i, rhs.coeffs[i as usize]))
             .collect();
@@ -882,7 +976,9 @@ impl<T: DACoefficient> Div<&DA<T>> for &DA<T> {
         let mut nonzero = Vec::new();
 
         for m_idx in 0..n {
-            if rt.monomial_orders[m_idx] as u32 > max_order { break; }
+            if rt.monomial_orders[m_idx] as u32 > max_order {
+                break;
+            }
             let f_m = self.coeffs[m_idx];
             let mut sum = T::zero();
             let mono_m = &rt.monomial_list[m_idx];
@@ -914,39 +1010,55 @@ impl<T: DACoefficient> Div<&DA<T>> for &DA<T> {
             }
         }
 
-        Ok(DA { coeffs: result, nonzero })
+        Ok(DA {
+            coeffs: result,
+            nonzero,
+        })
     }
 }
 
 impl<T: DACoefficient> Div<DA<T>> for DA<T> {
     type Output = Result<DA<T>>;
-    fn div(self, rhs: DA<T>) -> Self::Output { &self / &rhs }
+    fn div(self, rhs: DA<T>) -> Self::Output {
+        &self / &rhs
+    }
 }
 impl<T: DACoefficient> Div<DA<T>> for &DA<T> {
     type Output = Result<DA<T>>;
-    fn div(self, rhs: DA<T>) -> Self::Output { self / &rhs }
+    fn div(self, rhs: DA<T>) -> Self::Output {
+        self / &rhs
+    }
 }
 impl<T: DACoefficient> Div<&DA<T>> for DA<T> {
     type Output = Result<DA<T>>;
-    fn div(self, rhs: &DA<T>) -> Self::Output { &self / rhs }
+    fn div(self, rhs: &DA<T>) -> Self::Output {
+        &self / rhs
+    }
 }
 
 // Scalar division: O(K), pool-allocated
 impl<T: DACoefficient> Div<T> for DA<T> {
     type Output = Result<DA<T>>;
-    fn div(self, rhs: T) -> Self::Output { &self / rhs }
+    fn div(self, rhs: T) -> Self::Output {
+        &self / rhs
+    }
 }
 impl<T: DACoefficient> Div<T> for &DA<T> {
     type Output = Result<DA<T>>;
     fn div(self, rhs: T) -> Self::Output {
-        if rhs.abs() < 1e-15 { anyhow::bail!("Division by zero"); }
+        if rhs.abs() < 1e-15 {
+            anyhow::bail!("Division by zero");
+        }
         let n = self.coeffs.len();
         let _scratch = account_result_temp(n);
         let mut coeffs = T::pool_alloc(n);
         for &i in &self.nonzero {
             coeffs[i as usize] = self.coeffs[i as usize] / rhs;
         }
-        Ok(DA { coeffs, nonzero: self.nonzero.clone() })
+        Ok(DA {
+            coeffs,
+            nonzero: self.nonzero.clone(),
+        })
     }
 }
 
@@ -958,32 +1070,46 @@ impl<T: DACoefficient> fmt::Debug for DA<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let rt = get_runtime().map_err(|_| fmt::Error)?;
         write!(f, "DA[")?;
-        let mut entries: Vec<_> = self.nonzero.iter()
+        let mut entries: Vec<_> = self
+            .nonzero
+            .iter()
             .map(|&i| (i, self.coeffs[i as usize]))
             .collect();
         entries.sort_by_key(|&(i, _)| i);
         for (idx, (i, coeff)) in entries.iter().enumerate() {
-            if idx > 0 { write!(f, " + ")?; }
+            if idx > 0 {
+                write!(f, " + ")?;
+            }
             write!(f, "{}*{}", coeff, rt.monomial_list[*i as usize])?;
         }
-        if entries.is_empty() { write!(f, "0")?; }
+        if entries.is_empty() {
+            write!(f, "0")?;
+        }
         write!(f, "]")
     }
 }
 
 impl<T: DACoefficient> fmt::Display for DA<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.nonzero.is_empty() { return write!(f, "0"); }
+        if self.nonzero.is_empty() {
+            return write!(f, "0");
+        }
         let rt = get_runtime().map_err(|_| fmt::Error)?;
-        let mut entries: Vec<_> = self.nonzero.iter()
+        let mut entries: Vec<_> = self
+            .nonzero
+            .iter()
             .map(|&i| (i, self.coeffs[i as usize]))
             .collect();
         entries.sort_by_key(|&(i, _)| i);
         for (idx, &(i, coeff)) in entries.iter().enumerate() {
-            if idx > 0 { write!(f, " + ")?; }
+            if idx > 0 {
+                write!(f, " + ")?;
+            }
             let mono = &rt.monomial_list[i as usize];
             write!(f, "{}", coeff)?;
-            if mono.total_order > 0 { write!(f, "*{}", mono)?; }
+            if mono.total_order > 0 {
+                write!(f, "*{}", mono)?;
+            }
         }
         Ok(())
     }
@@ -994,7 +1120,9 @@ impl<T: DACoefficient> fmt::Display for DA<T> {
 // ============================================================================
 
 impl DA<f64> {
-    pub fn constant(value: f64) -> Self { Self::from_coeff(value) }
+    pub fn constant(value: f64) -> Self {
+        Self::from_coeff(value)
+    }
 }
 
 impl DA<Complex64> {
@@ -1011,7 +1139,10 @@ impl DA<Complex64> {
         for &i in &da.nonzero {
             coeffs[i as usize] = Complex64::new(da.coeffs[i as usize], 0.0);
         }
-        Self { coeffs, nonzero: da.nonzero.clone() }
+        Self {
+            coeffs,
+            nonzero: da.nonzero.clone(),
+        }
     }
 
     pub fn from_da_parts(real: &DA<f64>, imag: &DA<f64>) -> Self {
@@ -1129,7 +1260,9 @@ mod tests {
 
         let x = DA::<f64>::variable(1).unwrap();
         let sum = (&x + &x).expect("DA add should heap-fallback when SCRLEN is too small");
-        assert!((sum.coeffs[get_runtime().unwrap().variable_indices[0] as usize] - 2.0).abs() < 1e-14);
+        assert!(
+            (sum.coeffs[get_runtime().unwrap().variable_indices[0] as usize] - 2.0).abs() < 1e-14
+        );
 
         let mut q = -1.0;
         crate::rosy_scrlen(&mut q).unwrap();
@@ -1171,4 +1304,3 @@ mod tests {
         cleanup_taylor();
     }
 }
-

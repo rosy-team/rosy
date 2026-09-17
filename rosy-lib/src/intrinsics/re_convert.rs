@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, CM, VE, ST, DA};
+use crate::{CM, DA, RE, ST, VE};
 
 /// Get the return type of RE() for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -28,7 +28,8 @@ impl RosyREConvert for RE {
 /// ST -> RE (parse string as f64)
 impl RosyREConvert for ST {
     fn rosy_re_convert(&self) -> anyhow::Result<RE> {
-        self.trim().parse::<f64>()
+        self.trim()
+            .parse::<f64>()
             .map_err(|e| anyhow::anyhow!("Failed to convert ST to RE: {}", e))
     }
 }

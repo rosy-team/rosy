@@ -87,9 +87,7 @@ impl Transpile for ScrlenStatement {
                 "{{ let mut __scrlen = rosy_as_f64(&({val})); rosy_scrlen(&mut __scrlen)?; {dest}.set_f64(__scrlen); }}"
             )
         } else {
-            format!(
-                "{{ let mut __scrlen = rosy_as_f64(&({val})); rosy_scrlen(&mut __scrlen)?; }}"
-            )
+            format!("{{ let mut __scrlen = rosy_as_f64(&({val})); rosy_scrlen(&mut __scrlen)?; }}")
         };
 
         Ok(TranspilationOutput {

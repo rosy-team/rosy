@@ -10,14 +10,14 @@
 //! `parent * x_v`, so real / particle evaluation and DA/CD composition
 //! share intermediate products instead of powering every term from scratch.
 
-use crate::taylor::{CD, DA};
 use crate::RosyValue;
-use anyhow::{bail, Result};
+use crate::taylor::{CD, DA};
+use anyhow::{Result, bail};
 
 #[cfg(feature = "nightly-simd")]
-use std::simd::prelude::*;
-#[cfg(feature = "nightly-simd")]
 use std::simd::StdFloat;
+#[cfg(feature = "nightly-simd")]
+use std::simd::prelude::*;
 
 #[cfg(feature = "nightly-simd")]
 const LANES: usize = 4;

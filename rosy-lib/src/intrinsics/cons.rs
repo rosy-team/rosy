@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, CM, VE, DA, CD};
+use crate::{CD, CM, DA, RE, VE};
 
 /// Get the return type of CONS for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {

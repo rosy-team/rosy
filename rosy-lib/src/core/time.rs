@@ -9,7 +9,7 @@ pub fn rosy_cpu_time() -> f64 {
         // SAFETY: `usage` is zero-initialized to a valid layout; RUSAGE_SELF is always valid.
         unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut usage) };
         let user = usage.ru_utime.tv_sec as f64 + usage.ru_utime.tv_usec as f64 / 1_000_000.0;
-        let sys  = usage.ru_stime.tv_sec as f64 + usage.ru_stime.tv_usec as f64 / 1_000_000.0;
+        let sys = usage.ru_stime.tv_sec as f64 + usage.ru_stime.tv_usec as f64 / 1_000_000.0;
         user + sys
     }
     #[cfg(not(unix))]
