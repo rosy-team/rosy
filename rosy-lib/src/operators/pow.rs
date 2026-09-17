@@ -5,15 +5,15 @@
 //! `POW_REGISTRY` constant below.
 //!
 //! # Type Compatibility
-//! 
+//!
 //! According to COSY INFINITY manual:
 //! - RE ^ RE -> RE
 //! - VE ^ RE -> VE (component-wise)
 
+use crate::core::polval::{cd_powi, da_powi};
+use crate::{CD, DA, RE, VE};
+use crate::{RosyBaseType, RosyType};
 use anyhow::Result;
-use crate::{RosyType, RosyBaseType};
-use crate::{RE, VE, DA, CD};
-use crate::core::polval::{da_powi, cd_powi};
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
     match crate::operators::dim0(lhs, rhs)? {
@@ -61,4 +61,3 @@ impl RosyPow<&RE> for &CD {
         cd_powi(self, *rhs as u8)
     }
 }
-

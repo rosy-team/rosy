@@ -1,6 +1,6 @@
-use crate::{DA, CD};
-use crate::taylor::{get_runtime, DACoefficient};
 use crate::taylor::config::DERIV_INVALID;
+use crate::taylor::{DACoefficient, get_runtime};
+use crate::{CD, DA};
 
 /// Trait for derivation/anti-derivation of DA types.
 /// Positive index = partial derivative, negative index = anti-derivative (integral).
@@ -13,7 +13,10 @@ pub trait RosyDerive {
 ///
 /// Zero allocations beyond the pool-allocated output array. Single linear scan
 /// over nonzero entries with O(1) index lookups via `deriv_target`/`deriv_exponent`.
-fn da_derivative<T: DACoefficient>(da: &crate::taylor::da::DA<T>, var_idx: usize) -> anyhow::Result<crate::taylor::da::DA<T>> {
+fn da_derivative<T: DACoefficient>(
+    da: &crate::taylor::da::DA<T>,
+    var_idx: usize,
+) -> anyhow::Result<crate::taylor::da::DA<T>> {
     let rt = get_runtime()?;
     let n = rt.num_monomials;
     let epsilon = rt.config.epsilon;
@@ -25,10 +28,14 @@ fn da_derivative<T: DACoefficient>(da: &crate::taylor::da::DA<T>, var_idx: usize
     for &idx in &da.nonzero {
         let i = idx as usize;
         let exp_v = rt.deriv_exponent[base + i];
-        if exp_v == 0 { continue; }
+        if exp_v == 0 {
+            continue;
+        }
 
         let target = rt.deriv_target[base + i];
-        if target == DERIV_INVALID { continue; }
+        if target == DERIV_INVALID {
+            continue;
+        }
 
         let new_coeff = da.coeffs[i] * T::from_usize(exp_v as usize);
         if new_coeff.abs() > epsilon {
@@ -54,7 +61,10 @@ fn da_derivative<T: DACoefficient>(da: &crate::taylor::da::DA<T>, var_idx: usize
 }
 
 /// Generic anti-derivative (integral) using precomputed index tables (issues #19 + #21).
-fn da_antiderivative<T: DACoefficient>(da: &crate::taylor::da::DA<T>, var_idx: usize) -> anyhow::Result<crate::taylor::da::DA<T>> {
+fn da_antiderivative<T: DACoefficient>(
+    da: &crate::taylor::da::DA<T>,
+    var_idx: usize,
+) -> anyhow::Result<crate::taylor::da::DA<T>> {
     let rt = get_runtime()?;
     let n = rt.num_monomials;
     let epsilon = rt.config.epsilon;
@@ -66,7 +76,9 @@ fn da_antiderivative<T: DACoefficient>(da: &crate::taylor::da::DA<T>, var_idx: u
     for &idx in &da.nonzero {
         let i = idx as usize;
         let target = rt.integ_target[base + i];
-        if target == DERIV_INVALID { continue; }
+        if target == DERIV_INVALID {
+            continue;
+        }
 
         let exp_v = rt.deriv_exponent[base + i];
         let new_exp = exp_v as usize + 1;
@@ -100,7 +112,7 @@ impl RosyDerive for DA {
         if var_index == 0 {
             anyhow::bail!("Derivation variable index cannot be 0");
         }
-        
+
         if var_index > 0 {
             // Positive: partial derivative w.r.t. variable var_index
             let idx = (var_index as usize) - 1; // Convert to 0-based
@@ -119,7 +131,7 @@ impl RosyDerive for CD {
         if var_index == 0 {
             anyhow::bail!("Derivation variable index cannot be 0");
         }
-        
+
         if var_index > 0 {
             let idx = (var_index as usize) - 1;
             da_derivative(self, idx)

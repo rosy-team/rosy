@@ -6,9 +6,9 @@
 //! supported type combinations. The compatibility rules are defined in the
 //! `GTE_REGISTRY` constant below.
 
-use anyhow::Result;
 use crate::RosyType;
-use crate::{RE, ST, LO};
+use crate::{LO, RE, ST};
+use anyhow::Result;
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
     crate::operators::lt::get_return_type(lhs, rhs)

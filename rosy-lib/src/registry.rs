@@ -37,8 +37,14 @@ impl BinaryOp {
     pub fn return_type(self, lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
         if lhs.is_any() || rhs.is_any() {
             return Some(match self {
-                Self::Eq | Self::Neq | Self::Lt | Self::Gt | Self::Lte | Self::Gte
-                | Self::And | Self::Or => RosyType::LO(),
+                Self::Eq
+                | Self::Neq
+                | Self::Lt
+                | Self::Gt
+                | Self::Lte
+                | Self::Gte
+                | Self::And
+                | Self::Or => RosyType::LO(),
                 _ => RosyType::ANY(),
             });
         }
@@ -166,9 +172,7 @@ impl Intrinsic {
                 "CM" => RosyType::CM(),
                 "RE" => RosyType::RE(),
                 "VE" => RosyType::VE(),
-                "LENGTH" | "TYPE" | "NINT" | "INT" | "ABS" | "NORM" | "CONS" => {
-                    RosyType::RE()
-                }
+                "LENGTH" | "TYPE" | "NINT" | "INT" | "ABS" | "NORM" | "CONS" => RosyType::RE(),
                 _ => RosyType::ANY(),
             });
         }

@@ -25,18 +25,24 @@ pub fn rosy_ldet(
         return Ok(1.0);
     }
     if matrix.len() < n {
-        bail!("LDET: matrix has fewer rows ({}) than n ({})", matrix.len(), n);
+        bail!(
+            "LDET: matrix has fewer rows ({}) than n ({})",
+            matrix.len(),
+            n
+        );
     }
     for row in matrix.iter().take(n) {
         if row.len() < n {
-            bail!("LDET: matrix row has fewer columns ({}) than n ({})", row.len(), n);
+            bail!(
+                "LDET: matrix row has fewer columns ({}) than n ({})",
+                row.len(),
+                n
+            );
         }
     }
 
     // Copy the relevant submatrix into a working buffer
-    let mut a: Vec<Vec<f64>> = (0..n)
-        .map(|i| matrix[i][..n].to_vec())
-        .collect();
+    let mut a: Vec<Vec<f64>> = (0..n).map(|i| matrix[i][..n].to_vec()).collect();
 
     let mut det = 1.0f64;
     let mut sign = 1.0f64;

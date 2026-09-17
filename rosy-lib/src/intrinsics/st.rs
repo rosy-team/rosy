@@ -1,6 +1,6 @@
 use crate::RosyType;
-use crate::{RE, CM, VE, LO, ST, DA, CD};
-use crate::core::display::{display_re, RosyDisplay};
+use crate::core::display::{RosyDisplay, display_re};
+use crate::{CD, CM, DA, LO, RE, ST, VE};
 
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
     match input {
@@ -13,7 +13,7 @@ pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
         t if *t == RosyType::CD() => Some(RosyType::ST()),
         _ => None,
     }
-}           
+}
 
 /// Trait for converting Rosy data types to strings
 pub trait RosyST {

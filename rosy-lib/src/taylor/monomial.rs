@@ -87,9 +87,20 @@ impl Monomial {
 /// When `weights` is `Some`, exponents for variable `v` step in multiples of
 /// `weights[v]` and the order budget is consumed by `weights[v]` per step.
 /// Internal exponents are stored as `weight * actual_exponent`.
-pub fn enumerate_monomials(max_order: u32, num_vars: u32, weights: Option<&[u32]>) -> Vec<Monomial> {
+pub fn enumerate_monomials(
+    max_order: u32,
+    num_vars: u32,
+    weights: Option<&[u32]>,
+) -> Vec<Monomial> {
     let mut result = Vec::new();
-    enumerate_monomials_recursive(max_order, num_vars as usize, 0, weights, &mut [0u8; MAX_VARS], &mut result);
+    enumerate_monomials_recursive(
+        max_order,
+        num_vars as usize,
+        0,
+        weights,
+        &mut [0u8; MAX_VARS],
+        &mut result,
+    );
     result.sort();
     result
 }
@@ -277,7 +288,7 @@ mod tests {
         let m1 = Monomial::variable(0); // x1
         let m2 = Monomial::variable(1); // x2
         let product = m1.multiply(&m2);
-        
+
         assert_eq!(product.exponents[0], 1);
         assert_eq!(product.exponents[1], 1);
         assert_eq!(product.total_order, 2);

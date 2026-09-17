@@ -30,8 +30,7 @@ use crate::{
     program::expressions::Expr,
     transpile::{
         TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
-        TranspileableStatement,
-        add_context_to_all,
+        TranspileableStatement, add_context_to_all,
     },
 };
 
@@ -106,7 +105,10 @@ impl Transpile for DaintStatement {
             let store = if dest_ty.is_any() {
                 format!("{} = RosyValue::from(__daint)", dest_out.as_value())
             } else if dest_ty.base_type == rosy_lib::RosyBaseType::RE {
-                format!("{} = RosyValue::from(__daint).as_f64()", dest_out.as_value())
+                format!(
+                    "{} = RosyValue::from(__daint).as_f64()",
+                    dest_out.as_value()
+                )
             } else {
                 format!("{} = __daint", dest_out.as_value())
             };

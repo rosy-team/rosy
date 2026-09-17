@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, VE, DA};
+use crate::{DA, RE, VE};
 
 /// Get the return type of TAN for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -38,8 +38,8 @@ impl RosyTAN for VE {
 impl RosyTAN for DA {
     type Output = DA;
     fn rosy_tan(&self) -> anyhow::Result<Self::Output> {
-        use crate::intrinsics::sin::RosySIN;
         use crate::intrinsics::cos::RosyCOS;
+        use crate::intrinsics::sin::RosySIN;
 
         let sin_f = self.rosy_sin()?;
         let cos_f = self.rosy_cos()?;
@@ -47,4 +47,3 @@ impl RosyTAN for DA {
         (&sin_f / &cos_f).map_err(|e| e)
     }
 }
-

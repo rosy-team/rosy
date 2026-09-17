@@ -311,7 +311,9 @@ impl Transpile for LoopStatement {
             match step_expr.transpile(context) {
                 Ok(output) => {
                     requested_variables.extend(output.requested_variables.iter().cloned());
-                    let ty = step_expr.type_of(context).unwrap_or_else(|_| RosyType::RE());
+                    let ty = step_expr
+                        .type_of(context)
+                        .unwrap_or_else(|_| RosyType::RE());
                     Some(if ty.is_any() {
                         format!("({}).expect_re()?", output.as_owned(&RosyType::ANY()))
                     } else {

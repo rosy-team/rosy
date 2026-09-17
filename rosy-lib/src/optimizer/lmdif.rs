@@ -90,7 +90,8 @@ where
         }
 
         // Solve the linear system using simple Gaussian elimination
-        let delta = match solve_linear_system(&damped, &jtr.iter().map(|x| -x).collect::<Vec<_>>()) {
+        let delta = match solve_linear_system(&damped, &jtr.iter().map(|x| -x).collect::<Vec<_>>())
+        {
             Some(d) => d,
             None => {
                 // Singular matrix - increase lambda and retry
@@ -152,7 +153,7 @@ fn sum_of_squares(v: &[f64]) -> f64 {
 /// Returns None if the matrix is singular.
 fn solve_linear_system(a: &[Vec<f64>], b: &[f64]) -> Option<Vec<f64>> {
     let n = b.len();
-    
+
     // Augmented matrix
     let mut aug: Vec<Vec<f64>> = Vec::with_capacity(n);
     for i in 0..n {

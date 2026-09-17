@@ -574,7 +574,11 @@ pub fn rosy_cdflo(
 ///
 /// For each monomial of order k with coefficient c, computes |c| * weight^k.
 /// Returns the maximum over all monomials.
-pub fn rosy_danow(da: &impl crate::AsDaRef, weight: impl crate::AsF64, result: &mut impl crate::SetF64) -> Result<()> {
+pub fn rosy_danow(
+    da: &impl crate::AsDaRef,
+    weight: impl crate::AsF64,
+    result: &mut impl crate::SetF64,
+) -> Result<()> {
     let da = da.as_da_vec();
     let weight = weight.as_f64_val();
     let mut best = 0.0;

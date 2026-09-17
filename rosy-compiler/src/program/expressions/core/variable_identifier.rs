@@ -298,11 +298,7 @@ impl Transpile for VariableIdentifier {
             }
             result
         };
-        let value_kind = match context
-            .variables
-            .get(&self.name)
-            .map(|v| v.scope.clone())
-        {
+        let value_kind = match context.variables.get(&self.name).map(|v| v.scope.clone()) {
             Some(VariableScope::Arg | VariableScope::Higher) if transpiled_indices.is_empty() => {
                 ValueKind::Ref
             }

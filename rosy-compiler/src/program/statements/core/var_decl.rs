@@ -308,9 +308,7 @@ impl TranspileableStatement for VarDeclStatement {
         {
             let mut resolved = *t;
             if !self.data.dimension_exprs.is_empty() {
-                resolved.dimensions = resolved
-                    .dimensions
-                    .max(self.data.dimension_exprs.len());
+                resolved.dimensions = resolved.dimensions.max(self.data.dimension_exprs.len());
             }
             self.data.r#type = Some(resolved);
         }

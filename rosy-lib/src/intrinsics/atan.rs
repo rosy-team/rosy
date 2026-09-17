@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, VE, DA};
+use crate::{DA, RE, VE};
 
 /// Get the return type of ATAN for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -49,8 +49,6 @@ impl RosyATAN for DA {
 /// Differentiating n times: (1+x²)*f^(n+1) + 2*n*x*f^(n) + n*(n-1)*f^(n-1) = 0
 /// => f^(n+1) = -[2*n*x*f^(n) + n*(n-1)*f^(n-1)] / (1+x²)
 fn da_atan(da: &DA) -> anyhow::Result<DA> {
-    
-
     let rt = crate::taylor::get_runtime()?;
     let nocut = rt.config.max_order as usize;
 
@@ -67,7 +65,8 @@ fn da_atan(da: &DA) -> anyhow::Result<DA> {
         let denom = 1.0 + f0 * f0;
         for n in 1..nocut {
             let n_f = n as f64;
-            derivs[n + 1] = -(2.0 * n_f * f0 * derivs[n] + n_f * (n_f - 1.0) * derivs[n - 1]) / denom;
+            derivs[n + 1] =
+                -(2.0 * n_f * f0 * derivs[n] + n_f * (n_f - 1.0) * derivs[n - 1]) / denom;
         }
     }
 
@@ -75,7 +74,9 @@ fn da_atan(da: &DA) -> anyhow::Result<DA> {
     let mut xf = Vec::with_capacity(nocut + 1);
     let mut factorial = 1.0;
     for n in 0..=nocut {
-        if n > 0 { factorial *= n as f64; }
+        if n > 0 {
+            factorial *= n as f64;
+        }
         xf.push(derivs[n] / factorial);
     }
 

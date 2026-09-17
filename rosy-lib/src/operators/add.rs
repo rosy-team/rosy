@@ -1,9 +1,9 @@
 //! Addition operator for Rosy types.
 
+use crate::RosyType;
+use crate::{CD, CM, DA, LO, RE, VE};
 use anyhow::Result;
 use num_complex::Complex64;
-use crate::RosyType;
-use crate::{RE, CM, VE, DA, CD, LO};
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
     crate::operators::arith_return(lhs, rhs, true)
@@ -69,12 +69,13 @@ impl RosyAdd<&RE> for &VE {
 impl RosyAdd<&VE> for &VE {
     type Output = VE;
     fn rosy_add(self, other: &VE) -> Result<Self::Output> {
-        anyhow::ensure!(self.len() == other.len(),
-            "Vector length mismatch in addition: {} vs {}", self.len(), other.len());
-        Ok(self.iter()
-            .zip(other.iter())
-            .map(|(x, y)| x + y)
-            .collect())
+        anyhow::ensure!(
+            self.len() == other.len(),
+            "Vector length mismatch in addition: {} vs {}",
+            self.len(),
+            other.len()
+        );
+        Ok(self.iter().zip(other.iter()).map(|(x, y)| x + y).collect())
     }
 }
 
@@ -138,7 +139,6 @@ impl RosyAdd<&CD> for &CM {
 impl RosyAdd<&CM> for &DA {
     type Output = CD;
     fn rosy_add(self, other: &CM) -> Result<Self::Output> {
-        
         // Create CD from the complex number
         let cm_cd = CD::complex_constant(*other);
 

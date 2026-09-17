@@ -15,7 +15,7 @@
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/constructs/statements/core/reran.rosy"))]
 //! ```
 
-use anyhow::{ensure, Context, Error, Result};
+use anyhow::{Context, Error, Result, ensure};
 use std::collections::BTreeSet;
 
 use crate::{

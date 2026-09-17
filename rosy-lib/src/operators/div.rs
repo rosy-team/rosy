@@ -1,8 +1,8 @@
 //! Division operator for Rosy types.
 
-use anyhow::Result;
 use crate::RosyType;
-use crate::{RE, CM, VE, DA, CD};
+use crate::{CD, CM, DA, RE, VE};
+use anyhow::Result;
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
     crate::operators::arith_return(lhs, rhs, false)
@@ -108,12 +108,13 @@ impl RosyDiv<&RE> for &VE {
 impl RosyDiv<&VE> for &VE {
     type Output = VE;
     fn rosy_div(self, other: &VE) -> Result<Self::Output> {
-        anyhow::ensure!(self.len() == other.len(),
-            "Vector length mismatch in division: {} vs {}", self.len(), other.len());
-        Ok(self.iter()
-            .zip(other.iter())
-            .map(|(x, y)| x / y)
-            .collect())
+        anyhow::ensure!(
+            self.len() == other.len(),
+            "Vector length mismatch in division: {} vs {}",
+            self.len(),
+            other.len()
+        );
+        Ok(self.iter().zip(other.iter()).map(|(x, y)| x / y).collect())
     }
 }
 
@@ -169,7 +170,6 @@ impl RosyDiv<&RE> for &CD {
 impl RosyDiv<&CM> for &CD {
     type Output = CD;
     fn rosy_div(self, other: &CM) -> Result<Self::Output> {
-        
         self / *other
     }
 }

@@ -3,10 +3,10 @@
 //! DAPRV writes an array of DA vectors in COSY-format tabular output.
 //! DAREV reads an array of DA vectors back from that format.
 
-use anyhow::{Result, Context, bail};
+use anyhow::{Context, Result, bail};
 
-use crate::taylor::{DA, cosy_display_rank, get_config, get_runtime};
 use crate::taylor::Monomial;
+use crate::taylor::{DA, cosy_display_rank, get_config, get_runtime};
 
 /// Write an array of DA vectors in COSY INFINITY DAPRV format.
 ///
@@ -114,7 +114,8 @@ fn format_daprv(
 ) -> Result<String> {
     let epsilon = get_runtime()
         .context("DAPRV requires DA to be initialized (call OV first)")?
-        .config.epsilon;
+        .config
+        .epsilon;
 
     let mut output = String::new();
 
@@ -185,9 +186,7 @@ fn parse_daprv_coefficient(field: &str) -> Result<f64> {
 }
 
 fn exponent_token_is_digits(token: &str, nv: usize) -> bool {
-    !token.is_empty()
-        && token.len() <= nv.max(1)
-        && token.chars().all(|c| c.is_ascii_digit())
+    !token.is_empty() && token.len() <= nv.max(1) && token.chars().all(|c| c.is_ascii_digit())
 }
 
 /// COSY row: optional leading pad, `components` G14.7 fields, then `nv` digit exponents.
@@ -247,7 +246,10 @@ fn parse_legacy_daprv_row(line: &str, nv: usize) -> Result<(Monomial, f64)> {
         bail!("Legacy DAPRV row needs a coefficient and an exponent: '{line}'");
     }
     if !exponent_token_is_digits(tokens[1], nv) {
-        bail!("Legacy DAPRV row has a malformed exponent field '{}'", tokens[1]);
+        bail!(
+            "Legacy DAPRV row has a malformed exponent field '{}'",
+            tokens[1]
+        );
     }
     let coeff = parse_daprv_coefficient(tokens[0])?;
     Ok((daprv_exponents(tokens[1], nv), coeff))
@@ -377,8 +379,16 @@ pub fn rosy_datrn(
         if var_idx >= m1 && var_idx <= m2 {
             // Index into scales/shifts arrays (0-based offset from m1)
             let arr_idx = var_idx - m1;
-            let a_i = if arr_idx < scales.len() { scales[arr_idx] } else { 1.0 };
-            let c_i = if arr_idx < shifts.len() { shifts[arr_idx] } else { 0.0 };
+            let a_i = if arr_idx < scales.len() {
+                scales[arr_idx]
+            } else {
+                1.0
+            };
+            let c_i = if arr_idx < shifts.len() {
+                shifts[arr_idx]
+            } else {
+                0.0
+            };
 
             // Build: a_i * x_i + c_i
             let x_i = DA::variable(var_idx)
@@ -390,8 +400,9 @@ pub fn rosy_datrn(
             substitutions.push(shifted);
         } else {
             // Identity substitution: new_x_i = x_i
-            let x_i = DA::variable(var_idx)
-                .with_context(|| format!("DATRN: failed to create identity DA variable {}", var_idx))?;
+            let x_i = DA::variable(var_idx).with_context(|| {
+                format!("DATRN: failed to create identity DA variable {}", var_idx)
+            })?;
             substitutions.push(x_i);
         }
     }
@@ -420,11 +431,19 @@ pub fn rosy_datrn(
                 // Raise substitution[var_0idx] to the power `exp`
                 let mut power = DA::from_coeff(1.0);
                 for _ in 0..exp {
-                    power = (&power * &substitutions[var_0idx])
-                        .with_context(|| format!("DATRN: failed to multiply DA powers for var {}", var_0idx + 1))?;
+                    power = (&power * &substitutions[var_0idx]).with_context(|| {
+                        format!(
+                            "DATRN: failed to multiply DA powers for var {}",
+                            var_0idx + 1
+                        )
+                    })?;
                 }
-                term = (&term * &power)
-                    .with_context(|| format!("DATRN: failed to multiply term by power for var {}", var_0idx + 1))?;
+                term = (&term * &power).with_context(|| {
+                    format!(
+                        "DATRN: failed to multiply term by power for var {}",
+                        var_0idx + 1
+                    )
+                })?;
             }
 
             // Accumulate into result
@@ -465,7 +484,11 @@ pub fn rosy_daplu(
         .checked_sub(1)
         .ok_or_else(|| anyhow::anyhow!("DAPLU: var_idx must be >= 1, got {}", var_idx))?;
     if var_0idx >= config.num_vars {
-        bail!("DAPLU: var_idx {} out of range [1, {}]", var_idx, config.num_vars);
+        bail!(
+            "DAPLU: var_idx {} out of range [1, {}]",
+            var_idx,
+            config.num_vars
+        );
     }
 
     out.resize_with(da_in.len(), DA::zero);
@@ -519,7 +542,11 @@ pub fn rosy_dadiu(
         .checked_sub(1)
         .ok_or_else(|| anyhow::anyhow!("DADIU: var_idx must be >= 1, got {}", var_idx))?;
     if var_0idx >= config.num_vars {
-        bail!("DADIU: var_idx {} out of range [1, {}]", var_idx, config.num_vars);
+        bail!(
+            "DADIU: var_idx {} out of range [1, {}]",
+            var_idx,
+            config.num_vars
+        );
     }
 
     out.resize_with(da_in.len(), DA::zero);
@@ -570,10 +597,18 @@ pub fn rosy_dadmu(var_i: usize, var_j: usize, da_in: &Vec<DA>, result: &mut Vec<
         .checked_sub(1)
         .ok_or_else(|| anyhow::anyhow!("DADMU: var_j must be >= 1, got {}", var_j))?;
     if i_0idx >= config.num_vars {
-        bail!("DADMU: var_i {} out of range [1, {}]", var_i, config.num_vars);
+        bail!(
+            "DADMU: var_i {} out of range [1, {}]",
+            var_i,
+            config.num_vars
+        );
     }
     if j_0idx >= config.num_vars {
-        bail!("DADMU: var_j {} out of range [1, {}]", var_j, config.num_vars);
+        bail!(
+            "DADMU: var_j {} out of range [1, {}]",
+            var_j,
+            config.num_vars
+        );
     }
 
     result.resize_with(da_in.len(), DA::zero);
@@ -744,13 +779,10 @@ mod tests {
 
         let monomial = Monomial::variable(0);
         let mut map = vec![DA::zero(), DA::zero(), DA::zero(), DA::zero(), DA::zero()];
-        for (component, coefficient) in map.iter_mut().zip([
-            0.9999439,
-            -0.0001785528,
-            -0.01059182,
-            0.000001891319,
-            0.0,
-        ]) {
+        for (component, coefficient) in
+            map.iter_mut()
+                .zip([0.9999439, -0.0001785528, -0.01059182, 0.000001891319, 0.0])
+        {
             component.set_coeff(monomial.clone(), coefficient);
         }
 

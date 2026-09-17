@@ -120,6 +120,8 @@ pub struct TranspilationInputProcedureContext {
     pub args: Vec<VariableData>,
     pub requested_variables: BTreeSet<String>,
     pub requested_types: HashMap<String, RosyType>,
+    /// Defined in a `.fox` file, so the rust fn is `__proc_<name>`.
+    pub cosy_syntax: bool,
 }
 #[derive(Default, Clone)]
 pub struct TranspilationInputContext {
@@ -164,8 +166,14 @@ impl TranspilationInputContext {
         Self::case_hint(name, self.functions.keys())
     }
 
-    /// COSY RK names its step `H`, same as global curvature. Keep both.
-    pub fn rust_ident(&self, name: &str) -> String {
+    pub fn loc_ident(name: &str) -> String {
+        format!("__loc_{name}")
+    }
+
+    /// Local (or inner Higher) that shadows an outer binding of a different rust type.
+    /// COSY RK's step `H` vs global curvature `H` is the same pattern even when
+    /// both are `f64`.
+    pub fn uses_loc_ident(&self, name: &str) -> bool {
         if self.split_rk_h
             && name == "H"
             && self
@@ -173,12 +181,43 @@ impl TranspilationInputContext {
                 .get(name)
                 .is_some_and(|v| v.scope == VariableScope::Local)
         {
-            "__loc_H".to_string()
+            return true;
+        }
+        // Fox procs already share cell types; renaming every shadowing arg
+        // there explodes writebacks. Only split in rosy syntax.
+        if crate::syntax_config::is_cosy_syntax() {
+            return false;
+        }
+        let Some(outer) = self.outer_bindings.get(name) else {
+            return false;
+        };
+        let Some(cur) = self.variables.get(name) else {
+            return false;
+        };
+        cur.data.r#type.as_rust_type() != outer.data.r#type.as_rust_type()
+    }
+
+    /// COSY RK names its step `H`, same as global curvature. Keep both.
+    /// Typed rosy locals that shadow a fox cell of the same name also split.
+    pub fn rust_ident(&self, name: &str) -> String {
+        if self.uses_loc_ident(name) {
+            Self::loc_ident(name)
         } else {
             name.to_string()
         }
     }
 
+    /// Callee closed over `wanted`. If a local shadows that name with a
+    /// different rust type, pass the outer binding instead.
+    pub fn capture_uses_outer(&self, name: &str, wanted: &RosyType) -> bool {
+        if !self.uses_loc_ident(name) {
+            return false;
+        }
+        let Some(outer) = self.outer_bindings.get(name) else {
+            return false;
+        };
+        outer.data.r#type.as_rust_type() == wanted.as_rust_type()
+    }
 }
 
 /// Whether an expression produces an owned value or a reference.
@@ -324,7 +363,9 @@ pub fn emit_pass_as(
     }
     if expected.is_any() && expected.dimensions == 0 {
         let tmp = format!("__rosy_cap_{name}");
-        prelude.push(format!("let mut {tmp} = RosyValue::from(({name}).clone());"));
+        prelude.push(format!(
+            "let mut {tmp} = RosyValue::from(({name}).clone());"
+        ));
         let lhs = match scope {
             VariableScope::Local => name.to_string(),
             VariableScope::Arg | VariableScope::Higher => format!("*{name}"),
@@ -385,9 +426,7 @@ pub fn emit_pass_as(
 }
 
 pub fn needs_box_as_any(provided: &RosyType, expected: &RosyType) -> bool {
-    expected.is_any()
-        && expected.dimensions == 0
-        && (provided.dimensions > 0 || !provided.is_any())
+    expected.is_any() && expected.dimensions == 0 && (provided.dimensions > 0 || !provided.is_any())
 }
 
 pub fn emit_unwrap_rosy_value(expr: String, ty: &RosyType) -> String {
@@ -402,6 +441,12 @@ pub fn emit_unwrap_rosy_value(expr: String, ty: &RosyType) -> String {
     }
     if ty.dimensions > 0 && ty.base_type == RosyBaseType::RE {
         return format!("({expr}).expect_ve()?");
+    }
+    if ty.dimensions > 0 && ty.base_type == RosyBaseType::CD {
+        return format!("({expr}).expect_arr()?.into_iter().map(|x| x.as_cd()).collect()");
+    }
+    if ty.dimensions > 0 && ty.base_type == RosyBaseType::DA {
+        return format!("({expr}).expect_arr()?.into_iter().map(|x| x.expect_da().unwrap_or_else(|_| DA::zero())).collect()");
     }
     match ty.base_type {
         RosyBaseType::ANY => expr,
