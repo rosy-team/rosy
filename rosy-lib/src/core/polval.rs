@@ -4,6 +4,8 @@
 //!
 //! Lets the polynomial described by NP DA vectors stored in the array P
 //! act on the NA arguments A, and stores the NR results in R.
+//! Source-polynomial variables above NA are evaluated at zero, matching COSY's
+//! partial-evaluation behavior.
 //!
 //! L == 1 is Horner evaluation (the COSY default). Rosy always uses a
 //! Horner factorization of the monomial addressing: each monomial is
@@ -310,6 +312,8 @@ pub fn rosy_polval_ve(
 /// (typically a saved map's j-th component). The output `r_array[i]` is the
 /// composition `p_array[i] ∘ a_array`, truncated automatically to the current
 /// truncation order via DA's overloaded `*` and `+`.
+/// Variables in `p_array` whose one-based index is greater than `na` evaluate
+/// to zero rather than requiring a corresponding element in `a_array`.
 ///
 /// Intermediate monomial values are computed once and reused across all NR
 /// polynomials (and across terms of each polynomial).
@@ -430,13 +434,12 @@ struct HornerPlan {
     compact: Vec<u32>,
 }
 
-fn horner_plan(polys: &[DA], na: usize) -> Result<HornerPlan> {
-    horner_plan_from_nonzero(polys.iter().map(|p| p.nonzero.as_slice()), na)
+fn horner_plan(polys: &[DA]) -> Result<HornerPlan> {
+    horner_plan_from_nonzero(polys.iter().map(|p| p.nonzero.as_slice()))
 }
 
 fn horner_plan_from_nonzero<'a>(
     nonzero_lists: impl Iterator<Item = &'a [u32]>,
-    na: usize,
 ) -> Result<HornerPlan> {
     let rt = crate::taylor::get_runtime()?;
     let n = rt.num_monomials;
@@ -449,10 +452,6 @@ fn horner_plan_from_nonzero<'a>(
                 continue;
             }
             while k != 0 && !needed[k] {
-                let v = rt.horner_var[k] as usize;
-                if v >= na {
-                    bail!("POLVAL: variable index {} out of range (NA={})", v + 1, na);
-                }
                 needed[k] = true;
                 k = rt.horner_parent[k] as usize;
             }
@@ -496,7 +495,7 @@ fn eval_polys_at_points(
     if polys.is_empty() {
         return Ok(());
     }
-    let plan = horner_plan(polys, na)?;
+    let plan = horner_plan(polys)?;
     let n_nodes = plan.ids.len();
 
     if npart == 0 {
@@ -513,6 +512,12 @@ fn eval_polys_at_points(
 
     for k in 1..n_nodes {
         let v = plan.var[k] as usize;
+        // COSY treats source-polynomial variables beyond NA as zero. This is
+        // what permits partial evaluation/composition with only the first NA
+        // replacement arguments supplied.
+        if v >= na {
+            continue;
+        }
         let xs = &a_array[v];
         let o = k * npart;
         let po = plan.parent[k] as usize * npart;
@@ -583,13 +588,17 @@ struct DaMonomialValues {
 }
 
 fn compose_monomial_values_da(polys: &[DA], args: &[DA], na: usize) -> Result<DaMonomialValues> {
-    let plan = horner_plan(polys, na)?;
+    let plan = horner_plan(polys)?;
     let mut values = Vec::with_capacity(plan.ids.len());
     values.push(DA::from_coeff(1.0));
     for k in 1..plan.ids.len() {
-        let parent = &values[plan.parent[k] as usize];
-        let arg = &args[plan.var[k] as usize];
-        values.push((parent * arg)?);
+        let v = plan.var[k] as usize;
+        if v < na {
+            let parent = &values[plan.parent[k] as usize];
+            values.push((parent * &args[v])?);
+        } else {
+            values.push(DA::zero());
+        }
     }
     Ok(DaMonomialValues {
         compact: plan.compact,
@@ -616,13 +625,17 @@ struct CdMonomialValues {
 }
 
 fn compose_monomial_values_cd(polys: &[CD], args: &[CD], na: usize) -> Result<CdMonomialValues> {
-    let plan = horner_plan_from_nonzero(polys.iter().map(|p| p.nonzero.as_slice()), na)?;
+    let plan = horner_plan_from_nonzero(polys.iter().map(|p| p.nonzero.as_slice()))?;
     let mut values = Vec::with_capacity(plan.ids.len());
     values.push(CD::from_coeff(num_complex::Complex64::new(1.0, 0.0)));
     for k in 1..plan.ids.len() {
-        let parent = &values[plan.parent[k] as usize];
-        let arg = &args[plan.var[k] as usize];
-        values.push((parent * arg)?);
+        let v = plan.var[k] as usize;
+        if v < na {
+            let parent = &values[plan.parent[k] as usize];
+            values.push((parent * &args[v])?);
+        } else {
+            values.push(CD::zero());
+        }
     }
     Ok(CdMonomialValues {
         compact: plan.compact,
@@ -836,6 +849,61 @@ mod tests {
         assert!((r[0].constant_part() - 1.0).abs() < 1e-12);
         let y_idx = crate::taylor::get_runtime()?.variable_indices[1] as usize;
         assert!((r[0].coeffs[y_idx] - 2.0).abs() < 1e-12, "2y coeff");
+        crate::taylor::cleanup_taylor();
+        Ok(())
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn polval_da_treats_variables_beyond_na_as_zero() -> anyhow::Result<()> {
+        crate::taylor::cleanup_taylor();
+        crate::taylor::init_taylor(3, 3)?;
+        let x = DA::variable(1)?;
+        let y = DA::variable(2)?;
+        let z = DA::variable(3)?;
+        let p = (&(&x * &x)? + &(&z * 7.0)?)?;
+        let a1 = (&DA::from_coeff(1.0) + &y)?;
+        let mut r = Vec::new();
+
+        rosy_polval_da(1.0, &[p], 1, &[a1], 1, &mut r, 1)?;
+
+        // Only x has a replacement. COSY evaluates the unsupplied z at zero,
+        // so x^2 + 7z becomes (1+y)^2.
+        assert!((r[0].constant_part() - 1.0).abs() < 1e-12);
+        let rt = crate::taylor::get_runtime()?;
+        let y_idx = rt.variable_indices[1] as usize;
+        let z_idx = rt.variable_indices[2] as usize;
+        assert!((r[0].coeffs[y_idx] - 2.0).abs() < 1e-12);
+        assert!(r[0].coeffs[z_idx].abs() < 1e-12);
+        drop(rt);
+        crate::taylor::cleanup_taylor();
+        Ok(())
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn polval_numeric_paths_treat_variables_beyond_na_as_zero() -> anyhow::Result<()> {
+        crate::taylor::cleanup_taylor();
+        crate::taylor::init_taylor(2, 2)?;
+        let x = DA::variable(1)?;
+        let y = DA::variable(2)?;
+        let p = (&x + &(&y * 10.0)?)?;
+
+        let mut scalar = vec![0.0];
+        rosy_polval_re(
+            1.0,
+            &vec![p.clone()],
+            1.0,
+            &vec![3.0],
+            1.0,
+            &mut scalar,
+            1.0,
+        )?;
+        assert!((scalar[0] - 3.0).abs() < 1e-12);
+
+        let mut particles = vec![vec![]];
+        rosy_polval_ve(1.0, &[p], 1, &[vec![2.0, 4.0]], 1, &mut particles, 1)?;
+        assert_eq!(particles[0], vec![2.0, 4.0]);
         crate::taylor::cleanup_taylor();
         Ok(())
     }
