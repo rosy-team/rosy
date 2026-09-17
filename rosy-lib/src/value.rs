@@ -215,6 +215,11 @@ impl RosyDisplay for &RosyValue {
             RosyValue::VE(v) => v.rosy_display(),
             RosyValue::DA(v) => v.rosy_display(),
             RosyValue::CD(v) => v.rosy_display(),
+            RosyValue::Arr(v) if v.iter().all(|x| matches!(x, RosyValue::RE(_))) => v
+                .iter()
+                .map(RosyValue::as_f64)
+                .collect::<Vec<_>>()
+                .rosy_display(),
             RosyValue::Arr(v) => format!(
                 "[{}]",
                 v.iter().map(|x| x.rosy_display()).collect::<Vec<_>>().join(",")
@@ -964,5 +969,18 @@ mod tests {
         assert_eq!(c.expect_ve().unwrap(), vec![1.0, 2.0, 3.0]);
         let d = rosy_dyn_binary(BinaryOp::Add, &a, &b).unwrap();
         assert_eq!(d.expect_ve().unwrap(), vec![4.0, 5.0]);
+    }
+
+    #[test]
+    fn dynamic_real_vector_uses_cosy_vector_display() {
+        let values = RosyValue::from(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let displayed = (&values).rosy_display();
+        let lines = displayed.lines().collect::<Vec<_>>();
+
+        assert_eq!(lines.len(), 2, "got: {displayed:?}");
+        assert!(lines[0].contains("1.000000"));
+        assert!(lines[0].contains("5.000000"));
+        assert!(lines[1].contains("6.000000"));
+        assert!(!displayed.contains(['[', ']', ',']));
     }
 }

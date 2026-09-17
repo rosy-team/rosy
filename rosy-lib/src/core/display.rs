@@ -165,9 +165,15 @@ impl RosyDisplay for &CM {
 impl RosyDisplay for &VE {
     fn rosy_display(self) -> String {
         self.iter()
-            .map(|x| display_ve_element(*x))
-            .collect::<Vec<String>>()
-            .join("")
+            .enumerate()
+            .map(|(index, value)| {
+                let mut displayed = display_ve_element(*value);
+                if (index + 1) % 5 == 0 && index + 1 < self.len() {
+                    displayed.push('\n');
+                }
+                displayed
+            })
+            .collect()
     }
 }
 
@@ -302,6 +308,23 @@ mod tests {
 
         assert!(displayed.contains(" 0.5469204E-002"), "got: {displayed:?}");
         assert!(displayed.contains(" 0.9378755E-010"), "got: {displayed:?}");
+    }
+
+    #[test]
+    fn vector_display_wraps_after_every_five_elements() {
+        let values = (1..=12).map(f64::from).collect::<Vec<_>>();
+        let displayed = values.rosy_display();
+        let lines = displayed.lines().collect::<Vec<_>>();
+
+        assert_eq!(lines.len(), 3, "got: {displayed:?}");
+        assert!(lines[0].contains("1.000000"));
+        assert!(lines[0].contains("5.000000"));
+        assert!(!lines[0].contains("6.000000"));
+        assert!(lines[1].contains("6.000000"));
+        assert!(lines[1].contains("10.00000"));
+        assert!(!lines[1].contains("11.00000"));
+        assert!(lines[2].contains("11.00000"));
+        assert!(lines[2].contains("12.00000"));
     }
 
     #[test]

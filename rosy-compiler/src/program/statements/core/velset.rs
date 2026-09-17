@@ -109,7 +109,7 @@ impl Transpile for VelsetStatement {
         })?;
         requested_variables.extend(value_output.requested_variables.iter().cloned());
 
-        // COSY uses 1-indexed components; convert to 0-indexed for Rust.
+        // COSY uses 1-indexed components; rosy_velset validates and converts the index.
         // Local scope: owned Vec, needs &mut to borrow mutably.
         // Arg/Higher scope: already &mut Vec, pass directly (auto-reborrows).
         let var_scope = context
@@ -122,7 +122,7 @@ impl Transpile for VelsetStatement {
             VariableScope::Arg | VariableScope::Higher => vec_name.clone(),
         };
         let serialization = format!(
-            "*rosy_get_mut({mut_ref}, {comp}, \"{vec_name}\") = ({val}).into();",
+            "{{ let __rosy_velset_component = {comp}; let __rosy_velset_value = {val}; rosy_velset({mut_ref}, __rosy_velset_component, __rosy_velset_value, \"{vec_name}\")?; }}",
             mut_ref = mut_ref,
             comp = component_output.as_value(),
             vec_name = vec_name,

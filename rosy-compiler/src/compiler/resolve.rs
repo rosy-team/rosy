@@ -182,6 +182,10 @@ pub struct GraphNode {
     /// Fox `VARIABLE X mem d1 d2…` extra dimension count. Unused arrays with
     /// extra dims stay ANY cells (COSY scratch/maps); assigned arrays infer.
     pub extra_dims: usize,
+    /// The untyped COSY cell was read while it still had its default RE zero.
+    /// A later assignment must keep such a cell dynamic so its earlier value
+    /// is not retroactively initialized as the later inferred type.
+    pub read_before_assignment: bool,
 }
 
 // ─── Scope Context (used during graph construction) ─────────────────────────
@@ -305,6 +309,7 @@ impl TypeResolver {
                     declared_at,
                     assigned_at: None,
                     extra_dims: 0,
+                    read_before_assignment: false,
                 },
             );
         } else {
@@ -317,6 +322,7 @@ impl TypeResolver {
                 declared_at,
                 assigned_at: None,
                 extra_dims: 0,
+                read_before_assignment: false,
             });
         }
     }
@@ -372,6 +378,21 @@ impl TypeResolver {
     /// Recursively walk an expression tree looking for function calls.
     /// For each one found, wire up call-site argument dependencies.
     pub fn discover_expr_function_calls(&mut self, expr: &Expr, ctx: &ScopeContext) -> Result<()> {
+        if syntax_config::is_cosy_syntax() {
+            let mut dependencies = HashSet::new();
+            self.build_expr_recipe(expr, ctx, &mut dependencies);
+            for slot in dependencies {
+                let Some(node) = self.nodes.get_mut(&slot) else {
+                    continue;
+                };
+                if matches!(slot, TypeSlot::Variable(..))
+                    && node.resolved.is_none()
+                    && matches!(node.rule, ResolutionRule::Unresolved)
+                {
+                    node.read_before_assignment = true;
+                }
+            }
+        }
         expr.inner
             .discover_expr_function_calls(self, ctx)
             .unwrap_or(Ok(()))

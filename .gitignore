@@ -22,4 +22,5 @@ node_modules
 bun.lock
 *.fox
 !examples/performance/**/*.fox
+!rosy-compiler/tests/constructs/statements/core/fox_read_before_retype.fox
 *.pdf

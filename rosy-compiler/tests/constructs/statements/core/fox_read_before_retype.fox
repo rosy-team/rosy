@@ -1,0 +1,23 @@
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE I 1;
+    VARIABLE X 10;
+
+    WRITE 6 'X: ' X;
+
+    X := 1;
+    LOOP I 2 6;
+        X := X&I;
+    ENDLOOP;
+
+    WRITE 6 'X: ' X;
+ENDPROCEDURE;
+RUN;
+END;
+
+======= expect
+X:
+ 0.000000000000000
+X:
+   1.000000       2.000000       3.000000       4.000000       5.000000
+   6.000000

@@ -1,19 +1,26 @@
 BEGIN;
+    PROCEDURE SETSECOND V;
+        VELSET V 2 99;
+    ENDPROCEDURE;
     VARIABLE (VE) V;
-    V := 1&2&3;
-    VELSET V 2 99;
+    V := 1&2&3&4&5&6;
+    SETSECOND V;
     WRITE 6 ST(V);
 END;
 
 ======= expect
-   1.000000       99.00000       3.000000
+   1.000000       99.00000       3.000000       4.000000       5.000000
+   6.000000
 
 ======= fox
 BEGIN;
 PROCEDURE RUN;
+    PROCEDURE SETSECOND V;
+        VELSET V 2 99;
+    ENDPROCEDURE;
     VARIABLE V 100;
-    V := 1&2&3;
-    VELSET V 2 99;
+    V := 1&2&3&4&5&6;
+    SETSECOND V;
     WRITE 6 V;
 ENDPROCEDURE;
 RUN;

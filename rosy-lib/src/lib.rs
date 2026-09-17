@@ -667,6 +667,119 @@ pub fn rosy_get<C: RosyIndexable + ?Sized>(
     container.rosy_index(one_based.into_f64().round() as usize, var_name)
 }
 
+/// Checked, in-place component replacement used by COSY's `VELSET`.
+///
+/// Unlike ordinary indexed assignment, `VELSET` requires the component to
+/// already exist and must not grow the vector.
+pub trait RosyVelset {
+    fn rosy_velset(&mut self, idx: usize, value: f64, name: &str) -> anyhow::Result<()>;
+}
+
+fn velset_bounds_error(name: &str, idx: usize, len: usize) -> anyhow::Error {
+    anyhow::anyhow!(
+        "VELSET index {idx} into '{name}' is out of bounds (vector length is {len})"
+    )
+}
+
+impl RosyVelset for Vec<f64> {
+    fn rosy_velset(&mut self, idx: usize, value: f64, name: &str) -> anyhow::Result<()> {
+        let len = self.len();
+        let component = self
+            .get_mut(idx.wrapping_sub(1))
+            .ok_or_else(|| velset_bounds_error(name, idx, len))?;
+        *component = value;
+        Ok(())
+    }
+}
+
+impl<T: RosyVelset + ?Sized> RosyVelset for &mut T {
+    fn rosy_velset(&mut self, idx: usize, value: f64, name: &str) -> anyhow::Result<()> {
+        (**self).rosy_velset(idx, value, name)
+    }
+}
+
+impl RosyVelset for RosyValue {
+    fn rosy_velset(&mut self, idx: usize, value: f64, name: &str) -> anyhow::Result<()> {
+        match self {
+            RosyValue::VE(values) => values.rosy_velset(idx, value, name),
+            RosyValue::Arr(values) => {
+                let len = values.len();
+                let component = values
+                    .get_mut(idx.wrapping_sub(1))
+                    .ok_or_else(|| velset_bounds_error(name, idx, len))?;
+                *component = RosyValue::RE(value);
+                Ok(())
+            }
+            RosyValue::RE(component) if idx == 1 => {
+                *component = value;
+                Ok(())
+            }
+            _ => Err(velset_bounds_error(name, idx, 1)),
+        }
+    }
+}
+
+#[inline(always)]
+pub fn rosy_velset<C: RosyVelset + ?Sized>(
+    container: &mut C,
+    one_based: impl IntoF64,
+    value: impl IntoF64,
+    var_name: &str,
+) -> anyhow::Result<()> {
+    container.rosy_velset(
+        one_based.into_f64().round() as usize,
+        value.into_f64(),
+        var_name,
+    )
+}
+
+#[cfg(test)]
+mod velset_tests {
+    use super::*;
+
+    #[test]
+    fn velset_replaces_an_existing_component_without_resizing() {
+        let mut values = vec![1.0, 2.0, 3.0];
+
+        rosy_velset(&mut values, 2.0, 99.0, "X").unwrap();
+
+        assert_eq!(values, vec![1.0, 99.0, 3.0]);
+    }
+
+    #[test]
+    fn velset_rejects_an_out_of_bounds_component_without_resizing() {
+        let mut values = vec![1.0, 2.0, 3.0];
+
+        let error = rosy_velset(&mut values, 20.0, 10.0, "X").unwrap_err();
+
+        assert_eq!(values, vec![1.0, 2.0, 3.0]);
+        assert_eq!(
+            error.to_string(),
+            "VELSET index 20 into 'X' is out of bounds (vector length is 3)"
+        );
+    }
+
+    #[test]
+    fn velset_checks_dynamic_vectors_too() {
+        let mut values = RosyValue::Arr(vec![RosyValue::RE(1.0), RosyValue::RE(2.0)]);
+
+        rosy_velset(
+            &mut values,
+            RosyValue::RE(2.0),
+            RosyValue::RE(7.0),
+            "X",
+        )
+        .unwrap();
+        assert!(matches!(
+            values,
+            RosyValue::Arr(ref items) if items == &vec![RosyValue::RE(1.0), RosyValue::RE(7.0)]
+        ));
+
+        assert!(rosy_velset(&mut values, 3.0, 8.0, "X").is_err());
+        assert!(matches!(values, RosyValue::Arr(ref items) if items.len() == 2));
+    }
+}
+
 pub trait RosyMutIndexable {
     type Out: Default;
     fn rosy_index_mut(&mut self, idx: usize, name: &str) -> &mut Self::Out;

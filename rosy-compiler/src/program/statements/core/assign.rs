@@ -146,6 +146,29 @@ impl TranspileableStatement for AssignStatement {
         let mut deps = HashSet::new();
         let recipe = resolver.build_expr_recipe(value, ctx, &mut deps);
 
+        // An untyped COSY variable starts life as the real value zero. If it
+        // was read before this first assignment, resolving the whole variable
+        // to the assignment's eventual static type would change that earlier
+        // value (for example, VE would initialize as an empty vector). Keep
+        // the cell dynamic so source-order type changes remain observable.
+        let keep_dynamic = crate::syntax_config::is_cosy_syntax()
+            && resolver
+                .nodes
+                .get(&var_slot)
+                .is_some_and(|node| node.read_before_assignment && node.resolved.is_none());
+        if keep_dynamic {
+            if let Some(node) = resolver.nodes.get_mut(&var_slot) {
+                node.rule = ResolutionRule::InferredFrom {
+                    recipe: ExprRecipe::Literal(RosyType::ANY()),
+                    reason: "read before first assignment in COSY source".to_string(),
+                };
+                node.resolved = Some(RosyType::ANY());
+                node.depends_on.clear();
+                node.assigned_at = Some(source_location);
+            }
+            return Some(Ok(()));
+        }
+
         if let Some(node) = resolver.nodes.get(&var_slot) {
             if let Some(&resolved) = node.resolved.as_ref() {
                 // Already has an explicit type — check that the new
@@ -1308,5 +1331,51 @@ END ;
             slot_type(&resolver, "MAP"),
             RosyType::new(RosyBaseType::ANY, 1)
         );
+    }
+
+    #[test]
+    fn fox_read_before_later_vector_assignment_stays_dynamic() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN;
+VARIABLE X 10;
+WRITE 6 X;
+X := 1;
+X := X&2;
+END;
+"#,
+        );
+
+        assert_eq!(slot_type(&resolver, "X"), RosyType::ANY());
+    }
+
+    #[test]
+    fn fox_assignment_before_read_can_stay_a_static_vector() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN;
+VARIABLE X 10;
+X := 1;
+X := X&2;
+WRITE 6 X;
+END;
+"#,
+        );
+
+        assert_eq!(slot_type(&resolver, "X"), RosyType::VE());
+    }
+
+    #[test]
+    fn fox_unassigned_variable_read_defaults_to_real() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN;
+VARIABLE X 10;
+WRITE 6 X;
+END;
+"#,
+        );
+
+        assert_eq!(slot_type(&resolver, "X"), RosyType::RE());
     }
 }
