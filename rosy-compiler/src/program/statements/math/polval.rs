@@ -10,7 +10,7 @@
 //!
 //! | Arg | Role                                    |
 //! |-----|-----------------------------------------|
-//! | L   | evaluation mode (1 = Horner, normally 1)|
+//! | L   | evaluation mode (1 = Horner; >= 100 = tree prep, no eval)|
 //! | P   | array of NP DA polynomial vectors       |
 //! | NP  | number of polynomials                   |
 //! | A   | array of NA arguments (RE or DA)        |

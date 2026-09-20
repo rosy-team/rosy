@@ -5,10 +5,14 @@
 //! Lets the polynomial described by NP DA vectors stored in the array P
 //! act on the NA arguments A, and stores the NR results in R.
 //!
-//! L == 1 is Horner evaluation (the COSY default). Rosy always uses a
-//! Horner factorization of the monomial addressing: each monomial is
-//! `parent * x_v`, so real / particle evaluation and DA/CD composition
-//! share intermediate products instead of powering every term from scratch.
+//! L == 1 is Horner evaluation (the COSY default). L >= 100 is COSY's
+//! "prepare evaluation trees, do not evaluate" (TR uses `POLVAL 105`
+//! for this). Negative L means "evaluate using a previously prepared
+//! tree"; Rosy just evaluates, since Horner is rebuilt from the DAs.
+//! Rosy always uses a Horner factorization of the monomial addressing:
+//! each monomial is `parent * x_v`, so real / particle evaluation and
+//! DA/CD composition share intermediate products instead of powering
+//! every term from scratch.
 
 use crate::RosyValue;
 use crate::taylor::{CD, DA};
@@ -26,7 +30,7 @@ const LANES: usize = 4;
 /// arguments in `a_array`, writing NR results into `r_array`.
 ///
 /// # Arguments
-/// * `_l`       - evaluation mode flag (1 = Horner; currently ignored, always Horner)
+/// * `l`        - evaluation mode (1 = Horner; >= 100 = tree prep, no eval)
 /// * `p_array`  - slice of NP DA polynomials
 /// * `np`       - number of polynomials to evaluate
 /// * `a_array`  - slice of NA real-valued arguments
@@ -126,6 +130,13 @@ impl PolvalAnyDst for Vec<Vec<f64>> {
     }
 }
 
+/// COSY `POLVAL L` with L >= 100 only builds Horner trees and must not
+/// write results. TR does `POLVAL 105` before the first dump, then
+/// `POLVAL -5` each turn to actually push rays.
+fn polval_is_tree_prep(l: f64) -> bool {
+    l >= 100.0
+}
+
 fn rosy_value_is_cd(v: &RosyValue) -> bool {
     match v {
         RosyValue::CD(_) | RosyValue::CM(_) => true,
@@ -144,11 +155,15 @@ pub fn rosy_polval_any(
     r_array: &mut impl PolvalAnyDst,
     nr: impl crate::IntoF64,
 ) -> Result<()> {
+    let lv = l.into_f64();
+    if polval_is_tree_prep(lv) {
+        return Ok(());
+    }
     let a_cells = a_array.polval_any_cells();
     let p_cells = p_array.polval_any_cells();
     if p_cells.iter().any(rosy_value_is_cd) || a_cells.iter().any(rosy_value_is_cd) {
         let mut out: Vec<CD> = Vec::new();
-        rosy_polval_cd(l, &p_cells, np, &a_cells, na, &mut out, nr)?;
+        rosy_polval_cd(lv, &p_cells, np, &a_cells, na, &mut out, nr)?;
         r_array.store_polval_any(out.into_iter().map(RosyValue::CD).collect());
         return Ok(());
     }
@@ -161,7 +176,7 @@ pub fn rosy_polval_any(
                 .collect();
             let mut out = Vec::new();
             rosy_polval_da(
-                l.into_f64(),
+                lv,
                 &p,
                 crate::rosy_as_usize(&np.into_f64()),
                 &a,
@@ -184,7 +199,7 @@ pub fn rosy_polval_any(
                 .collect();
             let mut out: Vec<Vec<f64>> = Vec::new();
             rosy_polval_ve(
-                l.into_f64(),
+                lv,
                 &p,
                 crate::rosy_as_usize(&np.into_f64()),
                 &a,
@@ -201,7 +216,7 @@ pub fn rosy_polval_any(
         }
         _ => {
             let mut out: Vec<RosyValue> = Vec::new();
-            rosy_polval_re(l, p_array, np, &a_cells, na, &mut out, nr)?;
+            rosy_polval_re(lv, p_array, np, &a_cells, na, &mut out, nr)?;
             r_array.store_polval_any(out);
             Ok(())
         }
@@ -209,7 +224,7 @@ pub fn rosy_polval_any(
 }
 
 pub fn rosy_polval_re(
-    _l: impl crate::IntoF64,
+    l: impl crate::IntoF64,
     p_array: &impl crate::PolvalDaSrc,
     np: impl crate::IntoF64,
     a_array: &(impl crate::PolvalReSrc + ?Sized),
@@ -217,6 +232,9 @@ pub fn rosy_polval_re(
     r_array: &mut impl crate::PolvalReDst,
     nr: impl crate::IntoF64,
 ) -> Result<()> {
+    if polval_is_tree_prep(l.into_f64()) {
+        return Ok(());
+    }
     let p_array = p_array.to_da_vec();
     let a_array = a_array.to_re_vec();
     let np = crate::rosy_as_usize(&np.into_f64());
@@ -261,7 +279,7 @@ pub fn rosy_polval_re(
 ///
 /// With `nightly-simd`: processes 4 particles per Horner node using f64x4 SIMD.
 pub fn rosy_polval_ve(
-    _l: f64,
+    l: f64,
     p_array: &[DA],
     np: usize,
     a_array: &[Vec<f64>],
@@ -269,6 +287,9 @@ pub fn rosy_polval_ve(
     r_array: &mut Vec<Vec<f64>>,
     nr: usize,
 ) -> Result<()> {
+    if polval_is_tree_prep(l) {
+        return Ok(());
+    }
     if np < nr {
         bail!("POLVAL: NP ({}) must be >= NR ({})", np, nr);
     }
@@ -317,7 +338,7 @@ pub fn rosy_polval_ve(
 /// COSY's `ANM N M O` lowers to `POLVAL 1 N TWOND MM NV O TWOND` where MM is N's
 /// map padded with identity DAs for non-physical slots — see libcosy/physics/map_ops.rosy.
 pub fn rosy_polval_da(
-    _l: f64,
+    l: f64,
     p_array: &[DA],
     np: usize,
     a_array: &[DA],
@@ -325,6 +346,9 @@ pub fn rosy_polval_da(
     r_array: &mut Vec<DA>,
     nr: usize,
 ) -> Result<()> {
+    if polval_is_tree_prep(l) {
+        return Ok(());
+    }
     if np < nr {
         bail!("POLVAL: NP ({}) must be >= NR ({})", np, nr);
     }
@@ -367,7 +391,7 @@ pub fn rosy_polval_da(
 /// `Complex64` implements that trait, so the same `*` / `+` / `clone()`
 /// API works through the type alias.
 pub fn rosy_polval_cd(
-    _l: impl crate::IntoF64,
+    l: impl crate::IntoF64,
     p_array: &impl crate::AsCdRef,
     np: impl crate::IntoF64,
     a_array: &impl crate::AsCdRef,
@@ -375,6 +399,9 @@ pub fn rosy_polval_cd(
     r_array: &mut impl crate::AsCdDst,
     nr: impl crate::IntoF64,
 ) -> Result<()> {
+    if polval_is_tree_prep(l.into_f64()) {
+        return Ok(());
+    }
     let p_array = p_array.as_cd_vec();
     let a_array = a_array.as_cd_vec();
     let np = crate::rosy_as_usize(&np.into_f64());
@@ -853,6 +880,36 @@ mod tests {
         rosy_polval_re(1.0, &vec![p1, p2], 2.0, &vec![3.0, 4.0], 2.0, &mut r, 2.0)?;
         assert!((r[0] - 12.0).abs() < 1e-12);
         assert!((r[1] - 9.0).abs() < 1e-12);
+        crate::taylor::cleanup_taylor();
+        Ok(())
+    }
+
+    #[serial_test::serial]
+    #[test]
+    fn polval_105_does_not_evaluate() -> anyhow::Result<()> {
+        crate::taylor::cleanup_taylor();
+        crate::taylor::init_taylor(2, 1)?;
+        let x = DA::variable(1)?;
+        let p = vec![RosyValue::DA((&DA::from_coeff(1.0) + &x)?)];
+        let a = vec![RosyValue::VE(vec![0.0, 3.0])];
+        let mut out = vec![RosyValue::VE(vec![99.0, 99.0])];
+        rosy_polval_any(105f64, &p, 1f64, &a, 1f64, &mut out, 1f64)?;
+        match &out[0] {
+            RosyValue::VE(xs) => assert_eq!(xs, &vec![99.0, 99.0]),
+            other => panic!("prep must not rewrite output, got {}", other.kind_name()),
+        }
+        rosy_polval_any(-5f64, &p, 1f64, &a, 1f64, &mut out, 1f64)?;
+        match &out[0] {
+            RosyValue::Arr(xs) => {
+                assert!((xs[0].as_f64() - 1.0).abs() < 1e-12);
+                assert!((xs[1].as_f64() - 4.0).abs() < 1e-12);
+            }
+            RosyValue::VE(xs) => {
+                assert!((xs[0] - 1.0).abs() < 1e-12);
+                assert!((xs[1] - 4.0).abs() < 1e-12);
+            }
+            other => panic!("eval should write particles, got {}", other.kind_name()),
+        }
         crate::taylor::cleanup_taylor();
         Ok(())
     }
