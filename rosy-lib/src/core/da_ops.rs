@@ -583,7 +583,13 @@ pub fn rosy_danow(
     let weight = weight.as_f64_val();
     let mut best = 0.0;
     if let Some(da) = da.first() {
+        let max_order = crate::taylor::get_runtime()
+            .map(|rt| rt.config.max_order)
+            .unwrap_or(u32::MAX);
         for (monomial, coeff) in da.coeffs_iter() {
+            if monomial.total_order as u32 > max_order {
+                continue;
+            }
             let order = monomial.total_order as f64;
             let weighted = coeff.abs() * weight.powf(order);
             if weighted > best {

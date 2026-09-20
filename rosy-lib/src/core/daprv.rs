@@ -497,6 +497,9 @@ pub fn rosy_daplu(
         let mut accum: FxHashMap<Monomial, f64> = FxHashMap::default();
 
         for (monomial, coeff) in da.coeffs_iter() {
+            if monomial.total_order as u32 > config.max_order {
+                continue;
+            }
             if coeff.abs() <= config.epsilon {
                 continue;
             }
@@ -555,6 +558,9 @@ pub fn rosy_dadiu(
         let mut accum: FxHashMap<Monomial, f64> = FxHashMap::default();
 
         for (monomial, coeff) in da.coeffs_iter() {
+            if monomial.total_order as u32 > config.max_order {
+                continue;
+            }
             if coeff.abs() <= config.epsilon {
                 continue;
             }
