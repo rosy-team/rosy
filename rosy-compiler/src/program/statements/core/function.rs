@@ -328,6 +328,7 @@ impl Transpile for FunctionStatement {
                     return_type: resolved_return_type,
                     args: resolved_arg_data.clone(),
                     requested_variables: BTreeSet::new(),
+                    requested_types: Default::default(),
                 },
             )
             .is_some();
@@ -362,13 +363,17 @@ impl Transpile for FunctionStatement {
                     data: arg_data.clone(),
                 },
             );
-            if let Some(prev) = previous
-                && prev.scope != VariableScope::Higher
-            {
-                errors.push(anyhow!(
-                    "Argument '{}' is already defined in this scope!",
-                    arg_data.name
-                ));
+            if let Some(prev) = previous {
+                if prev.scope == VariableScope::Higher {
+                    inner_context
+                        .outer_bindings
+                        .insert(arg_data.name.clone(), prev);
+                } else {
+                    errors.push(anyhow!(
+                        "Argument '{}' is already defined in this scope!",
+                        arg_data.name
+                    ));
+                }
             }
         }
 
@@ -390,9 +395,32 @@ impl Transpile for FunctionStatement {
             }
         }
 
+        requested_variables.retain(|var| {
+            let Some(var_data) = inner_context.variables.get(var) else {
+                return true;
+            };
+            if !matches!(var_data.scope, VariableScope::Local | VariableScope::Arg) {
+                return true;
+            }
+            inner_context.uses_loc_ident(var)
+        });
+
         // Update the function context with the requested variables
         if let Some(func_context) = context.functions.get_mut(&self.name) {
             func_context.requested_variables = requested_variables.clone();
+            func_context.requested_types = requested_variables
+                .iter()
+                .filter_map(|n| {
+                    let inner = inner_context.variables.get(n);
+                    let outer = inner_context.outer_bindings.get(n);
+                    let slot = if inner_context.uses_loc_ident(n) {
+                        outer.or(inner)
+                    } else {
+                        inner.or(outer)
+                    };
+                    slot.map(|v| (n.clone(), v.data.r#type))
+                })
+                .collect();
         } else {
             errors.push(
                 anyhow!(
@@ -407,7 +435,9 @@ impl Transpile for FunctionStatement {
         let serialized_args: Vec<String> = {
             let mut serialized_args = Vec::new();
             for var_name in requested_variables.iter() {
-                if resolved_arg_data.iter().any(|a| a.name == *var_name) {
+                if resolved_arg_data.iter().any(|a| a.name == *var_name)
+                    && !inner_context.uses_loc_ident(var_name)
+                {
                     continue;
                 }
                 let Some(var_data) = inner_context.variables.get(var_name) else {
@@ -421,16 +451,24 @@ impl Transpile for FunctionStatement {
                     continue;
                 };
 
-                serialized_args.push(format!(
-                    "{}: &mut {}",
-                    var_name,
-                    var_data.data.r#type.as_rust_type()
-                ));
+                let (rust_name, ty) = if inner_context.uses_loc_ident(var_name) {
+                    (
+                        var_name.clone(),
+                        inner_context
+                            .outer_bindings
+                            .get(var_name)
+                            .map(|o| o.data.r#type)
+                            .unwrap_or(var_data.data.r#type),
+                    )
+                } else {
+                    (var_name.clone(), var_data.data.r#type)
+                };
+                serialized_args.push(format!("{}: &mut {}", rust_name, ty.as_rust_type()));
             }
             for arg_data in &resolved_arg_data {
                 serialized_args.push(format!(
                     "{}: &mut {}",
-                    arg_data.name,
+                    inner_context.rust_ident(&arg_data.name),
                     arg_data.r#type.as_rust_type()
                 ));
             }

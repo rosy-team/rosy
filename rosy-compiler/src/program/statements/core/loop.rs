@@ -345,9 +345,18 @@ impl Transpile for LoopStatement {
         let start = re_val(&start_output, &start_type);
         let end = re_val(&end_output, &end_type);
         let body = indent(serialized_statements.join("\n"));
+        // Body statements use rust_ident(iter). If that is `__loc_I`
+        // (shadowing an outer I), the loop must assign that binding — not a
+        // fresh `I` the body never reads. RK's nested NORM was indexing
+        // `__loc_I` (stuck at 0) while the counter lived in `I`.
+        let bind = context.rust_ident(iter);
         let (it, sync, bump) = if outer.is_some() {
             let rust_it = format!("__rosy_loop_{iter}");
-            let sync = format!("let mut {iter}: RE = {rust_it};");
+            let sync = if context.uses_loc_ident(iter) {
+                format!("{bind} = {rust_it};")
+            } else {
+                format!("let mut {bind}: RE = {rust_it};")
+            };
             (rust_it, sync, true)
         } else {
             (iter.clone(), String::new(), false)

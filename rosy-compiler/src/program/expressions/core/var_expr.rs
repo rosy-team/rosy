@@ -466,19 +466,34 @@ pub fn function_call_transpile_helper(
     let mut serialized_args = Vec::new();
     // Serialize the requested variables from the function context
     for var in &func_context.requested_variables {
-        if func_context.args.iter().any(|a| a.name == *var) {
-            continue;
-        }
+        // Loc-split: name in requested_variables is the outer cell even
+        // when the function also has an arg of that name.
         let var_data = context.variables.get(var).ok_or(vec![anyhow!(
             "Could not find variable '{}' requested by function '{}'",
             var,
             name
         )])?;
 
-        let serialized_arg = match var_data.scope {
-            VariableScope::Higher => var.to_string(),
-            VariableScope::Arg => var.to_string(),
-            VariableScope::Local => format!("&mut {}", context.rust_ident(var)),
+        let child_ty = func_context
+            .requested_types
+            .get(var)
+            .cloned()
+            .unwrap_or(var_data.data.r#type);
+        let use_outer = context.capture_uses_outer(var, &child_ty);
+        let rust_name = if use_outer {
+            var.clone()
+        } else {
+            context.rust_ident(var)
+        };
+        let scope = if use_outer {
+            VariableScope::Higher
+        } else {
+            var_data.scope.clone()
+        };
+        let serialized_arg = match scope {
+            VariableScope::Higher => rust_name,
+            VariableScope::Arg => rust_name,
+            VariableScope::Local => format!("&mut {}", rust_name),
         };
         serialized_args.push(serialized_arg);
     }
@@ -514,7 +529,20 @@ pub fn function_call_transpile_helper(
     let mut writeback_decls: Vec<String> = Vec::new();
 
     for var in &func_context.requested_variables {
-        first_occurrence.insert(var.clone(), usize::MAX);
+        let child_ty = func_context
+            .requested_types
+            .get(var)
+            .cloned()
+            .or_else(|| context.variables.get(var).map(|v| v.data.r#type));
+        let rust = if child_ty
+            .as_ref()
+            .is_some_and(|t| context.capture_uses_outer(var, t))
+        {
+            var.clone()
+        } else {
+            context.rust_ident(var)
+        };
+        first_occurrence.insert(rust, usize::MAX);
     }
 
     // Pass 1 — record (a) bare-variable duplicates.

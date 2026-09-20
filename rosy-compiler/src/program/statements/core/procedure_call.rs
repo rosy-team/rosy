@@ -256,14 +256,9 @@ impl Transpile for ProcedureCallStatement {
         let mut writeback_decls: Vec<String> = Vec::new();
         // Serialize the requested variables from the procedure context
         for var in &proc_context.requested_variables {
-            if let Some(arg) = proc_context.args.iter().find(|a| a.name == *var) {
-                let wanted = proc_context.requested_types.get(var);
-                let arg_is_the_capture =
-                    wanted.is_none_or(|t| t.as_rust_type() == arg.r#type.as_rust_type());
-                if arg_is_the_capture {
-                    continue;
-                }
-            }
+            // Names that are both a capture and an arg are loc-split
+            // (`H` vs `__loc_H`). Always pass the outer capture; the arg
+            // is supplied separately below.
             // rosy_mpi_context is the same `&mut RosyMPIContext` shape at
             // top-level (via the template's indirection) and inside procedure
             // bodies (as a parameter). Pass the binding bare and let Rust

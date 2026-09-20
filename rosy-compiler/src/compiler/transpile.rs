@@ -114,6 +114,7 @@ pub struct TranspilationInputFunctionContext {
     pub return_type: RosyType,
     pub args: Vec<VariableData>,
     pub requested_variables: BTreeSet<String>,
+    pub requested_types: HashMap<String, RosyType>,
 }
 #[derive(Debug, Clone)]
 pub struct TranspilationInputProcedureContext {
@@ -170,7 +171,8 @@ impl TranspilationInputContext {
         format!("__loc_{name}")
     }
 
-    /// Local (or inner Higher) that shadows an outer binding of a different rust type.
+    /// Local/arg that shadows an outer binding. Keep both: callee captures
+    /// still receive the outer cell (COSY WRAP A / USEA writing global A).
     /// COSY RK's step `H` vs global curvature `H` is the same pattern even when
     /// both are `f64`.
     pub fn uses_loc_ident(&self, name: &str) -> bool {
@@ -183,18 +185,13 @@ impl TranspilationInputContext {
         {
             return true;
         }
-        // Fox procs already share cell types; renaming every shadowing arg
-        // there explodes writebacks. Only split in rosy syntax.
-        if crate::syntax_config::is_cosy_syntax() {
-            return false;
-        }
-        let Some(outer) = self.outer_bindings.get(name) else {
-            return false;
-        };
         let Some(cur) = self.variables.get(name) else {
             return false;
         };
-        cur.data.r#type.as_rust_type() != outer.data.r#type.as_rust_type()
+        if !matches!(cur.scope, VariableScope::Local | VariableScope::Arg) {
+            return false;
+        }
+        self.outer_bindings.contains_key(name)
     }
 
     /// COSY RK names its step `H`, same as global curvature. Keep both.
