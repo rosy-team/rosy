@@ -20,6 +20,7 @@ fn da_derivative<T: DACoefficient>(
     let rt = get_runtime()?;
     let n = rt.num_monomials;
     let epsilon = rt.config.epsilon;
+    let max_order = rt.config.max_order;
     let base = var_idx * n;
 
     let mut coeffs = T::pool_alloc(n);
@@ -27,6 +28,9 @@ fn da_derivative<T: DACoefficient>(
 
     for &idx in &da.nonzero {
         let i = idx as usize;
+        if (rt.monomial_orders[i] as u32) > max_order {
+            continue;
+        }
         let exp_v = rt.deriv_exponent[base + i];
         if exp_v == 0 {
             continue;
@@ -68,6 +72,7 @@ fn da_antiderivative<T: DACoefficient>(
     let rt = get_runtime()?;
     let n = rt.num_monomials;
     let epsilon = rt.config.epsilon;
+    let max_order = rt.config.max_order;
     let base = var_idx * n;
 
     let mut coeffs = T::pool_alloc(n);
@@ -75,8 +80,14 @@ fn da_antiderivative<T: DACoefficient>(
 
     for &idx in &da.nonzero {
         let i = idx as usize;
+        if (rt.monomial_orders[i] as u32) > max_order {
+            continue;
+        }
         let target = rt.integ_target[base + i];
         if target == DERIV_INVALID {
+            continue;
+        }
+        if (rt.monomial_orders[target as usize] as u32) > max_order {
             continue;
         }
 
@@ -139,5 +150,53 @@ impl RosyDerive for CD {
             let idx = ((-var_index) as usize) - 1;
             da_antiderivative(self, idx)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::taylor::{cleanup_taylor, init_taylor, set_truncation_order};
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn der_ignores_terms_above_current_order() -> anyhow::Result<()> {
+        cleanup_taylor();
+        init_taylor(3, 1)?;
+        let x = DA::variable(1)?;
+        let x3 = (&(&x * &x)? * &x)?;
+        set_truncation_order(2)?;
+        let d = x3.rosy_derive(1)?;
+        assert!(
+            d.nonzero.is_empty() || d.coeffs.iter().all(|c| c.abs() < 1e-14),
+            "x^3 should vanish under DANOT 2"
+        );
+        cleanup_taylor();
+        Ok(())
+    }
+
+    #[test]
+    #[serial]
+    fn integ_does_not_write_above_current_order() -> anyhow::Result<()> {
+        cleanup_taylor();
+        init_taylor(3, 1)?;
+        let x = DA::variable(1)?;
+        let x2 = (&x * &x)?;
+        set_truncation_order(2)?;
+        let p = x2.rosy_derive(-1)?;
+        let orders = {
+            let rt = crate::taylor::get_runtime()?;
+            rt.monomial_orders.clone()
+        };
+        for &i in &p.nonzero {
+            assert!(
+                (orders[i as usize] as u32) <= 2,
+                "integral leaked order {}",
+                orders[i as usize]
+            );
+        }
+        cleanup_taylor();
+        Ok(())
     }
 }

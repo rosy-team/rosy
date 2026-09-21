@@ -383,7 +383,11 @@ impl<T: DACoefficient> DA<T> {
         let epsilon = rt.config.epsilon;
         let mut coeffs = T::pool_alloc(rt.num_monomials);
         let mut nonzero = Vec::new();
+        let max_order = rt.config.max_order;
         for (mono, coeff) in hash_coeffs {
+            if mono.total_order as u32 > max_order {
+                continue;
+            }
             if let Some(&idx) = rt.monomial_index.get(&mono) {
                 if coeff.abs() > epsilon {
                     coeffs[idx as usize] = coeff;
