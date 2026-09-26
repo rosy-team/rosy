@@ -18,7 +18,9 @@
 //! ```
 
 use anyhow::{Context, Error, Result, anyhow, ensure};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+
+use rosy_lib::RosyType;
 
 use crate::{
     ast::*,
@@ -26,7 +28,6 @@ use crate::{
     resolve::{ScopeContext, TypeResolver, TypeSlot},
     transpile::*,
 };
-use rosy_lib::RosyType;
 
 /// AST node for a user-defined procedure declaration.
 #[derive(Debug)]
@@ -236,6 +237,7 @@ impl Transpile for ProcedureStatement {
                         args: resolved_arg_data.clone(),
                         requested_variables: BTreeSet::new(),
                         requested_types: Default::default(),
+                        loc_shadows: BTreeMap::new(),
                         cosy_syntax: crate::syntax_config::is_cosy_syntax(),
                     },
                 )
@@ -326,6 +328,11 @@ impl Transpile for ProcedureStatement {
             requested_variables.insert("H".to_string());
         }
 
+        let loc_shadows: BTreeMap<String, RosyType> = requested_variables
+            .iter()
+            .filter_map(|n| inner_context.higher_shadow_type(n).map(|t| (n.clone(), t)))
+            .collect();
+
         if let Some(proc_context) = context.procedures.get_mut(&self.name) {
             proc_context.requested_variables = requested_variables.clone();
             proc_context.requested_types = requested_variables
@@ -343,6 +350,7 @@ impl Transpile for ProcedureStatement {
                     slot.map(|v| (n.clone(), v.data.r#type))
                 })
                 .collect();
+            proc_context.loc_shadows = loc_shadows.clone();
         } else {
             errors.push(
                 anyhow!(
@@ -397,6 +405,13 @@ impl Transpile for ProcedureStatement {
                     (var_name.clone(), var_data.data.r#type)
                 };
                 serialized_args.push(format!("{}: &mut {}", rust_name, ty.as_rust_type()));
+            }
+            for (name, ty) in &loc_shadows {
+                serialized_args.push(format!(
+                    "{}: &mut {}",
+                    TranspilationInputContext::loc_ident(name),
+                    ty.as_rust_type()
+                ));
             }
             for arg_data in &resolved_arg_data {
                 serialized_args.push(format!(

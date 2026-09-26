@@ -297,6 +297,14 @@ impl Transpile for ProcedureCallStatement {
             writeback_decls.extend(wb);
             serialized_args.push(pass);
         }
+        for name in proc_context.loc_shadows.keys() {
+            let rust = TranspilationInputContext::loc_ident(name);
+            let pass = match context.variables.get(name).map(|v| v.scope.clone()) {
+                Some(VariableScope::Local) => format!("&mut {rust}"),
+                _ => rust,
+            };
+            serialized_args.push(pass);
+        }
 
         // See expressions/core/var_expr/mod.rs for the symmetric design rationale.
         // Two call-site borrow hazards lower to the same fix — pre-evaluate

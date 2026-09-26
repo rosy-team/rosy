@@ -497,6 +497,14 @@ pub fn function_call_transpile_helper(
         };
         serialized_args.push(serialized_arg);
     }
+    for name in func_context.loc_shadows.keys() {
+        let rust = TranspilationInputContext::loc_ident(name);
+        let pass = match context.variables.get(name).map(|v| v.scope.clone()) {
+            Some(VariableScope::Local) => format!("&mut {rust}"),
+            _ => rust,
+        };
+        serialized_args.push(pass);
+    }
 
     // Two related call-site borrow hazards both lower to the same fix —
     // pre-evaluating offending args into fresh local temps ahead of the

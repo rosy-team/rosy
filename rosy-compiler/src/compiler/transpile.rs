@@ -27,7 +27,7 @@ use crate::{
 };
 use anyhow::{Error, Result};
 use rosy_lib::{RosyBaseType, RosyType};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 pub trait TranspileableStatement: Transpile {
     fn register_typeslot_declaration(
@@ -120,12 +120,16 @@ pub struct TranspilationInputFunctionContext {
     pub args: Vec<VariableData>,
     pub requested_variables: BTreeSet<String>,
     pub requested_types: HashMap<String, RosyType>,
+    /// Parent local that shadows a different outer cell. Threaded as `__loc_<name>`.
+    pub loc_shadows: BTreeMap<String, RosyType>,
 }
 #[derive(Debug, Clone)]
 pub struct TranspilationInputProcedureContext {
     pub args: Vec<VariableData>,
     pub requested_variables: BTreeSet<String>,
     pub requested_types: HashMap<String, RosyType>,
+    /// Parent local that shadows a different outer cell. Threaded as `__loc_<name>`.
+    pub loc_shadows: BTreeMap<String, RosyType>,
     /// Defined in a `.fox` file, so the rust fn is `__proc_<name>`.
     pub cosy_syntax: bool,
 }
@@ -193,10 +197,29 @@ impl TranspilationInputContext {
         let Some(cur) = self.variables.get(name) else {
             return false;
         };
-        if !matches!(cur.scope, VariableScope::Local | VariableScope::Arg) {
+        if !self.outer_bindings.contains_key(name) {
             return false;
         }
-        self.outer_bindings.contains_key(name)
+        if matches!(cur.scope, VariableScope::Local | VariableScope::Arg) {
+            return true;
+        }
+        // Nested procedure: the parent's local still shadows a different
+        // outer cell. Keep the outer name (`A`) and the shadow (`__loc_A`).
+        cur.scope == VariableScope::Higher
+            && cur.data.r#type.as_rust_type()
+                != self.outer_bindings[name].data.r#type.as_rust_type()
+    }
+
+    /// Shadow living in a parent, so this fn must take it as `__loc_<name>`.
+    pub fn higher_shadow_type(&self, name: &str) -> Option<RosyType> {
+        if !self.uses_loc_ident(name) {
+            return None;
+        }
+        let cur = self.variables.get(name)?;
+        if cur.scope != VariableScope::Higher {
+            return None;
+        }
+        Some(cur.data.r#type)
     }
 
     /// COSY RK names its step `H`, same as global curvature. Keep both.
