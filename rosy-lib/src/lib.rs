@@ -656,7 +656,8 @@ impl AsCdDst for Vec<RosyValue> {
 }
 impl AsCdRef for Vec<f64> {
     fn as_cd_vec(&self) -> Vec<CD> {
-        Vec::new()
+        // A real argument to CPOLVAL is a complex with zero imaginary part.
+        self.iter().copied().map(CD::constant).collect()
     }
 }
 impl AsCdDst for RosyValue {

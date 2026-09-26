@@ -261,6 +261,7 @@ impl Transpile for LoopStatement {
                 data: VariableData {
                     name: self.iterator.clone(),
                     r#type: RosyType::RE(),
+                    declared_dims: None,
                 },
             },
         );

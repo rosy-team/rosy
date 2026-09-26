@@ -307,6 +307,7 @@ impl Transpile for FunctionStatement {
                     Ok(t) => data.push(VariableData {
                         name: arg.name.clone(),
                         r#type: t,
+                        declared_dims: None,
                     }),
                     Err(e) => errors.push(e.context(format!(
                         "...while resolving argument types for function '{}'",

@@ -103,6 +103,11 @@ pub enum VariableScope {
 pub struct VariableData {
     pub name: String,
     pub r#type: RosyType,
+    /// COSY `VARIABLE name <mem> <dims...>` array rank.
+    /// `Some(0)` is a scalar cell (the memory size is not a dimension).
+    /// `None` is an argument or loop index, which COSY will index if the
+    /// caller passed an array.
+    pub declared_dims: Option<usize>,
 }
 #[derive(Debug, Clone)]
 pub struct ScopedVariableData {

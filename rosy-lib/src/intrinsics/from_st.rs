@@ -36,7 +36,7 @@ pub trait RosyFromST {
 ///   - `0.NNNN` prefix
 ///   - `E` exponent notation like `E-06`, `E+03`
 fn parse_cosy_float(token: &str) -> Result<f64> {
-    let s = token.trim();
+    let s = token.trim().replace(['D', 'd'], "E");
     if s.is_empty() {
         return Ok(0.0);
     }
@@ -92,7 +92,12 @@ impl RosyFromST for bool {
 
 impl RosyFromST for crate::RosyValue {
     fn rosy_from_st(st: String) -> Result<Self> {
-        Ok(crate::RosyValue::RE(f64::rosy_from_st(st)?))
+        // A number stays a number. A text record, like an MFFLD header,
+        // stays a string so R() and SS() can slice it.
+        match f64::rosy_from_st(st.clone()) {
+            Ok(x) => Ok(crate::RosyValue::RE(x)),
+            Err(_) => Ok(crate::RosyValue::ST(st)),
+        }
     }
 }
 
