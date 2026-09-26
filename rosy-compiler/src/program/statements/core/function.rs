@@ -17,7 +17,7 @@
 //! ```
 
 use anyhow::{Context, Error, Result, anyhow, ensure};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{ast::*, program::statements::*, resolve::*, transpile::*};
 use rosy_lib::RosyType;
@@ -307,6 +307,7 @@ impl Transpile for FunctionStatement {
                     Ok(t) => data.push(VariableData {
                         name: arg.name.clone(),
                         r#type: t,
+                        declared_dims: None,
                     }),
                     Err(e) => errors.push(e.context(format!(
                         "...while resolving argument types for function '{}'",
@@ -329,6 +330,7 @@ impl Transpile for FunctionStatement {
                     args: resolved_arg_data.clone(),
                     requested_variables: BTreeSet::new(),
                     requested_types: Default::default(),
+                    loc_shadows: BTreeMap::new(),
                 },
             )
             .is_some();
@@ -406,6 +408,11 @@ impl Transpile for FunctionStatement {
         });
 
         // Update the function context with the requested variables
+        let loc_shadows: BTreeMap<String, RosyType> = requested_variables
+            .iter()
+            .filter_map(|n| inner_context.higher_shadow_type(n).map(|t| (n.clone(), t)))
+            .collect();
+
         if let Some(func_context) = context.functions.get_mut(&self.name) {
             func_context.requested_variables = requested_variables.clone();
             func_context.requested_types = requested_variables
@@ -421,6 +428,7 @@ impl Transpile for FunctionStatement {
                     slot.map(|v| (n.clone(), v.data.r#type))
                 })
                 .collect();
+            func_context.loc_shadows = loc_shadows.clone();
         } else {
             errors.push(
                 anyhow!(
@@ -464,6 +472,13 @@ impl Transpile for FunctionStatement {
                     (var_name.clone(), var_data.data.r#type)
                 };
                 serialized_args.push(format!("{}: &mut {}", rust_name, ty.as_rust_type()));
+            }
+            for (name, ty) in &loc_shadows {
+                serialized_args.push(format!(
+                    "{}: &mut {}",
+                    TranspilationInputContext::loc_ident(name),
+                    ty.as_rust_type()
+                ));
             }
             for arg_data in &resolved_arg_data {
                 serialized_args.push(format!(

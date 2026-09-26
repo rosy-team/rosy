@@ -356,7 +356,7 @@ impl RosyValue {
             Self::VE(v) => v.first().copied().unwrap_or(0.0),
             Self::DA(d) => d.constant_part(),
             Self::CD(d) => d.constant_part().re,
-            Self::ST(s) => s.trim().parse().unwrap_or(0.0),
+            Self::ST(s) => s.trim().replace(['D', 'd'], "E").parse().unwrap_or(0.0),
             Self::Arr(v) => v.first().map(|x| x.as_f64()).unwrap_or(0.0),
         }
     }

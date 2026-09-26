@@ -212,24 +212,14 @@ impl<T: DACoefficient> Clone for DA<T> {
                 nonzero: Vec::new(),
             };
         }
+        // Copy every stored term. DANOT truncates results of operations,
+        // it does not erase coefficients already sitting in a value.
+        // COSY still differentiates a stored x^2 after DANOT 1.
         let mut coeffs = T::pool_alloc(n);
         let mut nonzero = Vec::with_capacity(self.nonzero.len());
-        if let Ok(rt) = get_runtime() {
-            let max_o = rt.config.max_order;
-            let orders = &rt.monomial_orders;
-            for &i in &self.nonzero {
-                let iu = i as usize;
-                if iu < orders.len() && orders[iu] as u32 > max_o {
-                    continue;
-                }
-                coeffs[iu] = self.coeffs[iu];
-                nonzero.push(i);
-            }
-        } else {
-            for &i in &self.nonzero {
-                coeffs[i as usize] = self.coeffs[i as usize];
-                nonzero.push(i);
-            }
+        for &i in &self.nonzero {
+            coeffs[i as usize] = self.coeffs[i as usize];
+            nonzero.push(i);
         }
         Self { coeffs, nonzero }
     }

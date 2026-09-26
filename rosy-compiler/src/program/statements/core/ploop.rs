@@ -241,6 +241,7 @@ impl Transpile for PLoopStatement {
                 data: VariableData {
                     name: self.iterator.clone(),
                     r#type: RosyType::RE(),
+                    declared_dims: None,
                 },
             },
         );
