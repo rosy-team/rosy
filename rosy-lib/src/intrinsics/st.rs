@@ -25,7 +25,12 @@ pub trait RosyST {
 /// COSY `ST` of a RE is the G-format body without the 4-column WRITE pad.
 impl RosyST for &RE {
     fn rosy_to_string(self) -> String {
-        display_re(*self, 16, 4, 0)
+        let s = display_re(*self, 16, 4, 0);
+        // WRITE keeps a sign column (` 0.5...`). COSY `ST` drops it on a
+        // positive number below 1, so the body starts at `0.`.
+        s.strip_prefix(" 0.")
+            .map(|rest| format!("0.{rest}"))
+            .unwrap_or(s)
     }
 }
 
