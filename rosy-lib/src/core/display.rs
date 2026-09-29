@@ -68,58 +68,68 @@ pub(crate) fn display_re(
     spaces: usize,
 ) -> String {
     if num.abs() < 1f64 && num != 0f64 {
-        let (mantissa, exponent) = sci(num.abs());
-
-        if num.is_sign_positive() {
-            format!(
-                " 0.{}{}",
-                format!("{:.precision$}", mantissa, precision = precision)
-                    .chars()
-                    .skip(2) // Skip "0."
-                    .take(precision)
-                    .collect::<String>(),
-                if exponent != 0 {
-                    format!(
-                        "E{:+0exponent_precision$}",
-                        exponent,
-                        exponent_precision = exponent_precision
-                    )
-                } else {
-                    " ".repeat(spaces)
-                }
-            )
+        // A value just under 0.1 still prints as `0.1000...` with no exponent
+        // once it rounds at `precision` decimal places. COSY does that for the
+        // beamlet radius ratio.
+        let fixed = format!("{:.*}", precision, num.abs());
+        if fixed.as_bytes().get(2).copied() == Some(b'1')
+            || fixed.as_bytes().get(2).is_some_and(|c| *c != b'0' && fixed.starts_with("0."))
+        {
+            let digits: String = fixed.chars().skip(2).take(precision).collect();
+            let pad = " ".repeat(spaces);
+            return if num.is_sign_positive() {
+                format!(" 0.{digits}{pad}")
+            } else {
+                format!("-.{digits}{pad}")
+            };
+        }
+        // Round to `precision` significant digits. Scaling by `10^exp` and
+        // then formatting keeps a leftover ulp, so `5e-5` prints as
+        // `0.4999...E-004` instead of `0.5000...E-004`.
+        let prec_after = precision.saturating_sub(1);
+        let rendered = format!("{:.*e}", prec_after, num.abs());
+        let (mant, exp_s) = rendered.split_once('e').unwrap_or(("0", "0"));
+        let exp: i32 = exp_s.parse().unwrap_or(0) + 1;
+        let mut digits: String = mant.chars().filter(|c| *c != '.').collect();
+        if digits.len() < precision {
+            digits.extend(std::iter::repeat('0').take(precision - digits.len()));
         } else {
-            format!(
-                "-.{}{}",
-                format!("{:.precision$}", mantissa, precision = precision)
-                    .chars()
-                    .skip(2) // Skip "0."
-                    .take(precision)
-                    .collect::<String>(),
-                if exponent != 0 {
-                    format!(
-                        "E{:+0exponent_precision$}",
-                        exponent,
-                        exponent_precision = exponent_precision
-                    )
-                } else {
-                    " ".repeat(spaces)
-                }
-            )
+            digits.truncate(precision);
+        }
+        let exp_str = if exp != 0 {
+            format!("E{exp:+0exponent_precision$}")
+        } else {
+            " ".repeat(spaces)
+        };
+        if num.is_sign_positive() {
+            format!(" 0.{digits}{exp_str}")
+        } else {
+            format!("-.{digits}{exp_str}")
         }
     } else {
-        // Round at the last visible digit
-        let num_int_chs = num.trunc().to_string().chars().count();
-        let rounded_num = (num * 10f64.powi(precision as i32 - num_int_chs as i32 + 1)).round()
-            / 10f64.powi(precision as i32 - num_int_chs as i32 + 1);
-
+        // 16 significant digits, then put the point back. Scaling by a power of
+        // ten first drops the digit that should round up, so 4697.1863934982566
+        // stayed ...256 instead of ...257.
+        let prec_after = precision.saturating_sub(1);
+        let rendered = format!("{:.*e}", prec_after, num.abs());
+        let (mant, exp_s) = rendered.split_once('e').unwrap_or(("0", "0"));
+        let exp: i32 = exp_s.parse().unwrap_or(0);
+        let digits: String = mant.chars().filter(|c| *c != '.').collect();
+        let int_len = (exp + 1).max(0) as usize;
+        let body = if int_len >= digits.len() {
+            let mut s = digits;
+            s.extend(std::iter::repeat('0').take(int_len - s.len()));
+            s.push('.');
+            s
+        } else if int_len == 0 {
+            format!("0.{digits}")
+        } else {
+            let (i, f) = digits.split_at(int_len);
+            format!("{i}.{f}")
+        };
         format!(
-            "{}{}{}",
+            "{}{body}{}",
             if num.is_sign_negative() { "-" } else { " " },
-            format!("{:.precision$}", rounded_num.abs(),)
-                .chars()
-                .take(precision + 1)
-                .collect::<String>(),
             " ".repeat(spaces),
         )
     }

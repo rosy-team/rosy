@@ -210,6 +210,22 @@ impl Transpile for VariableIdentifier {
             ))]
         })?;
 
+        // COSY: `VARIABLE V 3` is one cell with room for 3, not V(1)..V(3).
+        // Parentheses index a declared array (`VARIABLE A 100 8`). Vectors use `|`.
+        if crate::syntax_config::is_cosy_syntax()
+            && !self.paren_groups.is_empty()
+            && context
+                .variables
+                .get(&self.name)
+                .and_then(|v| v.data.declared_dims)
+                == Some(0)
+        {
+            return Err(vec![anyhow::anyhow!(
+                "Indexed variable '{}' is not a declared array",
+                self.name
+            )]);
+        }
+
         // Serialize the indices
         let mut requested_variables = BTreeSet::new();
         let mut errors = Vec::new();

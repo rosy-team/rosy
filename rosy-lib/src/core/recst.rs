@@ -23,7 +23,11 @@ pub fn rosy_recst(value: impl crate::IntoF64, format: impl crate::RecstFmt) -> S
     // Parse format descriptor
     let upper = fmt.to_uppercase();
 
-    if upper.starts_with('F') {
+    if upper.starts_with('D') {
+        // Fortran Dw.d, same layout as E but the exponent letter is D.
+        // MFFLD slices these fields by column, so the width has to be exact.
+        parse_d_format(&upper[1..], value)
+    } else if upper.starts_with('F') {
         // Fixed-point: Fw.d
         parse_f_format(&upper[1..], value)
     } else if upper.starts_with('E') {
@@ -68,6 +72,22 @@ fn parse_f_format(spec: &str, value: f64) -> String {
         )
     } else {
         format!("{:.decimals$}", value, decimals = decimals)
+    }
+}
+
+fn parse_d_format(spec: &str, value: f64) -> String {
+    let (width, decimals) = parse_width_decimals(spec);
+    let (mantissa, exp) = if value == 0.0 {
+        (0.0, 0)
+    } else {
+        let exp = value.abs().log10().floor() as i32 + 1;
+        (value / 10_f64.powi(exp), exp)
+    };
+    let body = format!("{mantissa:.decimals$}D{exp:+03}");
+    if width > body.len() {
+        format!("{body:>width$}")
+    } else {
+        body
     }
 }
 

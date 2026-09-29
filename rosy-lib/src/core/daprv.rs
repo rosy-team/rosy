@@ -50,9 +50,18 @@ pub fn rosy_daprv(
 ///   - One 14-column G14.7 coefficient field per component
 ///   - Concatenated exponents after the coefficient fields
 ///   - Separator: ` ` + 78 dashes + `\n`
-/// Printed/parsed exponent slots: COSY uses min(max_vars, 6), padding zeros.
-fn daprv_exponent_digits(max_vars: usize) -> usize {
-    max_vars.min(crate::taylor::MAX_VARS)
+/// Exponent columns COSY prints.
+///
+/// Below a full 6-plane vector, COSY pads out to 6 and then adds every
+/// variable past the phase-space planes (parameters, the wedge slot).
+/// `OV 2 2 0` is 6 wide, `OV 2 2 1` is 7, and that plus `WAS 1` is 8.
+/// At 6 or more phase-space variables the width is just the variable count.
+fn daprv_exponent_digits(current_vars: usize, num_vars: usize) -> usize {
+    if current_vars < 6 {
+        6 + num_vars.saturating_sub(current_vars)
+    } else {
+        num_vars.max(current_vars)
+    }
 }
 
 /// Format the subset of Fortran `G14.7` used by COSY's DAPRV output.
@@ -109,7 +118,7 @@ fn format_cosy_g14_7(value: f64) -> String {
 fn format_daprv(
     array: &Vec<DA>,
     num_components: usize,
-    max_vars: usize,
+    _max_vars: usize,
     current_vars: usize,
 ) -> Result<String> {
     let epsilon = get_runtime()
@@ -139,7 +148,8 @@ fn format_daprv(
     });
 
     // One row per monomial; each component is one G14.7 field.
-    let nv = daprv_exponent_digits(max_vars);
+    let num_vars = get_runtime().map(|rt| rt.config.num_vars).unwrap_or(_max_vars);
+    let nv = daprv_exponent_digits(current_vars, num_vars);
     let components = num_components.min(array.len());
     for monomial in &all_monomials {
         if !(0..components).any(|comp_idx| array[comp_idx].get_coeff(monomial).abs() > epsilon) {
@@ -284,7 +294,8 @@ pub fn rosy_darev(
         array[i] = DA::zero();
     }
 
-    let nv = daprv_exponent_digits(_max_vars);
+    let num_vars = get_runtime().map(|rt| rt.config.num_vars).unwrap_or(_max_vars);
+    let nv = daprv_exponent_digits(_current_vars, num_vars);
 
     let components = num_components.min(array.len());
     let first_data_line = loop {
@@ -762,10 +773,12 @@ mod tests {
     use crate::taylor::{cleanup_taylor, init_taylor};
 
     #[test]
-    fn exponent_digits_use_max_vars_capped_at_six() {
-        assert_eq!(daprv_exponent_digits(2), 2);
-        assert_eq!(daprv_exponent_digits(6), 6);
-        assert_eq!(daprv_exponent_digits(8), 6);
+    fn exponent_digits_follow_cosy_padding() {
+        // current_vars, num_vars
+        assert_eq!(daprv_exponent_digits(4, 4), 6);
+        assert_eq!(daprv_exponent_digits(4, 5), 7);
+        assert_eq!(daprv_exponent_digits(4, 6), 8);
+        assert_eq!(daprv_exponent_digits(6, 6), 6);
     }
 
     #[test]
@@ -828,7 +841,7 @@ mod tests {
         cleanup_taylor();
         init_taylor(2, 2).unwrap();
 
-        let nv = daprv_exponent_digits(6);
+        let nv = daprv_exponent_digits(2, 2);
         let token = "100000";
         let mut exponents = [0u8; crate::taylor::MAX_VARS];
         for (i, ch) in token.chars().enumerate().take(nv) {

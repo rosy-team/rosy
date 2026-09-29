@@ -13,6 +13,5 @@ BEGIN;
 END;
 
 ======= expect
-     I  COEFFICIENT            ORDER EXPONENTS
-     1   1.000000000000000       2   2 0
-     -----------------------------------
+     ALL COMPONENTS ZERO
+     -------------------

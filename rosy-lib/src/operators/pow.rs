@@ -30,7 +30,8 @@ pub trait RosyPow<Rhs = Self> {
     fn rosy_pow(self, rhs: Rhs) -> Result<Self::Output>;
 }
 
-// RE ^ RE
+// RE ^ RE. COSY's real power matches libm `pow`, including whole-number
+// exponents. `powi` is a different rounding and drifts values like `10^(-23)`.
 impl RosyPow<&RE> for &RE {
     type Output = RE;
     fn rosy_pow(self, rhs: &RE) -> Result<Self::Output> {

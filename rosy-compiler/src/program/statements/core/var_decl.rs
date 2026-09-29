@@ -344,6 +344,7 @@ impl Transpile for VarDeclStatement {
                 data: VariableData {
                     name: self.data.name.clone(),
                     r#type: resolved_type,
+                    declared_dims: Some(self.data.dimension_exprs.len()),
                 },
             },
         );

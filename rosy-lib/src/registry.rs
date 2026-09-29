@@ -388,7 +388,7 @@ pub static INTRINSICS: &[Intrinsic] = &[
     unary!(
         "ST",
         1,
-        "RosyST::rosy_to_string",
+        "RosyST::rosy_st",
         intrinsics::st::get_return_type,
         None,
         false
