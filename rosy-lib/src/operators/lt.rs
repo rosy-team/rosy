@@ -4,9 +4,9 @@
 //! supported type combinations. The compatibility rules are defined in the
 //! `LT_REGISTRY` constant below.
 
+use crate::{LO, RE, ST};
+use crate::{RosyBaseType, RosyType};
 use anyhow::Result;
-use crate::{RosyType, RosyBaseType};
-use crate::{RE, ST, LO};
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
     match crate::operators::dim0(lhs, rhs)? {

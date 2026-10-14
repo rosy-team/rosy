@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::Subcommand;
 use std::{fs, fs::write, path::PathBuf};
 
-use super::{display_path, BOLD, DIM, GREEN, RESET};
+use super::{BOLD, DIM, GREEN, RESET, display_path};
 
 #[derive(Subcommand)]
 pub(crate) enum EditorTarget {
@@ -16,8 +16,7 @@ pub(crate) enum EditorTarget {
 // language config is generated from the grammar at build time.
 const VSCODE_PACKAGE_JSON: &str = include_str!("../../assets/editors/vscode/package.json");
 const VSCODE_LANG_CONFIG: &str = rosy_compiler::VSCODE_LANGUAGE_CONFIGURATION;
-const VSCODE_EXTENSION_JS: &str =
-    include_str!("../../assets/editors/vscode/extension.bundle.js");
+const VSCODE_EXTENSION_JS: &str = include_str!("../../assets/editors/vscode/extension.bundle.js");
 const VSCODE_TM_GRAMMAR: &str =
     include_str!("../../assets/editors/vscode/syntaxes/rosy.tmLanguage.json");
 

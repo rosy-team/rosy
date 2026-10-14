@@ -3,7 +3,7 @@
 //! Returns the 1-based index of the first occurrence of `needle` in `haystack`,
 //! or 0 if not found. Matches COSY INFINITY behavior.
 
-use crate::{RosyType, RosyBaseType, RE, ST};
+use crate::{RE, RosyBaseType, RosyType, ST};
 
 /// Get the return type of POSITION for given input types.
 pub fn get_return_type(haystack: &RosyType, needle: &RosyType) -> Option<RosyType> {
@@ -28,6 +28,9 @@ impl RosyPOSITION for ST {
 
 impl RosyPOSITION for crate::RosyValue {
     fn rosy_position(&self, needle: &ST) -> RE {
-        self.clone().expect_st().map(|s| s.rosy_position(needle)).unwrap_or(0.0)
+        self.clone()
+            .expect_st()
+            .map(|s| s.rosy_position(needle))
+            .unwrap_or(0.0)
     }
 }

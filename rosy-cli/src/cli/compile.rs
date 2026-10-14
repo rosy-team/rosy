@@ -146,8 +146,8 @@ pub(crate) fn compile_source(
     // (and libffi) is only enabled for real parallel ops — serial PNPRO uses
     // the size=1 stub in rosy-lib.
     let needs_mpi_ctx = serialization.contains("rosy_mpi_context");
-    let uses_mpi = serialization.contains("get_group_num")
-        || serialization.contains(".coordinate(");
+    let uses_mpi =
+        serialization.contains("get_group_num") || serialization.contains(".coordinate(");
 
     let local_lib = embedded::create_output_project(&rosy_output_path, uses_mpi, optimized)
         .context("Failed to create output project structure")?;

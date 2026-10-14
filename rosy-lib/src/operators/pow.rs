@@ -5,15 +5,15 @@
 //! `POW_REGISTRY` constant below.
 //!
 //! # Type Compatibility
-//! 
+//!
 //! According to COSY INFINITY manual:
 //! - RE ^ RE -> RE
 //! - VE ^ RE -> VE (component-wise)
 
+use crate::core::polval::{cd_powi, da_powi};
+use crate::{CD, DA, RE, VE};
+use crate::{RosyBaseType, RosyType};
 use anyhow::Result;
-use crate::{RosyType, RosyBaseType};
-use crate::{RE, VE, DA, CD};
-use crate::core::polval::{da_powi, cd_powi};
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
     match crate::operators::dim0(lhs, rhs)? {
@@ -30,7 +30,8 @@ pub trait RosyPow<Rhs = Self> {
     fn rosy_pow(self, rhs: Rhs) -> Result<Self::Output>;
 }
 
-// RE ^ RE
+// RE ^ RE. COSY's real power matches libm `pow`, including whole-number
+// exponents. `powi` is a different rounding and drifts values like `10^(-23)`.
 impl RosyPow<&RE> for &RE {
     type Output = RE;
     fn rosy_pow(self, rhs: &RE) -> Result<Self::Output> {
@@ -61,4 +62,3 @@ impl RosyPow<&RE> for &CD {
         cd_powi(self, *rhs as u8)
     }
 }
-

@@ -18,7 +18,9 @@ use std::collections::BTreeSet;
 
 use crate::{
     ast::*,
-    program::{expressions::core::variable_identifier::VariableIdentifier, statements::SourceLocation},
+    program::{
+        expressions::core::variable_identifier::VariableIdentifier, statements::SourceLocation,
+    },
     resolve::{ScopeContext, TypeResolver},
     transpile::*,
 };

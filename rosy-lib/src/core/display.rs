@@ -1,5 +1,5 @@
-use crate::{RE, ST, LO, CM, VE, DA, CD};
 use crate::taylor::{MAX_VARS, cosy_display_rank, get_config, get_runtime};
+use crate::{CD, CM, DA, LO, RE, ST, VE};
 
 const ALL_COMPONENTS_ZERO: &str = "     ALL COMPONENTS ZERO\n     -------------------";
 
@@ -36,83 +36,100 @@ fn display_ve_element(x: f64) -> String {
             let m = abs_x / 10f64.powi(e);
             (m, e)
         };
-        let digits: String = format!("{:.7}", mantissa)
-            .chars().skip(2).take(7)
-            .collect();
+        let digits: String = format!("{:.7}", mantissa).chars().skip(2).take(7).collect();
         format!("{}0.{}E{:+04}", sign, digits, exp)
     } else {
         // Fixed: sign + right-justified-10 + 4 blanks = 15 chars (G15.7 = F11.7 + 4 blanks)
-        let dec_places: usize = if abs_x < 1.0 { 7 }
-            else if abs_x < 10.0 { 6 }
-            else if abs_x < 100.0 { 5 }
-            else if abs_x < 1_000.0 { 4 }
-            else if abs_x < 10_000.0 { 3 }
-            else if abs_x < 100_000.0 { 2 }
-            else if abs_x < 1_000_000.0 { 1 }
-            else { 0 };
-        let value_str = format!("{:.prec$}", abs_x, prec=dec_places);
+        let dec_places: usize = if abs_x < 1.0 {
+            7
+        } else if abs_x < 10.0 {
+            6
+        } else if abs_x < 100.0 {
+            5
+        } else if abs_x < 1_000.0 {
+            4
+        } else if abs_x < 10_000.0 {
+            3
+        } else if abs_x < 100_000.0 {
+            2
+        } else if abs_x < 1_000_000.0 {
+            1
+        } else {
+            0
+        };
+        let value_str = format!("{:.prec$}", abs_x, prec = dec_places);
         format!("{}{:>10}    ", sign, value_str)
     }
 }
-pub(crate) fn display_re (
+pub(crate) fn display_re(
     num: RE,
     precision: usize,
     exponent_precision: usize,
-    spaces: usize
+    spaces: usize,
 ) -> String {
     if num.abs() < 1f64 && num != 0f64 {
-        let (mantissa, exponent) = sci(num.abs());
-
-        if num.is_sign_positive() {
-            format!(
-                " 0.{}{}",
-                format!("{:.precision$}", mantissa, precision=precision)
-                    .chars()
-                    .skip(2) // Skip "0."
-                    .take(precision)
-                    .collect::<String>(),
-                if exponent != 0 {
-                    format!(
-                        "E{:+0exponent_precision$}",
-                        exponent,
-                        exponent_precision=exponent_precision
-                    )
-                } else {
-                    " ".repeat(spaces)
-                }
-            )
+        // A value just under 0.1 still prints as `0.1000...` with no exponent
+        // once it rounds at `precision` decimal places. COSY does that for the
+        // beamlet radius ratio.
+        let fixed = format!("{:.*}", precision, num.abs());
+        if fixed.as_bytes().get(2).copied() == Some(b'1')
+            || fixed.as_bytes().get(2).is_some_and(|c| *c != b'0' && fixed.starts_with("0."))
+        {
+            let digits: String = fixed.chars().skip(2).take(precision).collect();
+            let pad = " ".repeat(spaces);
+            return if num.is_sign_positive() {
+                format!(" 0.{digits}{pad}")
+            } else {
+                format!("-.{digits}{pad}")
+            };
+        }
+        // Round to `precision` significant digits. Scaling by `10^exp` and
+        // then formatting keeps a leftover ulp, so `5e-5` prints as
+        // `0.4999...E-004` instead of `0.5000...E-004`.
+        let prec_after = precision.saturating_sub(1);
+        let rendered = format!("{:.*e}", prec_after, num.abs());
+        let (mant, exp_s) = rendered.split_once('e').unwrap_or(("0", "0"));
+        let exp: i32 = exp_s.parse().unwrap_or(0) + 1;
+        let mut digits: String = mant.chars().filter(|c| *c != '.').collect();
+        if digits.len() < precision {
+            digits.extend(std::iter::repeat('0').take(precision - digits.len()));
         } else {
-            format!(
-                "-.{}{}",
-                format!("{:.precision$}", mantissa, precision=precision)
-                    .chars()
-                    .skip(2) // Skip "0."
-                    .take(precision)
-                    .collect::<String>(),
-                if exponent != 0 {
-                    format!(
-                        "E{:+0exponent_precision$}",
-                        exponent,
-                        exponent_precision=exponent_precision
-                    )
-                } else {
-                    " ".repeat(spaces)
-                }
-            )
+            digits.truncate(precision);
+        }
+        let exp_str = if exp != 0 {
+            format!("E{exp:+0exponent_precision$}")
+        } else {
+            " ".repeat(spaces)
+        };
+        if num.is_sign_positive() {
+            format!(" 0.{digits}{exp_str}")
+        } else {
+            format!("-.{digits}{exp_str}")
         }
     } else {
-        // Round at the last visible digit
-        let num_int_chs = num.trunc().to_string().chars().count();
-        let rounded_num = (num * 10f64.powi(precision as i32 - num_int_chs as i32 + 1)).round()
-            / 10f64.powi(precision as i32 - num_int_chs as i32 + 1);
-
+        // 16 significant digits, then put the point back. Scaling by a power of
+        // ten first drops the digit that should round up, so 4697.1863934982566
+        // stayed ...256 instead of ...257.
+        let prec_after = precision.saturating_sub(1);
+        let rendered = format!("{:.*e}", prec_after, num.abs());
+        let (mant, exp_s) = rendered.split_once('e').unwrap_or(("0", "0"));
+        let exp: i32 = exp_s.parse().unwrap_or(0);
+        let digits: String = mant.chars().filter(|c| *c != '.').collect();
+        let int_len = (exp + 1).max(0) as usize;
+        let body = if int_len >= digits.len() {
+            let mut s = digits;
+            s.extend(std::iter::repeat('0').take(int_len - s.len()));
+            s.push('.');
+            s
+        } else if int_len == 0 {
+            format!("0.{digits}")
+        } else {
+            let (i, f) = digits.split_at(int_len);
+            format!("{i}.{f}")
+        };
         format!(
-            "{}{}{}",
-            if num.is_sign_negative() {"-"} else {" "},
-            format!(
-                "{:.precision$}",
-                rounded_num.abs(),
-            ).chars().take(precision + 1).collect::<String>(),
+            "{}{body}{}",
+            if num.is_sign_negative() { "-" } else { " " },
             " ".repeat(spaces),
         )
     }
@@ -155,7 +172,7 @@ impl RosyDisplay for &CM {
     fn rosy_display(self) -> String {
         // COSY format: (  real     ,  imag     )
         format!(
-            " ( {}, {})", 
+            " ( {}, {})",
             display_re(self.re, 9, 4, 5),
             display_re(self.im, 9, 4, 5)
         )
@@ -180,7 +197,7 @@ impl RosyDisplay for &VE {
 impl RosyDisplay for &DA {
     fn rosy_display(self) -> String {
         // Output in COSY format: multi-line with all coefficients
-        
+
         // Get all coefficients
         let coeffs: Vec<_> = self.coeffs_iter();
         if coeffs.is_empty() {
@@ -198,14 +215,16 @@ impl RosyDisplay for &DA {
                 m.exponents,
             )
         });
-        
+
         let mut output = String::new();
         output.push_str("I  COEFFICIENT            ORDER EXPONENTS\n");
         for (idx, (monomial, coeff)) in sorted.iter().enumerate() {
             let order = monomial.total_order;
             let exp_str = {
                 let exps = &monomial.exponents;
-                let nv = get_runtime().map(|rt| rt.config.num_vars).unwrap_or(exps.len());
+                let nv = get_runtime()
+                    .map(|rt| rt.config.num_vars)
+                    .unwrap_or(exps.len());
                 build_exp_str(exps, nv)
             };
             output.push_str(&format!(
@@ -219,7 +238,8 @@ impl RosyDisplay for &DA {
 
         let last_line_length = output.lines().last().unwrap_or("").len();
         output.push_str(&"-".repeat(last_line_length));
-        output.lines()
+        output
+            .lines()
             .map(|st| format!("     {}", st))
             .collect::<Vec<String>>()
             .join("\n")
@@ -229,11 +249,11 @@ impl RosyDisplay for &DA {
 impl RosyDisplay for &CD {
     fn rosy_display(self) -> String {
         // Output in COSY format: multi-line with all complex coefficients
-        
+
         // Get real and imaginary parts
         let real_part = self.real_part();
         let imag_part = self.imag_part();
-        
+
         // Combine all monomials from both parts
         let mut all_monomials = std::collections::HashSet::new();
         for (m, _) in real_part.coeffs_iter() {
@@ -242,7 +262,7 @@ impl RosyDisplay for &CD {
         for (m, _) in imag_part.coeffs_iter() {
             all_monomials.insert(m);
         }
-        
+
         if all_monomials.is_empty() {
             return ALL_COMPONENTS_ZERO.to_string();
         }
@@ -258,7 +278,7 @@ impl RosyDisplay for &CD {
                 m.exponents,
             )
         });
-        
+
         let mut output = String::new();
         output.push_str("     I  COEFFICIENTS                           ORDER EXPONENTS\n");
         for (idx, monomial) in sorted.iter().enumerate() {
@@ -267,7 +287,9 @@ impl RosyDisplay for &CD {
             let order = monomial.total_order;
             let exp_str = {
                 let exps = &monomial.exponents;
-                let nv = get_runtime().map(|rt| rt.config.num_vars).unwrap_or(exps.len());
+                let nv = get_runtime()
+                    .map(|rt| rt.config.num_vars)
+                    .unwrap_or(exps.len());
                 build_exp_str(exps, nv)
             };
             output.push_str(&format!(

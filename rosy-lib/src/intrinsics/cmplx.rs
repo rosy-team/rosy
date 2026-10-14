@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, CM, DA, CD};
+use crate::{CD, CM, DA, RE};
 
 /// Get the return type of CMPLX for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -61,4 +61,3 @@ impl RosyCMPLX for crate::RosyValue {
         }
     }
 }
-

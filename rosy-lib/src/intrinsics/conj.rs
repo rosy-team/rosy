@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, CM, CD};
+use crate::{CD, CM, RE};
 
 /// Get the return type of CONJ for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -46,4 +46,3 @@ impl RosyCONJ for CD {
         Ok(result)
     }
 }
-

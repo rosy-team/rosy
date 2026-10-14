@@ -153,8 +153,7 @@ impl VarExpr {
                             // parentheses must be a function call (e.g. recursion where
                             // the function name doubles as the return variable).
                             let var_data = context.variables.get(&ident.name).unwrap();
-                            if var_data.data.r#type.dimensions > 0
-                                || var_data.data.r#type.is_any()
+                            if var_data.data.r#type.dimensions > 0 || var_data.data.r#type.is_any()
                             {
                                 // Array or untyped COSY cell — prefer indexing
                                 Ok(VarExprKind::Variable)
@@ -467,21 +466,44 @@ pub fn function_call_transpile_helper(
     let mut serialized_args = Vec::new();
     // Serialize the requested variables from the function context
     for var in &func_context.requested_variables {
-        if func_context.args.iter().any(|a| a.name == *var) {
-            continue;
-        }
+        // Loc-split: name in requested_variables is the outer cell even
+        // when the function also has an arg of that name.
         let var_data = context.variables.get(var).ok_or(vec![anyhow!(
             "Could not find variable '{}' requested by function '{}'",
             var,
             name
         )])?;
 
-        let serialized_arg = match var_data.scope {
-            VariableScope::Higher => var.to_string(),
-            VariableScope::Arg => var.to_string(),
-            VariableScope::Local => format!("&mut {}", var),
+        let child_ty = func_context
+            .requested_types
+            .get(var)
+            .cloned()
+            .unwrap_or(var_data.data.r#type);
+        let use_outer = context.capture_uses_outer(var, &child_ty);
+        let rust_name = if use_outer {
+            var.clone()
+        } else {
+            context.rust_ident(var)
+        };
+        let scope = if use_outer {
+            VariableScope::Higher
+        } else {
+            var_data.scope.clone()
+        };
+        let serialized_arg = match scope {
+            VariableScope::Higher => rust_name,
+            VariableScope::Arg => rust_name,
+            VariableScope::Local => format!("&mut {}", rust_name),
         };
         serialized_args.push(serialized_arg);
+    }
+    for name in func_context.loc_shadows.keys() {
+        let rust = TranspilationInputContext::loc_ident(name);
+        let pass = match context.variables.get(name).map(|v| v.scope.clone()) {
+            Some(VariableScope::Local) => format!("&mut {rust}"),
+            _ => rust,
+        };
+        serialized_args.push(pass);
     }
 
     // Two related call-site borrow hazards both lower to the same fix —
@@ -515,7 +537,20 @@ pub fn function_call_transpile_helper(
     let mut writeback_decls: Vec<String> = Vec::new();
 
     for var in &func_context.requested_variables {
-        first_occurrence.insert(var.clone(), usize::MAX);
+        let child_ty = func_context
+            .requested_types
+            .get(var)
+            .cloned()
+            .or_else(|| context.variables.get(var).map(|v| v.data.r#type));
+        let rust = if child_ty
+            .as_ref()
+            .is_some_and(|t| context.capture_uses_outer(var, t))
+        {
+            var.clone()
+        } else {
+            context.rust_ident(var)
+        };
+        first_occurrence.insert(rust, usize::MAX);
     }
 
     // Pass 1 — record (a) bare-variable duplicates.
@@ -530,10 +565,9 @@ pub fn function_call_transpile_helper(
                             format!("(*{rust}).clone()"),
                             format!("*{rust} = {temp_name};"),
                         ),
-                        VariableScope::Local => (
-                            format!("{rust}.clone()"),
-                            format!("{rust} = {temp_name};"),
-                        ),
+                        VariableScope::Local => {
+                            (format!("{rust}.clone()"), format!("{rust} = {temp_name};"))
+                        }
                     };
                     prelude_decls.push(format!("let mut {} = {};", temp_name, value_expr));
                     prelude_overrides.insert(i, format!("&mut {}", temp_name));
@@ -638,11 +672,7 @@ pub fn function_call_transpile_helper(
     // Uses the `__fn_` prefix to match the generated Rust function name
     // (the prefix avoids shadowing by the implicit return variable).
     let rust_fn_name = format!("__fn_{}", name);
-    let raw_call = format!(
-        "{}({})?",
-        rust_fn_name,
-        serialized_args.join(", ")
-    );
+    let raw_call = format!("{}({})?", rust_fn_name, serialized_args.join(", "));
     let call = if func_context.return_type.is_any() {
         format!("RosyValue::from({raw_call})")
     } else {

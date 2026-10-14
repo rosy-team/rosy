@@ -1,9 +1,9 @@
 //! Subtraction operator for Rosy types.
 
+use crate::RosyType;
+use crate::{CD, CM, DA, RE, VE};
 use anyhow::Result;
 use num_complex::Complex64;
-use crate::RosyType;
-use crate::{RE, CM, VE, DA, CD};
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
     crate::operators::arith_return(lhs, rhs, false)
@@ -107,12 +107,13 @@ impl RosySub<&RE> for &VE {
 impl RosySub<&VE> for &VE {
     type Output = VE;
     fn rosy_sub(self, other: &VE) -> Result<Self::Output> {
-        anyhow::ensure!(self.len() == other.len(),
-            "Vector length mismatch in subtraction: {} vs {}", self.len(), other.len());
-        Ok(self.iter()
-            .zip(other.iter())
-            .map(|(x, y)| x - y)
-            .collect())
+        anyhow::ensure!(
+            self.len() == other.len(),
+            "Vector length mismatch in subtraction: {} vs {}",
+            self.len(),
+            other.len()
+        );
+        Ok(self.iter().zip(other.iter()).map(|(x, y)| x - y).collect())
     }
 }
 
@@ -168,7 +169,6 @@ impl RosySub<&RE> for &CD {
 impl RosySub<&CM> for &CD {
     type Output = CD;
     fn rosy_sub(self, other: &CM) -> Result<Self::Output> {
-        
         self - *other
     }
 }
@@ -190,4 +190,3 @@ impl RosySub<&CD> for &CD {
         self - other
     }
 }
-

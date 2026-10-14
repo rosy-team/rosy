@@ -1,5 +1,5 @@
-use crate::{RE, VE};
 use crate::RosyType;
+use crate::{RE, VE};
 
 /// Get the return type of VMIN for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {

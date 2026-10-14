@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, CM, ST, LO, VE, DA, CD};
+use crate::{CD, CM, DA, LO, RE, ST, VE};
 
 /// Get the return type of TYPE for a given input type.
 /// TYPE always returns RE regardless of input.
@@ -73,7 +73,7 @@ impl RosyTYPE for CD {
 #[cfg(test)]
 mod tests {
     use super::RosyTYPE;
-    use crate::{CM, CD, DA, LO, RE, ST, VE};
+    use crate::{CD, CM, DA, LO, RE, ST, VE};
 
     #[serial_test::serial]
     #[test]

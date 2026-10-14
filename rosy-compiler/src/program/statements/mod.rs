@@ -1132,31 +1132,33 @@ impl Transpile for Statement {
         &self,
         context: &mut TranspilationInputContext,
     ) -> Result<TranspilationOutput, Vec<Error>> {
-        self.inner.transpile(context).map_err(|err_vec| {
-            let loc = self.source_location.clone();
-            err_vec
-                .into_iter()
-                .map(|err| {
-                    // If the error already has a RosyError with a location
-                    // (from an inner statement), preserve it and just add context.
-                    // Otherwise, wrap the error with this statement's location.
-                    let has_location = err.chain().any(|cause| {
-                        cause
-                            .downcast_ref::<crate::errors::RosyError>()
-                            .is_some_and(|r| r.location.is_some())
-                    });
-                    if has_location {
-                        err
-                    } else {
-                        let message = format!("{}", err.root_cause());
-                        anyhow::Error::from(crate::errors::RosyError {
-                            message,
-                            location: Some(loc.clone()),
-                            severity: crate::errors::RosyErrorSeverity::Error,
-                        })
-                    }
-                })
-                .collect()
+        crate::syntax_config::with_path(self.source_location.file.as_deref(), || {
+            self.inner.transpile(context).map_err(|err_vec| {
+                let loc = self.source_location.clone();
+                err_vec
+                    .into_iter()
+                    .map(|err| {
+                        // If the error already has a RosyError with a location
+                        // (from an inner statement), preserve it and just add context.
+                        // Otherwise, wrap the error with this statement's location.
+                        let has_location = err.chain().any(|cause| {
+                            cause
+                                .downcast_ref::<crate::errors::RosyError>()
+                                .is_some_and(|r| r.location.is_some())
+                        });
+                        if has_location {
+                            err
+                        } else {
+                            let message = format!("{}", err.root_cause());
+                            anyhow::Error::from(crate::errors::RosyError {
+                                message,
+                                location: Some(loc.clone()),
+                                severity: crate::errors::RosyErrorSeverity::Error,
+                            })
+                        }
+                    })
+                    .collect()
+            })
         })
     }
 }

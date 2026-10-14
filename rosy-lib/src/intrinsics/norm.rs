@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, VE, DA, CD};
+use crate::{CD, DA, RE, VE};
 
 /// Get the return type of NORM for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -29,7 +29,11 @@ impl RosyNORM for VE {
 impl RosyNORM for DA {
     type Output = RE;
     fn rosy_norm(&self) -> anyhow::Result<Self::Output> {
-        Ok(self.coeffs_iter().into_iter().map(|(_, c)| c.abs()).fold(0.0f64, f64::max))
+        Ok(self
+            .coeffs_iter()
+            .into_iter()
+            .map(|(_, c)| c.abs())
+            .fold(0.0f64, f64::max))
     }
 }
 
@@ -38,7 +42,11 @@ impl RosyNORM for CD {
     type Output = RE;
     fn rosy_norm(&self) -> anyhow::Result<Self::Output> {
         use crate::taylor::DACoefficient;
-        Ok(self.coeffs_iter().into_iter().map(|(_, c)| c.abs()).fold(0.0f64, f64::max))
+        Ok(self
+            .coeffs_iter()
+            .into_iter()
+            .map(|(_, c)| c.abs())
+            .fold(0.0f64, f64::max))
     }
 }
 

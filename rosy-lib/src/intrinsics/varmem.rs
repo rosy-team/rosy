@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, ST, LO, CM, VE, DA, CD};
+use crate::{CD, CM, DA, LO, RE, ST, VE};
 
 /// Get the return type of VARMEM for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {

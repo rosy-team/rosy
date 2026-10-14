@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{CM, CD};
+use crate::{CD, CM};
 
 /// Get the return type of WERF for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -78,7 +78,7 @@ fn faddeeva_w(z: CM) -> CM {
     // Optimal L = sqrt(N) * 2^(1/4); h = L/N (half-step, nodes at n*h).
     const N: usize = 32;
     let l: f64 = (N as f64).sqrt() * 2.0_f64.powf(0.25);
-    let h: f64 = l / (N as f64);  // node spacing
+    let h: f64 = l / (N as f64); // node spacing
 
     // i * h / pi
     let ih_over_pi = Complex64::new(0.0, h / std::f64::consts::PI);
@@ -107,7 +107,6 @@ fn faddeeva_w(z: CM) -> CM {
 /// For n=0: g_1 = -2*f0*g_0 + 2i/sqrt(pi)
 /// For n>=1: (n+1)*g_{n+1} = -2*f0*g_n - 2*g_{n-1}
 fn cd_werf(cd: &CD) -> anyhow::Result<CD> {
-    
     use num_complex::Complex64;
 
     let config = crate::taylor::get_config()?;

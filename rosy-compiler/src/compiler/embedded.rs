@@ -50,7 +50,6 @@ fn local_rosy_lib() -> Option<PathBuf> {
 
 /// Generates a Cargo.toml for the output project
 fn generate_cargo_toml(optimized: bool, rosy_lib_dep: &str) -> String {
-
     let profile_section = if optimized {
         "\n[profile.release]\nopt-level = 3\nlto = \"fat\"\ncodegen-units = 1\npanic = \"abort\"\n"
     } else {

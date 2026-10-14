@@ -1,5 +1,5 @@
-use crate::{DA, RE};
 use crate::RosyType;
+use crate::{DA, RE};
 
 /// Get the return type of ERF for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {

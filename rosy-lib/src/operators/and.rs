@@ -2,8 +2,8 @@
 //!
 //! This module provides the `RosyAnd` trait and implementations.
 
+use crate::{LO, RosyBaseType, RosyType};
 use anyhow::Result;
-use crate::{RosyType, RosyBaseType, LO};
 
 /// Get the return type for AND operator.
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {

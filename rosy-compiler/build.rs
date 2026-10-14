@@ -377,14 +377,16 @@ fn generate_hover_file(
     writeln!(
         f,
         "    (\"INCLUDE\", \"INCLUDE — File Inclusion\", \
-         \"Includes another ROSY source file at this point in the program. \
-         The included file must be a complete BEGIN/END program. \
-         Its statements are spliced into the including program at the INCLUDE site.\\n\\n\
+         \"Includes another ROSY or COSY source file at this point in the program. \
+         `.rosy` files use Rosy syntax (BEGIN/END). `.fox` files use COSY syntax. \
+         Either kind can INCLUDE the other; syntax follows the included file.\\n\\n\
          The path resolves relative to the directory of the including file. \
-         If the path names a directory, INCLUDE looks for `mod.rosy` inside it \
-         (Rust-style modules), letting you organize libraries as directory trees:\\n\\n\
-         ```\\nINCLUDE 'helpers.rosy';            {{ single file }}\\n\
-         INCLUDE 'libcosy';                  {{ directory -> libcosy/mod.rosy }}\\n```\", \
+         If the path has no extension, INCLUDE looks for `name.fox`, `name.rosy`, \
+         `name/mod.fox`, and `name/mod.rosy`. A single match is used; two or more \
+         is an error listing the candidates so you can pick an extension.\\n\\n\
+         ```\\nINCLUDE 'helpers.rosy';            {{ rosy file }}\\n\
+         INCLUDE 'cosy.fox';                 {{ COSY file }}\\n\
+         INCLUDE 'libcosy';                  {{ unique match among libcosy.fox / .rosy / mod }}\\n```\", \
          \"\", true),"
     )
     .unwrap();

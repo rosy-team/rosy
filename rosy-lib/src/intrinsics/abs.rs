@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, CM, VE, DA, CD};
+use crate::{CD, CM, DA, RE, VE};
 
 /// Get the return type of ABS for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -47,7 +47,8 @@ impl RosyABS for VE {
 impl RosyABS for DA {
     type Output = RE;
     fn rosy_abs(&self) -> anyhow::Result<RE> {
-        let max_coeff = self.coeffs_iter()
+        let max_coeff = self
+            .coeffs_iter()
             .into_iter()
             .map(|(_, c)| c.abs())
             .fold(0.0_f64, f64::max);
@@ -60,6 +61,10 @@ impl RosyABS for CD {
     type Output = RE;
     fn rosy_abs(&self) -> anyhow::Result<RE> {
         use crate::taylor::DACoefficient;
-        Ok(self.coeffs_iter().into_iter().map(|(_, c)| c.abs()).fold(0.0_f64, f64::max))
+        Ok(self
+            .coeffs_iter()
+            .into_iter()
+            .map(|(_, c)| c.abs())
+            .fold(0.0_f64, f64::max))
     }
 }

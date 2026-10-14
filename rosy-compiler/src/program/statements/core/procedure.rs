@@ -18,7 +18,9 @@
 //! ```
 
 use anyhow::{Context, Error, Result, anyhow, ensure};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+
+use rosy_lib::RosyType;
 
 use crate::{
     ast::*,
@@ -26,7 +28,6 @@ use crate::{
     resolve::{ScopeContext, TypeResolver, TypeSlot},
     transpile::*,
 };
-use rosy_lib::RosyType;
 
 /// AST node for a user-defined procedure declaration.
 #[derive(Debug)]
@@ -212,6 +213,7 @@ impl Transpile for ProcedureStatement {
                     Ok(t) => data.push(VariableData {
                         name: arg.name.clone(),
                         r#type: t,
+                        declared_dims: None,
                     }),
                     Err(e) => errors.push(e.context(format!(
                         "...while resolving argument types for procedure '{}'",
@@ -235,6 +237,8 @@ impl Transpile for ProcedureStatement {
                         args: resolved_arg_data.clone(),
                         requested_variables: BTreeSet::new(),
                         requested_types: Default::default(),
+                        loc_shadows: BTreeMap::new(),
+                        cosy_syntax: crate::syntax_config::is_cosy_syntax(),
                     },
                 )
                 .is_some()
@@ -277,13 +281,17 @@ impl Transpile for ProcedureStatement {
                     data: arg_data.clone(),
                 },
             );
-            if let Some(prev) = previous
-                && prev.scope != VariableScope::Higher
-            {
-                errors.push(anyhow!(
-                    "Argument '{}' is already defined in this scope!",
-                    arg_data.name
-                ));
+            if let Some(prev) = previous {
+                if prev.scope == VariableScope::Higher {
+                    inner_context
+                        .outer_bindings
+                        .insert(arg_data.name.clone(), prev);
+                } else {
+                    errors.push(anyhow!(
+                        "Argument '{}' is already defined in this scope!",
+                        arg_data.name
+                    ));
+                }
             }
         }
 
@@ -308,32 +316,41 @@ impl Transpile for ProcedureStatement {
         // Update the procedure context with the requested variables,
         //  first removing those which are locally defined or args
         requested_variables.retain(|var| {
-            if let Some(var_data) = inner_context.variables.get(var) {
-                !matches!(var_data.scope, VariableScope::Local | VariableScope::Arg)
-            } else {
-                true
+            let Some(var_data) = inner_context.variables.get(var) else {
+                return true;
+            };
+            if !matches!(var_data.scope, VariableScope::Local | VariableScope::Arg) {
+                return true;
             }
+            inner_context.uses_loc_ident(var)
         });
         if inner_context.split_rk_h && inner_context.outer_bindings.contains_key("H") {
             requested_variables.insert("H".to_string());
         }
+
+        let loc_shadows: BTreeMap<String, RosyType> = requested_variables
+            .iter()
+            .filter_map(|n| inner_context.higher_shadow_type(n).map(|t| (n.clone(), t)))
+            .collect();
 
         if let Some(proc_context) = context.procedures.get_mut(&self.name) {
             proc_context.requested_variables = requested_variables.clone();
             proc_context.requested_types = requested_variables
                 .iter()
                 .filter_map(|n| {
+                    let inner = inner_context.variables.get(n);
+                    let outer = inner_context.outer_bindings.get(n);
                     let slot = if inner_context.split_rk_h && n == "H" {
-                        inner_context
-                            .outer_bindings
-                            .get(n)
-                            .or_else(|| inner_context.variables.get(n))
+                        outer.or(inner)
+                    } else if inner_context.uses_loc_ident(n) {
+                        outer.or(inner)
                     } else {
-                        inner_context.variables.get(n)
+                        inner.or(outer)
                     };
                     slot.map(|v| (n.clone(), v.data.r#type))
                 })
                 .collect();
+            proc_context.loc_shadows = loc_shadows.clone();
         } else {
             errors.push(
                 anyhow!(
@@ -348,7 +365,11 @@ impl Transpile for ProcedureStatement {
         let serialized_args: Vec<String> = {
             let mut serialized_args = Vec::new();
             for var_name in requested_variables.iter() {
-                if resolved_arg_data.iter().any(|a| a.name == *var_name) {
+                // Same rosy name as an arg: skip unless the arg was renamed
+                // `__loc_*` so the outer cell can keep `name`.
+                if resolved_arg_data.iter().any(|a| a.name == *var_name)
+                    && !inner_context.uses_loc_ident(var_name)
+                {
                     continue;
                 }
                 // rosy_mpi_context is a transpiler-injected runtime singleton
@@ -371,16 +392,31 @@ impl Transpile for ProcedureStatement {
                     continue;
                 };
 
+                let (rust_name, ty) = if inner_context.uses_loc_ident(var_name) {
+                    (
+                        var_name.clone(),
+                        inner_context
+                            .outer_bindings
+                            .get(var_name)
+                            .map(|o| o.data.r#type)
+                            .unwrap_or(var_data.data.r#type),
+                    )
+                } else {
+                    (var_name.clone(), var_data.data.r#type)
+                };
+                serialized_args.push(format!("{}: &mut {}", rust_name, ty.as_rust_type()));
+            }
+            for (name, ty) in &loc_shadows {
                 serialized_args.push(format!(
                     "{}: &mut {}",
-                    var_name,
-                    var_data.data.r#type.as_rust_type()
+                    TranspilationInputContext::loc_ident(name),
+                    ty.as_rust_type()
                 ));
             }
             for arg_data in &resolved_arg_data {
                 serialized_args.push(format!(
                     "{}: &mut {}",
-                    arg_data.name,
+                    inner_context.rust_ident(&arg_data.name),
                     arg_data.r#type.as_rust_type()
                 ));
             }

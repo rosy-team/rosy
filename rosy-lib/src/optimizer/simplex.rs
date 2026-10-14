@@ -29,10 +29,10 @@ where
     let n = variables.len();
 
     // Nelder-Mead parameters (standard values)
-    let alpha = 1.0;  // reflection
-    let gamma = 2.0;  // expansion
-    let rho = 0.5;    // contraction
-    let sigma = 0.5;  // shrink
+    let alpha = 1.0; // reflection
+    let gamma = 2.0; // expansion
+    let rho = 0.5; // contraction
+    let sigma = 0.5; // shrink
 
     // Initialize simplex: n+1 vertices
     // First vertex is the initial point
@@ -43,9 +43,9 @@ where
     for i in 0..n {
         let mut vertex = variables.to_vec();
         let delta = if vertex[i].abs() > 1e-10 {
-            vertex[i] * 0.05  // 5% perturbation
+            vertex[i] * 0.05 // 5% perturbation
         } else {
-            0.00025  // Small absolute perturbation for near-zero values
+            0.00025 // Small absolute perturbation for near-zero values
         };
         vertex[i] += delta;
         simplex.push(vertex);
@@ -63,7 +63,11 @@ where
     loop {
         // Sort vertices by function value
         let mut indices: Vec<usize> = (0..=n).collect();
-        indices.sort_by(|&a, &b| values[a].partial_cmp(&values[b]).unwrap_or(std::cmp::Ordering::Equal));
+        indices.sort_by(|&a, &b| {
+            values[a]
+                .partial_cmp(&values[b])
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Reorder simplex and values
         let sorted_simplex: Vec<Vec<f64>> = indices.iter().map(|&i| simplex[i].clone()).collect();

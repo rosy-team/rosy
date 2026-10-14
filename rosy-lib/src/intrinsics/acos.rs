@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, VE, DA};
+use crate::{DA, RE, VE};
 
 /// Get the return type of ACOS for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -72,7 +72,9 @@ fn da_acos(da: &DA) -> anyhow::Result<DA> {
         }
         for n in 1..nocut {
             let n_f = n as f64;
-            derivs[n + 1] = ((2.0 * n_f - 1.0) * f0 * derivs[n] + (n_f - 1.0).powi(2) * derivs[n - 1]) / (1.0 - f0 * f0);
+            derivs[n + 1] = ((2.0 * n_f - 1.0) * f0 * derivs[n]
+                + (n_f - 1.0).powi(2) * derivs[n - 1])
+                / (1.0 - f0 * f0);
         }
     }
 
@@ -80,10 +82,11 @@ fn da_acos(da: &DA) -> anyhow::Result<DA> {
     let mut xf = Vec::with_capacity(nocut + 1);
     let mut factorial = 1.0;
     for n in 0..=nocut {
-        if n > 0 { factorial *= n as f64; }
+        if n > 0 {
+            factorial *= n as f64;
+        }
         xf.push(derivs[n] / factorial);
     }
 
     DA::horner_eval_with_rt(&da_prime, &xf, &rt)
 }
-

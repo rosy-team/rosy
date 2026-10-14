@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, CM, DA, CD};
+use crate::{CD, CM, DA, RE};
 
 /// Get the return type of IMAG for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -49,4 +49,3 @@ impl RosyIMAG for CD {
         Ok(self.imag_part())
     }
 }
-

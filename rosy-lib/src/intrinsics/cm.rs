@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, CM, VE, CD};
+use crate::{CD, CM, RE, VE};
 use anyhow::{Result, ensure};
 
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -11,7 +11,6 @@ pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
         _ => None,
     }
 }
-
 
 pub trait RosyCM {
     fn rosy_cm(self) -> Result<CM>;
@@ -33,7 +32,11 @@ impl RosyCM for &CM {
 impl RosyCM for &VE {
     fn rosy_cm(self) -> Result<CM> {
         use num_complex::Complex64;
-        ensure!(self.len() == 2, "Cannot convert vector of length {} to CM (complex), must have exactly 2 elements!", self.len());
+        ensure!(
+            self.len() == 2,
+            "Cannot convert vector of length {} to CM (complex), must have exactly 2 elements!",
+            self.len()
+        );
 
         Ok(Complex64::new(self[0], self[1]))
     }

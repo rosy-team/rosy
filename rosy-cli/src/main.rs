@@ -5,8 +5,7 @@ use clap::{Parser as ClapParser, Subcommand};
 use std::{path::PathBuf, process::Command};
 
 use cli::setup::EditorTarget;
-use cli::{display_path, BOLD, CYAN, RESET};
-
+use cli::{BOLD, CYAN, RESET, display_path};
 
 /// Rosy Transpiler - Converts Rosy source code to executable Rust programs
 #[derive(ClapParser)]

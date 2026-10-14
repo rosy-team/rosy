@@ -1,8 +1,8 @@
 //! Concatenation operator for Rosy types.
 
+use crate::{CD, DA, RE, ST, VE};
+use crate::{RosyBaseType, RosyType};
 use anyhow::Result;
-use crate::{RosyType, RosyBaseType};
-use crate::{RE, ST, VE, DA, CD};
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
     use RosyBaseType::*;

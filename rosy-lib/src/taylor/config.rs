@@ -5,11 +5,11 @@
 //! `epsilon` and `max_order` can be changed at runtime via `set_epsilon()` /
 //! `set_truncation_order()`.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use rustc_hash::FxHashMap;
 use std::sync::RwLock;
 
-use super::{monomial::enumerate_monomials, Monomial, DEFAULT_EPSILON, MAX_VARS};
+use super::{DEFAULT_EPSILON, MAX_VARS, Monomial, monomial::enumerate_monomials};
 
 /// Scalar configuration for Taylor series computations.
 #[derive(Debug, Clone, Copy)]
@@ -498,7 +498,7 @@ mod tests {
         // Variable indices are populated
         assert!(rt.variable_indices[0] > 0); // x1 is not the constant
         assert!(rt.variable_indices[1] > 0); // x2 is not the constant
-                                             // C(d+1, 1) monomials of degree d in 2 vars: offsets 0,1,3,6,10,15,21
+        // C(d+1, 1) monomials of degree d in 2 vars: offsets 0,1,3,6,10,15,21
         assert_eq!(&rt.degree_offset, &[0, 1, 3, 6, 10, 15, 21]);
 
         drop(rt);

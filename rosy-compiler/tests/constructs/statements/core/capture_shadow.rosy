@@ -1,0 +1,14 @@
+BEGIN;
+INCLUDE '../../../fixtures/capture_shadow_lib.fox';
+
+PROCEDURE RUN;
+    VARIABLE (CD 2) A;
+    USEA;
+    WRITE 6 'ok';
+ENDPROCEDURE;
+
+RUN;
+END;
+
+======= expect
+ok

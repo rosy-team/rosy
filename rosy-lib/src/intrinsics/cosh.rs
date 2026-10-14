@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, CM, VE, DA};
+use crate::{CM, DA, RE, VE};
 
 /// Get the return type of COSH for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -54,4 +54,3 @@ impl RosyCOSH for DA {
 fn da_cosh(da: &DA) -> anyhow::Result<DA> {
     crate::taylor::compose::compose_cosh(da)
 }
-

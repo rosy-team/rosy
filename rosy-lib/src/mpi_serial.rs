@@ -4,7 +4,7 @@
 //! programs that never `PLOOP`. Those builds must not pull in the `mpi`
 //! crate (libffi / system MPI). Size and rank are 1 and 0.
 
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 
 use crate::RE;
 

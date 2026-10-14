@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, CM, VE, DA, CD};
+use crate::{CD, CM, DA, RE, VE};
 
 /// Get the return type of SIN for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -66,7 +66,6 @@ fn da_sin(da: &DA) -> anyhow::Result<DA> {
 
 /// Compute sine of a CD object using Horner's method for Taylor composition.
 fn cd_sin(cd: &CD) -> anyhow::Result<CD> {
-    
     use num_complex::Complex64;
 
     let config = crate::taylor::get_config()?;
@@ -78,11 +77,12 @@ fn cd_sin(cd: &CD) -> anyhow::Result<CD> {
     // DACE-style recurrence for complex sin coefficients
     let mut xf = Vec::with_capacity(nocut + 1);
     xf.push(f0.sin());
-    if nocut >= 1 { xf.push(f0.cos()); }
+    if nocut >= 1 {
+        xf.push(f0.cos());
+    }
     for i in 2..=nocut {
         xf.push(-xf[i - 2] / Complex64::new((i * (i - 1)) as f64, 0.0));
     }
 
     CD::horner_eval(&cd_prime, &xf)
 }
-

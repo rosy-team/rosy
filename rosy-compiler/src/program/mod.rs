@@ -151,63 +151,65 @@ impl Program {
     }
 
     fn is_include_source(path: &Path) -> bool {
-        match path
-            .extension()
+        path.extension()
             .and_then(|e| e.to_str())
-            .map(|s| s.to_ascii_lowercase())
-        {
-            Some(ext) if ext == "fox" || ext == "rosy" => true,
-            Some(_) => false,
-            None => false,
-        }
+            .is_some_and(|e| e.eq_ignore_ascii_case("fox") || e.eq_ignore_ascii_case("rosy"))
     }
 
-    /// Prefer `.fox` / `.rosy` over a same-stem binary (`INCLUDE 'COSY'` vs `./cosy`).
+    /// Explicit `.fox`/`.rosy` is that file. No extension: collect unique hits
+    /// among `name.fox`, `name.rosy`, `name/mod.fox`, `name/mod.rosy`.
     fn resolve_include_file(resolved: &Path, include_path: &str) -> Result<PathBuf> {
-        let mut candidates = Vec::new();
         if Self::is_include_source(resolved) {
-            candidates.push(resolved.to_path_buf());
-        }
-        if let Some(parent) = resolved.parent() {
-            if let Some(stem) = resolved.file_name() {
-                for ext in [".fox", ".FOX", ".rosy", ".ROSY"] {
-                    candidates.push(
-                        parent.join(format!("{}{ext}", stem.to_string_lossy().to_uppercase())),
-                    );
-                    candidates.push(
-                        parent.join(format!("{}{ext}", stem.to_string_lossy().to_lowercase())),
-                    );
-                    candidates.push(parent.join(format!("{}{ext}", stem.to_string_lossy())));
-                }
-            }
-        }
-        if resolved.is_file() {
-            candidates.push(resolved.to_path_buf());
-        }
-        candidates.push(resolved.join("mod.rosy"));
-
-        let candidates_for_printing = candidates
-            .iter()
-            .map(|c| c.display().to_string())
-            .collect::<Vec<String>>();
-
-        let mut seen = HashSet::new();
-        for cand in candidates {
-            if !seen.insert(cand.clone()) {
-                continue;
-            }
-            if cand.is_file() && (Self::is_include_source(&cand) || cand.ends_with("mod.rosy")) {
-                return std::fs::canonicalize(&cand).with_context(|| {
-                    format!("Failed to canonicalize INCLUDE '{}'", cand.display())
+            if resolved.is_file() {
+                return std::fs::canonicalize(resolved).with_context(|| {
+                    format!("Failed to canonicalize INCLUDE '{}'", resolved.display())
                 });
             }
+            bail!(
+                "Failed to resolve INCLUDE path '{}' — file '{}' not found",
+                include_path,
+                resolved.display()
+            );
         }
 
-        bail!(
-            "Failed to resolve INCLUDE path '{}' — tried '{}",
-            include_path,
-            candidates_for_printing.join(", "),
-        )
+        let candidates = [
+            resolved.with_extension("fox"),
+            resolved.with_extension("rosy"),
+            resolved.join("mod.fox"),
+            resolved.join("mod.rosy"),
+        ];
+        let mut found = Vec::new();
+        let mut seen = HashSet::new();
+        for cand in &candidates {
+            if cand.is_file()
+                && let Ok(canon) = std::fs::canonicalize(cand)
+                && seen.insert(canon.clone())
+            {
+                found.push(canon);
+            }
+        }
+        match found.len() {
+            0 => bail!(
+                "Failed to resolve INCLUDE path '{}' — tried {}",
+                include_path,
+                candidates
+                    .iter()
+                    .map(|c| c.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            ),
+            1 => Ok(found.remove(0)),
+            _ => bail!(
+                "Ambiguous INCLUDE '{}' — multiple candidates found: {}. \
+                 Specify an extension (e.g. .rosy or .fox).",
+                include_path,
+                found
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            ),
+        }
     }
 
     /// Read, parse, and splice a resolved canonical file into `statements`,
@@ -599,5 +601,86 @@ mod tests {
         };
         assert_eq!(p.name, "OUTER");
         assert_eq!(p.body[0].source_location.file.as_deref(), Some(path));
+    }
+
+    fn include_scratch(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("rosy-include-{}-{}", std::process::id(), name));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn include_unspecified_extension_errors_when_ambiguous() {
+        let dir = include_scratch("ambiguous");
+        std::fs::write(dir.join("cosy.fox"), "VARIABLE X;\n").unwrap();
+        std::fs::write(dir.join("cosy.rosy"), "BEGIN;\nVARIABLE Y;\nEND;\n").unwrap();
+        std::fs::create_dir_all(dir.join("cosy")).unwrap();
+        std::fs::write(dir.join("cosy").join("mod.rosy"), "BEGIN;\nEND;\n").unwrap();
+        let err = Program::resolve_include_file(&dir.join("cosy"), "cosy")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("Ambiguous INCLUDE"), "{err}");
+        assert!(err.contains("cosy.fox"), "{err}");
+        assert!(err.contains("cosy.rosy"), "{err}");
+        assert!(err.contains("mod.rosy"), "{err}");
+        assert!(Program::resolve_include_file(&dir.join("only"), "only").is_err());
+        std::fs::write(dir.join("only.fox"), "VARIABLE X 1;\n").unwrap();
+        assert!(
+            Program::resolve_include_file(&dir.join("only"), "only")
+                .unwrap()
+                .ends_with("only.fox")
+        );
+    }
+
+    #[test]
+    fn include_rosy_from_fox_and_fox_from_rosy() {
+        let dir = include_scratch("cross");
+        let fox = dir.join("lib.fox");
+        let rosy = dir.join("lib.rosy");
+        let main_fox = dir.join("main.fox");
+        let main_rosy = dir.join("main.rosy");
+        std::fs::write(&fox, "VARIABLE XF 1;\nXF := 1;\n").unwrap();
+        std::fs::write(&rosy, "BEGIN;\nVARIABLE XR;\nXR := 2;\nEND;\n").unwrap();
+        std::fs::write(&main_fox, "INCLUDE 'lib.rosy';\n").unwrap();
+        std::fs::write(&main_rosy, "BEGIN;\nINCLUDE 'lib.fox';\nEND;\n").unwrap();
+
+        let fox_src = std::fs::read_to_string(&main_fox).unwrap();
+        let pair = crate::syntax_config::with_path(Some(&main_fox), || {
+            ast::parse_source(&fox_src).unwrap().next().unwrap()
+        });
+        let prog =
+            Program::from_rule_with_includes(pair, Some(&main_fox), &mut IncludeTracker::default())
+                .unwrap()
+                .unwrap();
+        assert_eq!(prog.statements.len(), 2);
+        assert!(
+            prog.statements[0]
+                .source_location
+                .file
+                .as_ref()
+                .is_some_and(|p| p.ends_with("lib.rosy"))
+        );
+
+        let rosy_src = std::fs::read_to_string(&main_rosy).unwrap();
+        let pair = crate::syntax_config::with_path(Some(&main_rosy), || {
+            ast::parse_source(&rosy_src).unwrap().next().unwrap()
+        });
+        let prog = Program::from_rule_with_includes(
+            pair,
+            Some(&main_rosy),
+            &mut IncludeTracker::default(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(prog.statements.len(), 2);
+        assert!(
+            prog.statements[0]
+                .source_location
+                .file
+                .as_ref()
+                .is_some_and(|p| p.ends_with("lib.fox"))
+        );
     }
 }

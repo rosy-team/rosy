@@ -1,9 +1,9 @@
 //! Equality operator for Rosy types.
 
-use anyhow::Result;
-use crate::{RosyType, RosyBaseType};
 use crate::intrinsics::RosyST;
-use crate::{RE, ST, LO};
+use crate::{LO, RE, ST};
+use crate::{RosyBaseType, RosyType};
+use anyhow::Result;
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
     match crate::operators::dim0(lhs, rhs)? {

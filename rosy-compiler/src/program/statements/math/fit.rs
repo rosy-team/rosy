@@ -199,8 +199,7 @@ impl Transpile for FitStatement {
         for var_name in &self.fit_variables {
             match context.variables.get(var_name) {
                 Some(scoped_var) => {
-                    if scoped_var.data.r#type != RosyType::RE()
-                        && !scoped_var.data.r#type.is_any()
+                    if scoped_var.data.r#type != RosyType::RE() && !scoped_var.data.r#type.is_any()
                     {
                         errors.push(anyhow!(
                             "FIT variable '{}' must be of type (RE), found '{}'",

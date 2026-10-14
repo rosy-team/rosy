@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, VE, DA};
+use crate::{DA, RE, VE};
 
 /// Get the return type of TANH for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -38,8 +38,8 @@ impl RosyTANH for VE {
 impl RosyTANH for DA {
     type Output = DA;
     fn rosy_tanh(&self) -> anyhow::Result<Self::Output> {
-        use crate::intrinsics::sinh::RosySINH;
         use crate::intrinsics::cosh::RosyCOSH;
+        use crate::intrinsics::sinh::RosySINH;
 
         let sinh_f = self.rosy_sinh()?;
         let cosh_f = self.rosy_cosh()?;
@@ -47,4 +47,3 @@ impl RosyTANH for DA {
         (&sinh_f / &cosh_f).map_err(|e| e)
     }
 }
-

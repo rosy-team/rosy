@@ -647,10 +647,7 @@ mod tests {
 
     #[test]
     fn inlay_hints_skip_included_file_slots() {
-        let dir = std::env::temp_dir().join(format!(
-            "rosy-inlay-include-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("rosy-inlay-include-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let child = dir.join("child.rosy");
         let parent = dir.join("parent.rosy");

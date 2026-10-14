@@ -1,6 +1,6 @@
 use crate::RosyType;
-use crate::{RE, CM, VE, LO, ST, DA, CD};
-use crate::core::display::{display_re, RosyDisplay};
+use crate::core::display::{RosyDisplay, display_re};
+use crate::{CD, CM, DA, LO, RE, ST, VE};
 
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
     match input {
@@ -13,11 +13,20 @@ pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
         t if *t == RosyType::CD() => Some(RosyType::ST()),
         _ => None,
     }
-}           
+}
 
 /// Trait for converting Rosy data types to strings
 pub trait RosyST {
     fn rosy_to_string(self) -> String;
+
+    /// `ST(x)`. Same text as [`rosy_to_string`] except a positive real below 1
+    /// drops the sign column. `WRITE` keeps that column, matching COSY.
+    fn rosy_st(self) -> String
+    where
+        Self: Sized,
+    {
+        self.rosy_to_string()
+    }
 }
 
 /// Convert real numbers to strings.
@@ -26,6 +35,19 @@ pub trait RosyST {
 impl RosyST for &RE {
     fn rosy_to_string(self) -> String {
         display_re(*self, 16, 4, 0)
+    }
+
+    fn rosy_st(self) -> String {
+        let s = display_re(*self, 16, 4, 0);
+        // `0` keeps the sign column (` 0.000...`). A positive number below 1
+        // does not: COSY prints `0.1000...`, not ` 0.1000...`.
+        if *self > 0.0 && *self < 1.0 {
+            s.strip_prefix(" 0.")
+                .map(|rest| format!("0.{rest}"))
+                .unwrap_or(s)
+        } else {
+            s
+        }
     }
 }
 

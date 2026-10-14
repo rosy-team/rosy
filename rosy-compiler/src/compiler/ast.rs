@@ -31,9 +31,9 @@
 use crate::program::expressions::Expr;
 use crate::program::syntax_config;
 use anyhow::{Context, Result, ensure};
+use pest::Parser as _;
 use pest::iterators::Pairs;
 use pest::pratt_parser::PrattParser;
-use pest::Parser as _;
 use pest_derive::Parser;
 use rosy_lib::{RosyBaseType, RosyType};
 

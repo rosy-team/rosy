@@ -2,11 +2,14 @@
 
 Rosy transpiles ROSY source code (.rosy) into self-contained Rust executables for beam physics and differential algebra. It is a modern reimplementation of the COSY INFINITY language.
 
+# Work Style
+Be eager to work! Don't "sideline" work, 95% of the work done is just as bad as 0% :3
+
 ## Build & Test
 
 ```bash
-cargo build --release                              # Build transpiler
-cargo test                                         # Run unit tests
+cargo build --release                               # Build transpiler
+cargo run --bin rosy -- test                        # Run Rosy unit tests
 cargo run --bin rosy -- run examples/basic.rosy     # Run a ROSY script
 cargo run --bin rosy -- build examples/basic.rosy   # Build standalone binary
 ```

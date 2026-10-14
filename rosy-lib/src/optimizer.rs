@@ -1,6 +1,6 @@
-pub mod simplex;
 pub mod lmdif;
 pub mod sa;
+pub mod simplex;
 
 /// Result of an optimization run
 #[derive(Debug)]
@@ -47,7 +47,10 @@ where
         2 | 4 => lmdif::lmdif(variables, eps, max_iter, num_objectives, &mut body),
         3 => sa::simulated_annealing(variables, eps, max_iter, num_objectives, &mut body),
         other => {
-            anyhow::bail!("Unknown optimization algorithm: {}. Supported: 1 (Simplex), 3 (SA), 4 (LMDIF)", other)
+            anyhow::bail!(
+                "Unknown optimization algorithm: {}. Supported: 1 (Simplex), 3 (SA), 4 (LMDIF)",
+                other
+            )
         }
     }
 }

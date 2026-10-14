@@ -136,13 +136,14 @@ impl Transpile for RkcoStatement {
             }
         }
 
-        let ty_of = |ident: &crate::program::expressions::core::variable_identifier::VariableIdentifier| {
-            context
-                .variables
-                .get(&ident.name)
-                .map(|v| v.data.r#type)
-                .unwrap_or_else(RosyType::VE)
-        };
+        let ty_of =
+            |ident: &crate::program::expressions::core::variable_identifier::VariableIdentifier| {
+                context
+                    .variables
+                    .get(&ident.name)
+                    .map(|v| v.data.r#type)
+                    .unwrap_or_else(RosyType::VE)
+            };
         let wrap1 = |name: &str, ty: RosyType| {
             if ty.is_any() && ty.dimensions > 0 {
                 format!("{name}.into_iter().map(RosyValue::RE).collect::<Vec<_>>()")
@@ -156,7 +157,9 @@ impl Transpile for RkcoStatement {
         };
         let wrap2 = |name: &str, ty: RosyType| {
             if ty.is_any() {
-                format!("{name}.into_iter().map(|row| row.into_iter().map(RosyValue::RE).collect::<Vec<_>>()).collect::<Vec<_>>()")
+                format!(
+                    "{name}.into_iter().map(|row| row.into_iter().map(RosyValue::RE).collect::<Vec<_>>()).collect::<Vec<_>>()"
+                )
             } else {
                 name.to_string()
             }

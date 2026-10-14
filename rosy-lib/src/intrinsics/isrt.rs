@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, VE, DA};
+use crate::{DA, RE, VE};
 
 /// Get the return type of ISRT for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -48,13 +48,15 @@ impl RosyISRT for DA {
 /// (1 + u)^alpha = sum_{n=0}^{N} C(alpha, n) * u^n
 /// C(alpha, n) = alpha*(alpha-1)*...*(alpha-n+1) / n!
 fn da_isrt(da: &DA) -> anyhow::Result<DA> {
-    
-
     let rt = crate::taylor::get_runtime()?;
     let nocut = rt.config.max_order as usize;
 
     let f0 = da.constant_part();
-    anyhow::ensure!(f0 > 0.0, "ISRT: constant part of DA must be positive, got {}", f0);
+    anyhow::ensure!(
+        f0 > 0.0,
+        "ISRT: constant part of DA must be positive, got {}",
+        f0
+    );
 
     let alpha = -0.5_f64;
     let f0_alpha = f0.powf(alpha);
@@ -74,4 +76,3 @@ fn da_isrt(da: &DA) -> anyhow::Result<DA> {
     result = (&result * DA::from_coeff(f0_alpha))?;
     Ok(result)
 }
-

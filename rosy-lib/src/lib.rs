@@ -30,7 +30,6 @@
 //! | [`optimizer`] | FIT loop optimization algorithms |
 
 pub mod core;
-pub mod value;
 pub mod intrinsics;
 #[cfg(feature = "mpi")]
 pub mod mpi;
@@ -40,9 +39,9 @@ pub mod operators;
 pub mod optimizer;
 pub mod registry;
 pub mod taylor;
+pub mod value;
 
 pub use core::*;
-pub use value::{RosyValue, rosy_dyn_binary};
 pub use intrinsics::*;
 #[cfg(feature = "mpi")]
 pub use mpi::*;
@@ -53,6 +52,7 @@ pub use registry::{
     BinaryOp, INTRINSICS, Intrinsic, IntrinsicTyping, UnaryOp, binary_return_type,
     lookup_intrinsic, unary_return_type,
 };
+pub use value::{RosyValue, rosy_dyn_binary};
 
 pub use taylor::{CD, DA, DEFAULT_SCRLEN, rosy_scrlen};
 
@@ -525,16 +525,86 @@ pub fn rosy_velget(v: &impl PolvalReSrc, idx: impl IntoF64) -> anyhow::Result<f6
     Ok(src[i - 1])
 }
 
-pub fn rosy_vezero(v: &mut impl PolvalReDst, n: impl IntoF64, thresh: impl AsF64) {
-    let n = rosy_as_usize(&n.into_f64());
-    let thresh = thresh.as_f64_val().abs();
-    let mut src = v.load_re_vec();
-    for x in src.iter_mut().take(n) {
+fn vezero_components(xs: &mut [f64], thresh: f64) {
+    for x in xs {
         if x.abs() > thresh {
             *x = 0.0;
         }
     }
-    v.store_re_vec(src);
+}
+
+fn vezero_cell(v: &mut RosyValue, thresh: f64) {
+    match v {
+        RosyValue::VE(xs) => vezero_components(xs, thresh),
+        RosyValue::RE(x) => {
+            if x.abs() > thresh {
+                *x = 0.0;
+            }
+        }
+        RosyValue::Arr(cells) => {
+            for cell in cells {
+                vezero_cell(cell, thresh);
+            }
+        }
+        other => {
+            if other.as_f64().abs() > thresh {
+                *other = RosyValue::RE(0.0);
+            }
+        }
+    }
+}
+
+/// Zero components whose absolute value exceeds `thresh`.
+///
+/// `n` is how many items to inspect:
+/// - a `VE` / `Vec<f64>`: the first `n` components
+/// - an array of cells (`PART`, etc.): the first `n` cells, and every
+///   component of each cell (so a lost particle is zeroed on that axis,
+///   not collapsed to the reference ray)
+pub trait VezeroDst {
+    fn vezero(&mut self, n: usize, thresh: f64);
+}
+
+impl VezeroDst for Vec<f64> {
+    fn vezero(&mut self, n: usize, thresh: f64) {
+        let end = n.min(self.len());
+        vezero_components(&mut self[..end], thresh);
+    }
+}
+
+impl VezeroDst for Vec<RosyValue> {
+    fn vezero(&mut self, n: usize, thresh: f64) {
+        for cell in self.iter_mut().take(n) {
+            vezero_cell(cell, thresh);
+        }
+    }
+}
+
+impl VezeroDst for RosyValue {
+    fn vezero(&mut self, n: usize, thresh: f64) {
+        match self {
+            RosyValue::VE(xs) => {
+                let end = n.min(xs.len());
+                vezero_components(&mut xs[..end], thresh);
+            }
+            RosyValue::Arr(cells) => {
+                for cell in cells.iter_mut().take(n) {
+                    vezero_cell(cell, thresh);
+                }
+            }
+            other => {
+                if n > 0 {
+                    vezero_cell(other, thresh);
+                }
+            }
+        }
+    }
+}
+
+pub fn rosy_vezero(v: &mut impl VezeroDst, n: impl IntoF64, thresh: impl AsF64) {
+    let n = rosy_as_usize(&n.into_f64());
+    let thresh = thresh.as_f64_val().abs();
+    v.vezero(n, thresh);
 }
 
 pub fn rosy_veunit(v: &impl PolvalReSrc) -> Vec<f64> {
@@ -586,7 +656,8 @@ impl AsCdDst for Vec<RosyValue> {
 }
 impl AsCdRef for Vec<f64> {
     fn as_cd_vec(&self) -> Vec<CD> {
-        Vec::new()
+        // A real argument to CPOLVAL is a complex with zero imaginary part.
+        self.iter().copied().map(CD::constant).collect()
     }
 }
 impl AsCdDst for RosyValue {
@@ -624,11 +695,7 @@ impl<T: Clone + Default> RosyIndexable for [T] {
 impl RosyIndexable for f64 {
     type Out = f64;
     fn rosy_index(&self, idx: usize, _name: &str) -> f64 {
-        if idx == 1 {
-            *self
-        } else {
-            0.0
-        }
+        if idx == 1 { *self } else { 0.0 }
     }
 }
 
@@ -827,10 +894,7 @@ impl RosyMutIndexable for RosyValue {
             panic!("Index 0 into '{name}' is out of bounds — Rosy uses 1-based indexing");
         }
         if let RosyValue::VE(v) = self {
-            let arr = std::mem::take(v)
-                .into_iter()
-                .map(RosyValue::RE)
-                .collect();
+            let arr = std::mem::take(v).into_iter().map(RosyValue::RE).collect();
             *self = RosyValue::Arr(arr);
         }
         if !matches!(self, RosyValue::Arr(_)) && idx != 1 {
@@ -912,25 +976,44 @@ impl std::fmt::Display for RosyType {
 }
 impl RosyType {
     pub const fn new(base_type: RosyBaseType, dimensions: usize) -> Self {
-        RosyType { base_type, dimensions }
+        RosyType {
+            base_type,
+            dimensions,
+        }
     }
 
     #[allow(non_snake_case)]
-    pub const fn RE() -> Self { Self::new(RosyBaseType::RE, 0) }
+    pub const fn RE() -> Self {
+        Self::new(RosyBaseType::RE, 0)
+    }
     #[allow(non_snake_case)]
-    pub const fn ST() -> Self { Self::new(RosyBaseType::ST, 0) }
+    pub const fn ST() -> Self {
+        Self::new(RosyBaseType::ST, 0)
+    }
     #[allow(non_snake_case)]
-    pub const fn LO() -> Self { Self::new(RosyBaseType::LO, 0) }
+    pub const fn LO() -> Self {
+        Self::new(RosyBaseType::LO, 0)
+    }
     #[allow(non_snake_case)]
-    pub const fn CM() -> Self { Self::new(RosyBaseType::CM, 0) }
+    pub const fn CM() -> Self {
+        Self::new(RosyBaseType::CM, 0)
+    }
     #[allow(non_snake_case)]
-    pub const fn VE() -> Self { Self::new(RosyBaseType::VE, 0) }
+    pub const fn VE() -> Self {
+        Self::new(RosyBaseType::VE, 0)
+    }
     #[allow(non_snake_case)]
-    pub const fn DA() -> Self { Self::new(RosyBaseType::DA, 0) }
+    pub const fn DA() -> Self {
+        Self::new(RosyBaseType::DA, 0)
+    }
     #[allow(non_snake_case)]
-    pub const fn CD() -> Self { Self::new(RosyBaseType::CD, 0) }
+    pub const fn CD() -> Self {
+        Self::new(RosyBaseType::CD, 0)
+    }
     #[allow(non_snake_case)]
-    pub const fn ANY() -> Self { Self::new(RosyBaseType::ANY, 0) }
+    pub const fn ANY() -> Self {
+        Self::new(RosyBaseType::ANY, 0)
+    }
 
     pub fn is_any(&self) -> bool {
         self.base_type == RosyBaseType::ANY
@@ -1010,5 +1093,43 @@ mod cd_coerce_tests {
 
         crate::taylor::cleanup_taylor();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod vezero_tests {
+    use super::*;
+
+    #[test]
+    fn vezero_plain_ve_zeros_over_threshold() {
+        let mut v = vec![0.001, 5.0, 0.0001];
+        rosy_vezero(&mut v, 3.0, 0.01);
+        assert_eq!(v, vec![0.001, 0.0, 0.0001]);
+    }
+
+    #[test]
+    fn vezero_array_of_ves_keeps_particle_vectors() {
+        // PART-style layout: one VE per coordinate, each VE is all rays.
+        // ray 0 is the reference at 0. old code collapsed every VE to that 0.
+        let mut part = vec![
+            RosyValue::VE(vec![0.0, 0.001, 0.005, 0.012]),
+            RosyValue::VE(vec![0.0, 0.0, 0.0, 0.0]),
+            RosyValue::VE(vec![0.0, 0.001, 0.002, 0.005]),
+            RosyValue::VE(vec![0.0, 0.0, 0.0, 0.0]),
+        ];
+        rosy_vezero(&mut part, 4.0, 0.05);
+        match &part[0] {
+            RosyValue::VE(xs) => assert_eq!(xs, &vec![0.0, 0.001, 0.005, 0.012]),
+            other => panic!("expected VE, got {}", other.kind_name()),
+        }
+        rosy_vezero(&mut part, 4.0, 0.01);
+        match &part[0] {
+            RosyValue::VE(xs) => assert_eq!(xs, &vec![0.0, 0.001, 0.005, 0.0]),
+            other => panic!("expected VE, got {}", other.kind_name()),
+        }
+        match &part[2] {
+            RosyValue::VE(xs) => assert_eq!(xs, &vec![0.0, 0.001, 0.002, 0.005]),
+            other => panic!("expected VE, got {}", other.kind_name()),
+        }
     }
 }

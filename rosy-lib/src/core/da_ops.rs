@@ -459,17 +459,20 @@ fn flow_impl<T: DACoefficient>(
     result: &mut Vec<GenericDA<T>>,
     dim: usize,
 ) -> Result<()> {
-    let (epsilon, num_vars, deriv_targets, deriv_exponents, n) = {
+    let (epsilon, num_vars, deriv_targets, deriv_exponents, n, saved_eps) = {
         let rt = get_runtime().context("Flow requires DA to be initialized (call DAINI first)")?;
         (
-            rt.config.epsilon,
+            // DAEPS drops junk in ordinary arithmetic. The Lie series for a
+            // linear field is a scalar exponential, and COSY keeps summing it
+            // past a loose DAEPS (1e-14 still prints a full 1/e).
+            rt.config.epsilon.min(1e-16),
             rt.config.num_vars,
             rt.deriv_target.clone(),
             rt.deriv_exponent.clone(),
             rt.num_monomials,
+            rt.config.epsilon,
         )
     };
-
     if dim > num_vars {
         bail!(
             "Flow: dim ({}) exceeds number of DA variables ({})",
@@ -486,6 +489,10 @@ fn flow_impl<T: DACoefficient>(
     // dim sizes the vector field; a scalar/1-cell ic is a single observable (COSY DAFLO).
     let n_ic = ic.len().min(dim);
 
+    // Multiplies inside the series read DAEPS themselves, so the tight
+    // cutoff has to be the live one for the duration of the flow.
+    crate::taylor::set_epsilon(epsilon)?;
+    let flowed = (|| {
     const MAX_ITER: usize = 200;
 
     for i in 0..n_ic {
@@ -526,8 +533,10 @@ fn flow_impl<T: DACoefficient>(
             result.push(sum);
         }
     }
-
     Ok(())
+    })();
+    crate::taylor::set_epsilon(saved_eps)?;
+    flowed
 }
 
 /// DAFLO: Compute the real DA flow of x' = f(x) for time step 1.
@@ -574,12 +583,22 @@ pub fn rosy_cdflo(
 ///
 /// For each monomial of order k with coefficient c, computes |c| * weight^k.
 /// Returns the maximum over all monomials.
-pub fn rosy_danow(da: &impl crate::AsDaRef, weight: impl crate::AsF64, result: &mut impl crate::SetF64) -> Result<()> {
+pub fn rosy_danow(
+    da: &impl crate::AsDaRef,
+    weight: impl crate::AsF64,
+    result: &mut impl crate::SetF64,
+) -> Result<()> {
     let da = da.as_da_vec();
     let weight = weight.as_f64_val();
     let mut best = 0.0;
     if let Some(da) = da.first() {
+        let max_order = crate::taylor::get_runtime()
+            .map(|rt| rt.config.max_order)
+            .unwrap_or(u32::MAX);
         for (monomial, coeff) in da.coeffs_iter() {
+            if monomial.total_order as u32 > max_order {
+                continue;
+            }
             let order = monomial.total_order as f64;
             let weighted = coeff.abs() * weight.powf(order);
             if weighted > best {

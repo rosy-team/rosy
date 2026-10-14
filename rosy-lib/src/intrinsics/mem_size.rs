@@ -1,4 +1,4 @@
-use crate::{RE, VE, RosyType};
+use crate::{RE, RosyType, VE};
 
 /// COSY memory-size estimators always return RE.
 pub fn always_re(_input: &RosyType) -> Option<RosyType> {

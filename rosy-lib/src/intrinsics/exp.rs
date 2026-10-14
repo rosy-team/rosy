@@ -1,5 +1,5 @@
 use crate::RosyType;
-use crate::{RE, CM, VE, DA, CD};
+use crate::{CD, CM, DA, RE, VE};
 
 /// Get the return type of EXP for a given input type.
 pub fn get_return_type(input: &RosyType) -> Option<RosyType> {
@@ -66,7 +66,6 @@ fn da_exp(da: &DA) -> anyhow::Result<DA> {
 
 /// Compute exponential of a CD object using Horner's method.
 fn cd_exp(cd: &CD) -> anyhow::Result<CD> {
-    
     use num_complex::Complex64;
 
     let config = crate::taylor::get_config()?;
@@ -87,4 +86,3 @@ fn cd_exp(cd: &CD) -> anyhow::Result<CD> {
     result = (&result * CD::from_coeff(exp_f0))?;
     Ok(result)
 }
-

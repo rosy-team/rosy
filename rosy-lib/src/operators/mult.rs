@@ -1,8 +1,8 @@
 //! Multiplication operator for Rosy types.
 
-use anyhow::Result;
 use crate::RosyType;
-use crate::{RE, CM, VE, DA, CD, LO};
+use crate::{CD, CM, DA, LO, RE, VE};
+use anyhow::Result;
 
 pub fn get_return_type(lhs: &RosyType, rhs: &RosyType) -> Option<RosyType> {
     crate::operators::arith_return(lhs, rhs, true)
@@ -74,11 +74,7 @@ impl RosyMult<&RE> for &VE {
 impl RosyMult<&DA> for &VE {
     type Output = DA;
     fn rosy_mult(self, other: &DA) -> Result<Self::Output> {
-        anyhow::ensure!(
-            self.len() == 1,
-            "VE*DA needs length 1, got {}",
-            self.len()
-        );
+        anyhow::ensure!(self.len() == 1, "VE*DA needs length 1, got {}", self.len());
         other * self[0]
     }
 }
@@ -100,12 +96,13 @@ impl RosyMult<&VE> for &DA {
 impl RosyMult<&VE> for &VE {
     type Output = VE;
     fn rosy_mult(self, other: &VE) -> Result<Self::Output> {
-        anyhow::ensure!(self.len() == other.len(),
-            "Vector length mismatch in multiplication: {} vs {}", self.len(), other.len());
-        Ok(self.iter()
-            .zip(other.iter())
-            .map(|(x, y)| x * y)
-            .collect())
+        anyhow::ensure!(
+            self.len() == other.len(),
+            "Vector length mismatch in multiplication: {} vs {}",
+            self.len(),
+            other.len()
+        );
+        Ok(self.iter().zip(other.iter()).map(|(x, y)| x * y).collect())
     }
 }
 
@@ -201,7 +198,6 @@ impl RosyMult<&RE> for &CD {
 impl RosyMult<&CM> for &CD {
     type Output = CD;
     fn rosy_mult(self, other: &CM) -> Result<Self::Output> {
-        
         self * *other
     }
 }
@@ -223,4 +219,3 @@ impl RosyMult<&CD> for &CD {
         self * other
     }
 }
-

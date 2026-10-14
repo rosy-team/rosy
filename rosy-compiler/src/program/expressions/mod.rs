@@ -313,7 +313,8 @@ impl FromRule for Expr {
                     other => bail!("Unexpected infix operator: {:?}", other),
                 };
                 let left = left.context("...while parsing left-hand side of infix expression")?;
-                let right = right.context("...while parsing right-hand side of infix expression")?;
+                let right =
+                    right.context("...while parsing right-hand side of infix expression")?;
                 Ok(Expr {
                     inner: BinaryExpr::new(bin, left, right).into(),
                     source_location: op_loc,
