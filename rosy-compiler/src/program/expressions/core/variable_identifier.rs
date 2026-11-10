@@ -304,9 +304,22 @@ impl Transpile for VariableIdentifier {
             rust_name
         } else {
             let mut result = rust_name;
-            for idx_expr in &transpiled_indices {
+            // Walk the Vec levels by reference. Only the last read copies:
+            // cloning a whole slab per element made PHAD's gathers quadratic.
+            let dims = context
+                .variables
+                .get(&self.name)
+                .map(|v| v.data.r#type.dimensions)
+                .unwrap_or(0);
+            let last = transpiled_indices.len() - 1;
+            for (level, idx_expr) in transpiled_indices.iter().enumerate() {
+                let getter = if level < last && level < dims {
+                    "rosy_view"
+                } else {
+                    "rosy_get"
+                };
                 result = format!(
-                    "rosy_get(&({result}), {expr}, \"{name}\")",
+                    "{getter}(&({result}), {expr}, \"{name}\")",
                     result = result,
                     expr = idx_expr,
                     name = self.name,

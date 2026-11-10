@@ -210,6 +210,32 @@ impl TranspileableExpr for BinaryExpr {
         let left_type = self.left.type_of(context).ok()?;
         let right_type = self.right.type_of(context).ok()?;
 
+        // `X := X & CELL` with a list X and an untyped cell: append in place.
+        // The full path copied all of X on every append, so a loop that
+        // grows a list chunk by chunk was quadratic (PHAD's `snumbs`).
+        if left_type == RosyType::VE() && right_type.is_any() && right_type.dimensions == 0 {
+            let right_output = match self.right.transpile(context) {
+                Ok(out) => out,
+                Err(e) => return Some(Err(e)),
+            };
+            let mut requested_variables = BTreeSet::new();
+            requested_variables.extend(right_output.requested_variables.iter().cloned());
+            if matches!(
+                context.variables.get(target_var).map(|v| &v.scope),
+                Some(VariableScope::Higher)
+            ) {
+                requested_variables.insert(target_var.to_string());
+            }
+            return Some(Ok(TranspilationOutput {
+                serialization: format!(
+                    "{{ let __rhs: RosyValue = {}; rosy_append_ve(&mut {dest}, &__rhs)?; }}",
+                    right_output.as_value()
+                ),
+                requested_variables,
+                ..Default::default()
+            }));
+        }
+
         let is_push = match (
             left_type.base_type,
             left_type.dimensions,
@@ -343,11 +369,17 @@ impl Transpile for BinaryExpr {
                 as_re(&right_type, &r, &rref)
             )
         } else if left_type.is_any() || right_type.is_any() {
+            // Reading `LIST|J` off a VE must not box a copy of LIST first.
+            let left = if self.op == BinaryOp::Extract && left_type == RosyType::VE() {
+                left_output.as_ref()
+            } else {
+                emit_as_rosy_value_ref(&left_output, &left_type)
+            };
             emit_unwrap_rosy_value(
                 format!(
                     "rosy_dyn_binary(BinaryOp::{:?}, {}, {})?",
                     self.op,
-                    emit_as_rosy_value_ref(&left_output, &left_type),
+                    left,
                     emit_as_rosy_value_ref(&right_output, &right_type)
                 ),
                 &result_type,

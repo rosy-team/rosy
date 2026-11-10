@@ -370,6 +370,13 @@ impl TranspilationOutput {
     /// - Ref(X) → &*X (deref &mut T to get &T)
     pub fn as_ref(&self) -> String {
         match self.value_kind {
+            // An array read that is only borrowed does not need its own copy.
+            ValueKind::Owned if is_single_call(&self.serialization, "rosy_get(") => {
+                format!(
+                    "&*rosy_get_ref({}",
+                    &self.serialization["rosy_get(".len()..]
+                )
+            }
             ValueKind::Owned => format!("&{}", self.serialization),
             ValueKind::Ref => {
                 if self.serialization.starts_with('&') {
@@ -424,6 +431,34 @@ impl TranspilationOutput {
             self.as_value()
         }
     }
+}
+
+/// `expr` is exactly one call `name...(...)`, with nothing after its `)`.
+fn is_single_call(expr: &str, name: &str) -> bool {
+    if !expr.starts_with(name) {
+        return false;
+    }
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut prev = '\0';
+    for (i, c) in expr.char_indices().skip(name.len() - 1) {
+        if in_str {
+            if c == '"' && prev != '\\' {
+                in_str = false;
+            }
+        } else if c == '"' {
+            in_str = true;
+        } else if c == '(' {
+            depth += 1;
+        } else if c == ')' {
+            depth -= 1;
+            if depth == 0 {
+                return i == expr.len() - 1;
+            }
+        }
+        prev = c;
+    }
+    false
 }
 
 pub fn types_compatible(provided: &RosyType, expected: &RosyType) -> bool {

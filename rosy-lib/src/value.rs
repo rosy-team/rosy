@@ -1,6 +1,7 @@
 //! Runtime tagged value for COSY-style type reuse on one variable.
 
 use anyhow::{Result, bail};
+use std::borrow::Cow;
 
 use crate::core::display::RosyDisplay;
 use crate::intrinsics::*;
@@ -661,64 +662,119 @@ macro_rules! dyn_pairs {
     };
 }
 
+/// An operand of [`rosy_dyn_binary`]. Borrow where possible: PHAD reads
+/// `LIST|J` on long lists inside loops, so a copy here is quadratic.
 pub trait ToRosy {
-    fn to_rosy(&self) -> RosyValue;
+    fn to_rosy(&self) -> Cow<'_, RosyValue>;
+    /// Element `i` (1-based) of a list, without building the whole operand.
+    /// `None` means the caller must take the full path.
+    fn index_re(&self, _i: f64) -> Option<RosyValue> {
+        None
+    }
+    /// `LIST|(a&b)` in bounds, without building the whole operand.
+    fn slice_re(&self, _start: usize, _end: usize) -> Option<RosyValue> {
+        None
+    }
+}
+
+/// A 1-based inclusive range inside `len`, as `VE|VE` accepts it.
+fn range_ok(start: usize, end: usize, len: usize) -> bool {
+    start >= 1 && end >= start && end <= len
 }
 impl ToRosy for RosyValue {
-    fn to_rosy(&self) -> RosyValue {
-        self.clone()
+    fn to_rosy(&self) -> Cow<'_, RosyValue> {
+        Cow::Borrowed(self)
+    }
+    fn index_re(&self, i: f64) -> Option<RosyValue> {
+        match self {
+            RosyValue::VE(v) => v.index_re(i),
+            // One element peels to that cell, so `DA|k` stays a coefficient.
+            RosyValue::Arr(items) if items.len() > 1 => {
+                items.get((i.round() as usize).wrapping_sub(1)).cloned()
+            }
+            _ => None,
+        }
+    }
+    fn slice_re(&self, start: usize, end: usize) -> Option<RosyValue> {
+        match self {
+            RosyValue::VE(v) => v.slice_re(start, end),
+            // A series list stays a list of series on the full path.
+            RosyValue::Arr(items)
+                if items.len() > 1
+                    && range_ok(start, end, items.len())
+                    && !items
+                        .iter()
+                        .any(|x| matches!(x, RosyValue::DA(_) | RosyValue::CD(_))) =>
+            {
+                Some(RosyValue::VE(
+                    items[start - 1..end].iter().map(|x| x.as_f64()).collect(),
+                ))
+            }
+            _ => None,
+        }
     }
 }
 impl ToRosy for f64 {
-    fn to_rosy(&self) -> RosyValue {
-        RosyValue::RE(*self)
+    fn to_rosy(&self) -> Cow<'_, RosyValue> {
+        Cow::Owned(RosyValue::RE(*self))
     }
 }
 impl ToRosy for String {
-    fn to_rosy(&self) -> RosyValue {
-        RosyValue::ST(self.clone())
+    fn to_rosy(&self) -> Cow<'_, RosyValue> {
+        Cow::Owned(RosyValue::ST(self.clone()))
     }
 }
 impl ToRosy for bool {
-    fn to_rosy(&self) -> RosyValue {
-        RosyValue::LO(*self)
+    fn to_rosy(&self) -> Cow<'_, RosyValue> {
+        Cow::Owned(RosyValue::LO(*self))
+    }
+}
+impl ToRosy for Vec<f64> {
+    fn to_rosy(&self) -> Cow<'_, RosyValue> {
+        Cow::Owned(RosyValue::VE(self.clone()))
+    }
+    fn index_re(&self, i: f64) -> Option<RosyValue> {
+        self.get((i.round() as usize).wrapping_sub(1))
+            .map(|x| RosyValue::RE(*x))
+    }
+    fn slice_re(&self, start: usize, end: usize) -> Option<RosyValue> {
+        range_ok(start, end, self.len()).then(|| RosyValue::VE(self[start - 1..end].to_vec()))
     }
 }
 impl ToRosy for Vec<RosyValue> {
-    fn to_rosy(&self) -> RosyValue {
-        RosyValue::Arr(self.clone())
+    fn to_rosy(&self) -> Cow<'_, RosyValue> {
+        Cow::Owned(RosyValue::Arr(self.clone()))
     }
 }
 impl ToRosy for Vec<Vec<RosyValue>> {
-    fn to_rosy(&self) -> RosyValue {
-        RosyValue::from(self.clone())
+    fn to_rosy(&self) -> Cow<'_, RosyValue> {
+        Cow::Owned(RosyValue::from(self.clone()))
     }
 }
 
-fn peel_singleton_arr(v: &RosyValue) -> RosyValue {
+fn peel_singleton_arr(v: &RosyValue) -> &RosyValue {
     match v {
         RosyValue::Arr(items) if items.len() == 1 => peel_singleton_arr(&items[0]),
-        _ => v.clone(),
+        _ => v,
     }
 }
 
-fn arr_as_ve(v: &RosyValue) -> RosyValue {
+fn arr_as_ve(v: &RosyValue) -> Cow<'_, RosyValue> {
     match v {
         RosyValue::Arr(items)
-            if items
+            if !items
                 .iter()
                 .any(|x| matches!(x, RosyValue::DA(_) | RosyValue::CD(_))) =>
         {
-            v.clone()
+            Cow::Owned(RosyValue::VE(items.iter().map(|x| x.as_f64()).collect()))
         }
-        RosyValue::Arr(items) => RosyValue::VE(items.iter().map(|x| x.as_f64()).collect()),
-        other => other.clone(),
+        other => Cow::Borrowed(other),
     }
 }
 
-fn cm_as_ve_if_other_ve(a: RosyValue, b: &RosyValue) -> RosyValue {
-    match (&a, b) {
-        (RosyValue::CM(c), RosyValue::VE(_)) => RosyValue::VE(vec![c.re, c.im]),
+fn cm_as_ve_if_other_ve<'a>(a: Cow<'a, RosyValue>, b: &RosyValue) -> Cow<'a, RosyValue> {
+    match (a.as_ref(), b) {
+        (RosyValue::CM(c), RosyValue::VE(_)) => Cow::Owned(RosyValue::VE(vec![c.re, c.im])),
         _ => a,
     }
 }
@@ -763,18 +819,95 @@ fn as_cd_list(v: &RosyValue) -> Option<Vec<CD>> {
     }
 }
 
+/// COSY compares the constant term. A boxed cell (`EMPTY#0`) still arrives here.
+fn da_const_rel(op: BinaryOp, lhs: &RosyValue, rhs: &RosyValue) -> Option<bool> {
+    if !matches!(
+        op,
+        BinaryOp::Eq | BinaryOp::Neq | BinaryOp::Lt | BinaryOp::Gt | BinaryOp::Lte | BinaryOp::Gte
+    ) {
+        return None;
+    }
+    if !matches!(lhs, RosyValue::DA(_)) && !matches!(rhs, RosyValue::DA(_)) {
+        return None;
+    }
+    let c = |v: &RosyValue| match v {
+        RosyValue::RE(x) => Some(*x),
+        RosyValue::DA(d) => Some(d.constant_part()),
+        _ => None,
+    };
+    let (a, b) = (c(lhs)?, c(rhs)?);
+    Some(match op {
+        BinaryOp::Eq => a == b,
+        BinaryOp::Neq => a != b,
+        BinaryOp::Lt => a < b,
+        BinaryOp::Gt => a > b,
+        BinaryOp::Lte => a <= b,
+        BinaryOp::Gte => a >= b,
+        _ => return None,
+    })
+}
+
+/// `X := X & CELL` for a list `X`, appended in place. A real or a list of
+/// reals is the common case. Anything else takes the full path, so the
+/// result and its errors are unchanged.
+pub fn rosy_append_ve(dest: &mut Vec<f64>, rhs: &RosyValue) -> Result<()> {
+    match peel_singleton_arr(rhs) {
+        RosyValue::RE(x) => dest.push(*x),
+        RosyValue::VE(v) => dest.extend_from_slice(v),
+        RosyValue::Arr(items) if items.iter().all(|x| matches!(x, RosyValue::RE(_))) => {
+            dest.extend(items.iter().map(|x| x.as_f64()))
+        }
+        _ => {
+            let joined = rosy_dyn_binary(BinaryOp::Concat, &*dest, rhs)?.expect_ve()?;
+            *dest = joined;
+        }
+    }
+    Ok(())
+}
+
 pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Result<RosyValue> {
-    let lhs = peel_singleton_arr(&lhs.to_rosy());
-    let rhs = peel_singleton_arr(&rhs.to_rosy());
-    let lhs = &lhs;
-    let rhs = &rhs;
+    if op == BinaryOp::Extract {
+        let index = rhs.to_rosy();
+        match peel_singleton_arr(index.as_ref()) {
+            RosyValue::RE(i) => {
+                if let Some(found) = lhs.index_re(*i) {
+                    return Ok(found);
+                }
+            }
+            RosyValue::VE(r) if r.len() == 2 => {
+                let (a, b) = (r[0].round() as usize, r[1].round() as usize);
+                if let Some(found) = lhs.slice_re(a, b) {
+                    return Ok(found);
+                }
+            }
+            RosyValue::Arr(r)
+                if r.len() == 2 && r.iter().all(|x| matches!(x, RosyValue::RE(_))) =>
+            {
+                let (a, b) = (
+                    r[0].as_f64().round() as usize,
+                    r[1].as_f64().round() as usize,
+                );
+                if let Some(found) = lhs.slice_re(a, b) {
+                    return Ok(found);
+                }
+            }
+            _ => {}
+        }
+    }
+    let lhs = lhs.to_rosy();
+    let rhs = rhs.to_rosy();
+    let lhs = peel_singleton_arr(lhs.as_ref());
+    let rhs = peel_singleton_arr(rhs.as_ref());
+    if let Some(lo) = da_const_rel(op, lhs, rhs) {
+        return Ok(RosyValue::LO(lo));
+    }
     match op {
         BinaryOp::Add => {
             let (lhs, rhs) = (arr_as_ve(lhs), arr_as_ve(rhs));
             let lhs = cm_as_ve_if_other_ve(lhs, &rhs);
             let rhs = cm_as_ve_if_other_ve(rhs, &lhs);
             dyn_pairs!(
-                &lhs, &rhs, rosy_add,
+                lhs.as_ref(), rhs.as_ref(), rosy_add,
                 RE, RE; RE, CM; RE, VE; RE, DA; RE, CD;
                 CM, RE; CM, CM; CM, DA; CM, CD;
                 VE, RE; VE, VE;
@@ -786,7 +919,7 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
         BinaryOp::Sub => {
             let (lhs, rhs) = (arr_as_ve(lhs), arr_as_ve(rhs));
             dyn_pairs!(
-                &lhs, &rhs, rosy_sub,
+                lhs.as_ref(), rhs.as_ref(), rosy_sub,
                 RE, RE; RE, CM; RE, VE; RE, DA; RE, CD;
                 CM, RE; CM, CM; CM, DA; CM, CD;
                 VE, RE; VE, VE;
@@ -799,7 +932,7 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
             let lhs = cm_as_ve_if_other_ve(lhs, &rhs);
             let rhs = cm_as_ve_if_other_ve(rhs, &lhs);
             dyn_pairs!(
-                &lhs, &rhs, rosy_mult,
+                lhs.as_ref(), rhs.as_ref(), rosy_mult,
                 RE, RE; RE, CM; RE, VE; RE, DA; RE, CD;
                 CM, RE; CM, CM; CM, DA; CM, CD;
                 VE, RE; VE, VE; VE, DA;
@@ -811,7 +944,7 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
         BinaryOp::Div => {
             let (lhs, rhs) = (arr_as_ve(lhs), arr_as_ve(rhs));
             dyn_pairs!(
-                &lhs, &rhs, rosy_div,
+                lhs.as_ref(), rhs.as_ref(), rosy_div,
                 RE, RE; RE, CM; RE, VE; RE, DA; RE, CD;
                 CM, RE; CM, CM; CM, DA; CM, CD;
                 VE, RE; VE, VE;
@@ -821,7 +954,7 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
         }
         BinaryOp::Pow => {
             let (lhs, rhs) = (arr_as_ve(lhs), arr_as_ve(rhs));
-            dyn_pairs!(&lhs, &rhs, rosy_pow, RE, RE; VE, RE; DA, RE; CD, RE)
+            dyn_pairs!(lhs.as_ref(), rhs.as_ref(), rosy_pow, RE, RE; VE, RE; DA, RE; CD, RE)
         }
         BinaryOp::Extract => {
             if let (RosyValue::Arr(items), RosyValue::RE(i)) = (lhs, rhs) {
@@ -834,14 +967,40 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
                 }
                 return Ok(items[idx - 1].clone());
             }
+            // `TIMEBINS|(2&LENGTH)` is a range. An Arr that holds a series
+            // must stay a series. Flattening it to f64 is what makes this bail.
+            if let RosyValue::Arr(items) = lhs
+                && items
+                    .iter()
+                    .any(|x| matches!(x, RosyValue::DA(_) | RosyValue::CD(_)))
+            {
+                let idx: Vec<f64> = match rhs {
+                    RosyValue::VE(v) => v.clone(),
+                    RosyValue::Arr(a) => a.iter().map(|x| x.as_f64()).collect(),
+                    _ => bail!("rosy_extract not defined for ARR and {}", rhs.kind_name()),
+                };
+                if idx.len() != 2 {
+                    bail!(
+                        "Vector extraction with vector index requires exactly two elements (start and end)"
+                    );
+                }
+                let start = idx[0].round() as usize;
+                let end = idx[1].round() as usize;
+                if start == 0 || end == 0 || start > items.len() || end > items.len() || start > end
+                {
+                    bail!(
+                        "Vector index range {}-{} out of bounds (1-{})",
+                        start,
+                        end,
+                        items.len()
+                    );
+                }
+                return Ok(RosyValue::Arr(items[start - 1..end].to_vec()));
+            }
             let rhs = arr_as_ve(rhs);
-            let lhs = if matches!(lhs, RosyValue::Arr(_)) {
-                arr_as_ve(lhs)
-            } else {
-                lhs.clone()
-            };
+            let lhs = arr_as_ve(lhs);
             dyn_pairs!(
-                &lhs, &rhs, rosy_extract,
+                lhs.as_ref(), rhs.as_ref(), rosy_extract,
                 ST, RE; ST, VE;
                 CM, RE;
                 VE, RE; VE, VE;
@@ -892,7 +1051,7 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
         }
         BinaryOp::Eq => {
             if matches!(lhs, RosyValue::Arr(_)) && matches!(rhs, RosyValue::Arr(_)) {
-                match (arr_as_ve(lhs), arr_as_ve(rhs)) {
+                match (arr_as_ve(lhs).as_ref(), arr_as_ve(rhs).as_ref()) {
                     (RosyValue::VE(a), RosyValue::VE(b)) => return Ok(RosyValue::LO(a == b)),
                     _ => {}
                 }
@@ -901,7 +1060,7 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
         }
         BinaryOp::Neq => {
             if matches!(lhs, RosyValue::Arr(_)) && matches!(rhs, RosyValue::Arr(_)) {
-                match (arr_as_ve(lhs), arr_as_ve(rhs)) {
+                match (arr_as_ve(lhs).as_ref(), arr_as_ve(rhs).as_ref()) {
                     (RosyValue::VE(a), RosyValue::VE(b)) => return Ok(RosyValue::LO(a != b)),
                     _ => {}
                 }
@@ -974,5 +1133,183 @@ mod tests {
         assert_eq!(c.expect_ve().unwrap(), vec![1.0, 2.0, 3.0]);
         let d = rosy_dyn_binary(BinaryOp::Add, &a, &b).unwrap();
         assert_eq!(d.expect_ve().unwrap(), vec![4.0, 5.0]);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn dyn_compare_uses_da_constant_term() {
+        // Reals stay on the old arms. No Taylor runtime required.
+        let lo = |v: RosyValue| matches!(v, RosyValue::LO(true));
+        assert!(lo(rosy_dyn_binary(
+            BinaryOp::Neq,
+            &RosyValue::RE(1.0),
+            &RosyValue::RE(0.0)
+        )
+        .unwrap()));
+        assert!(!lo(rosy_dyn_binary(
+            BinaryOp::Neq,
+            &RosyValue::RE(1.0),
+            &RosyValue::RE(1.0)
+        )
+        .unwrap()));
+        assert!(lo(rosy_dyn_binary(
+            BinaryOp::Neq,
+            &RosyValue::ST("a".into()),
+            &RosyValue::ST("b".into())
+        )
+        .unwrap()));
+
+        crate::taylor::config::cleanup_taylor();
+        crate::taylor::config::init_taylor(2, 1).unwrap();
+        crate::taylor::config::set_epsilon(1e-100).unwrap();
+
+        let one = RosyValue::DA(DA::from_coeff(1.0));
+        let zero = RosyValue::RE(0.0);
+        let tiny = RosyValue::DA(DA::from_coeff(9.44e-16));
+        // Constant 0, plus a linear term. COSY still treats this as 0.
+        let slope = RosyValue::DA(DA::variable(1).unwrap());
+        let wrapped = RosyValue::Arr(vec![one.clone()]);
+
+        assert!(lo(rosy_dyn_binary(BinaryOp::Neq, &one, &zero).unwrap()));
+        assert!(lo(rosy_dyn_binary(BinaryOp::Neq, &zero, &one).unwrap()));
+        assert!(!lo(rosy_dyn_binary(BinaryOp::Eq, &one, &zero).unwrap()));
+        assert!(lo(
+            rosy_dyn_binary(BinaryOp::Eq, &one, &RosyValue::RE(1.0)).unwrap()
+        ));
+        assert!(lo(rosy_dyn_binary(BinaryOp::Lt, &zero, &one).unwrap()));
+        assert!(lo(rosy_dyn_binary(BinaryOp::Gt, &one, &zero).unwrap()));
+        assert!(lo(rosy_dyn_binary(
+            BinaryOp::Lte,
+            &one,
+            &RosyValue::RE(1.0)
+        )
+        .unwrap()));
+        assert!(lo(rosy_dyn_binary(
+            BinaryOp::Gte,
+            &RosyValue::RE(1.0),
+            &one
+        )
+        .unwrap()));
+        assert!(lo(rosy_dyn_binary(BinaryOp::Neq, &tiny, &zero).unwrap()));
+        assert!(!lo(rosy_dyn_binary(BinaryOp::Neq, &slope, &zero).unwrap()));
+        assert!(lo(rosy_dyn_binary(BinaryOp::Eq, &slope, &zero).unwrap()));
+        assert!(lo(rosy_dyn_binary(BinaryOp::Neq, &one, &slope).unwrap()));
+        // `EMPTY := PARTICLES` when the vector has one series.
+        assert!(lo(rosy_dyn_binary(BinaryOp::Neq, &wrapped, &zero).unwrap()));
+
+        crate::taylor::config::cleanup_taylor();
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn dyn_extract_slices_an_arr_of_da() {
+        crate::taylor::config::cleanup_taylor();
+        crate::taylor::config::init_taylor(2, 1).unwrap();
+        let x = DA::variable(1).unwrap();
+        let timed = (&DA::from_coeff(1.5) + &x).unwrap();
+        assert!(timed.num_terms() > 1);
+        let bins = RosyValue::Arr(vec![
+            RosyValue::DA(DA::from_coeff(0.0)),
+            RosyValue::DA(timed),
+        ]);
+        // SHORTLIST(TIMEBINS, 1) drops the leading placeholder.
+        let got =
+            rosy_dyn_binary(BinaryOp::Extract, &bins, &RosyValue::VE(vec![2.0, 2.0])).unwrap();
+        let RosyValue::Arr(items) = got else {
+            panic!("range of a series list should stay an ARR");
+        };
+        assert_eq!(items.len(), 1);
+        let RosyValue::DA(d) = &items[0] else {
+            panic!("sliced element should stay a DA");
+        };
+        assert!((d.constant_part() - 1.5).abs() < 1e-12);
+        assert!(d.num_terms() > 1);
+
+        let reals = RosyValue::Arr(vec![
+            RosyValue::RE(1.0),
+            RosyValue::RE(2.0),
+            RosyValue::RE(3.0),
+        ]);
+        let sliced =
+            rosy_dyn_binary(BinaryOp::Extract, &reals, &RosyValue::VE(vec![1.0, 2.0])).unwrap();
+        assert_eq!(sliced.expect_ve().unwrap(), vec![1.0, 2.0]);
+        crate::taylor::config::cleanup_taylor();
+    }
+}
+
+/// The borrowing fast paths must answer exactly as the full path did.
+#[cfg(test)]
+mod fast_path_tests {
+    use super::*;
+
+    fn re(x: f64) -> RosyValue {
+        RosyValue::RE(x)
+    }
+
+    #[test]
+    fn element_reads_match_full_path() {
+        let ve = vec![1.0, 2.0, 3.0];
+        let arr = RosyValue::Arr(vec![re(4.0), re(5.0), re(6.0)]);
+        let cell = RosyValue::VE(ve.clone());
+        for i in [1.0, 2.0, 3.0, 2.4, 2.6] {
+            let want = RosyExtract::rosy_extract(&ve, &(i as f64)).unwrap();
+            assert_eq!(
+                rosy_dyn_binary(BinaryOp::Extract, &ve, &i).unwrap(),
+                re(want)
+            );
+            assert_eq!(
+                rosy_dyn_binary(BinaryOp::Extract, &cell, &re(i)).unwrap(),
+                re(want)
+            );
+        }
+        assert_eq!(
+            rosy_dyn_binary(BinaryOp::Extract, &arr, &re(2.0)).unwrap(),
+            re(5.0)
+        );
+        // Out of range still takes the full path, and still fails there.
+        assert!(rosy_dyn_binary(BinaryOp::Extract, &ve, &4.0).is_err());
+        assert!(rosy_dyn_binary(BinaryOp::Extract, &arr, &re(0.0)).is_err());
+    }
+
+    #[test]
+    fn range_reads_match_full_path() {
+        let ve = vec![1.0, 2.0, 3.0, 4.0];
+        let cell = RosyValue::VE(ve.clone());
+        let arr = RosyValue::Arr(ve.iter().map(|x| re(*x)).collect());
+        let range = RosyValue::VE(vec![2.0, 3.0]);
+        let want = RosyValue::VE(vec![2.0, 3.0]);
+        assert_eq!(
+            rosy_dyn_binary(BinaryOp::Extract, &ve, &range).unwrap(),
+            want
+        );
+        assert_eq!(
+            rosy_dyn_binary(BinaryOp::Extract, &cell, &range).unwrap(),
+            want
+        );
+        assert_eq!(
+            rosy_dyn_binary(BinaryOp::Extract, &arr, &range).unwrap(),
+            want
+        );
+        let boxed = RosyValue::Arr(vec![re(2.0), re(3.0)]);
+        assert_eq!(
+            rosy_dyn_binary(BinaryOp::Extract, &cell, &boxed).unwrap(),
+            want
+        );
+        assert!(rosy_dyn_binary(BinaryOp::Extract, &ve, &RosyValue::VE(vec![3.0, 5.0])).is_err());
+        assert!(rosy_dyn_binary(BinaryOp::Extract, &ve, &RosyValue::VE(vec![3.0, 2.0])).is_err());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn singleton_series_cell_stays_a_coefficient() {
+        crate::taylor::config::cleanup_taylor();
+        crate::taylor::config::init_taylor(3, 1).unwrap();
+        let x = DA::variable(1).unwrap();
+        let s = (&(&x * &x).unwrap() + 2.0).unwrap();
+        let one = RosyValue::Arr(vec![RosyValue::DA(s)]);
+        // `CELL|1` on a one-element cell is the order-1 coefficient, not the cell.
+        let got = rosy_dyn_binary(BinaryOp::Extract, &one, &re(2.0)).unwrap();
+        assert_eq!(got.as_f64(), 1.0);
+        crate::taylor::config::cleanup_taylor();
     }
 }

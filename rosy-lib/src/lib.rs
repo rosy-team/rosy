@@ -52,7 +52,7 @@ pub use registry::{
     BinaryOp, INTRINSICS, Intrinsic, IntrinsicTyping, UnaryOp, binary_return_type,
     lookup_intrinsic, unary_return_type,
 };
-pub use value::{RosyValue, rosy_dyn_binary};
+pub use value::{RosyValue, rosy_append_ve, rosy_dyn_binary};
 
 pub use taylor::{CD, DA, DEFAULT_SCRLEN, rosy_scrlen};
 
@@ -734,6 +734,124 @@ pub fn rosy_get<C: RosyIndexable + ?Sized>(
     container.rosy_index(one_based.into_f64().round() as usize, var_name)
 }
 
+/// A shared element of a nested array, for `A(I,J,K)` reads. The levels above
+/// the last one are only walked, so they must not be cloned.
+/// A missing element reads as the default, like [`RosyIndexable`].
+pub trait RosyView {
+    type Out: ?Sized;
+    fn rosy_view(&self, idx: usize, name: &str) -> &Self::Out;
+}
+
+/// The value an out-of-range intermediate index reads as.
+pub trait RosyViewDefault: 'static {
+    fn view_default() -> &'static Self;
+}
+impl<U: 'static> RosyViewDefault for Vec<U> {
+    fn view_default() -> &'static Self {
+        const { &Vec::new() }
+    }
+}
+impl RosyViewDefault for RosyValue {
+    fn view_default() -> &'static Self {
+        const { &RosyValue::RE(0.0) }
+    }
+}
+
+impl<T: RosyViewDefault> RosyView for Vec<T> {
+    type Out = T;
+    fn rosy_view(&self, idx: usize, _name: &str) -> &T {
+        match self.get(idx.wrapping_sub(1)) {
+            Some(found) => found,
+            None => T::view_default(),
+        }
+    }
+}
+impl<T: RosyView + ?Sized> RosyView for &T {
+    type Out = T::Out;
+    fn rosy_view(&self, idx: usize, name: &str) -> &T::Out {
+        (**self).rosy_view(idx, name)
+    }
+}
+impl<T: RosyView + ?Sized> RosyView for &mut T {
+    type Out = T::Out;
+    fn rosy_view(&self, idx: usize, name: &str) -> &T::Out {
+        (**self).rosy_view(idx, name)
+    }
+}
+
+#[inline(always)]
+pub fn rosy_view<'a, C: RosyView + ?Sized>(
+    container: &'a C,
+    one_based: impl IntoF64,
+    var_name: &str,
+) -> &'a C::Out {
+    container.rosy_view(one_based.into_f64().round() as usize, var_name)
+}
+
+/// [`RosyIndexable`] for a consumer that only borrows the element. In range
+/// it is the element itself. `Y(I)-Y(K)` on DA cells cloned both series.
+pub trait RosyIndexRef {
+    type Out: Clone;
+    fn rosy_index_ref(&self, idx: usize, name: &str) -> std::borrow::Cow<'_, Self::Out>;
+}
+impl<T: Clone + Default> RosyIndexRef for Vec<T> {
+    type Out = T;
+    fn rosy_index_ref(&self, idx: usize, _name: &str) -> std::borrow::Cow<'_, T> {
+        match self.get(idx.wrapping_sub(1)) {
+            Some(found) => std::borrow::Cow::Borrowed(found),
+            None => std::borrow::Cow::Owned(T::default()),
+        }
+    }
+}
+impl<T: Clone + Default> RosyIndexRef for [T] {
+    type Out = T;
+    fn rosy_index_ref(&self, idx: usize, _name: &str) -> std::borrow::Cow<'_, T> {
+        match self.get(idx.wrapping_sub(1)) {
+            Some(found) => std::borrow::Cow::Borrowed(found),
+            None => std::borrow::Cow::Owned(T::default()),
+        }
+    }
+}
+impl RosyIndexRef for f64 {
+    type Out = f64;
+    fn rosy_index_ref(&self, idx: usize, name: &str) -> std::borrow::Cow<'_, f64> {
+        std::borrow::Cow::Owned(self.rosy_index(idx, name))
+    }
+}
+impl RosyIndexRef for RosyValue {
+    type Out = RosyValue;
+    fn rosy_index_ref(&self, idx: usize, name: &str) -> std::borrow::Cow<'_, RosyValue> {
+        match self {
+            RosyValue::Arr(v) => v.rosy_index_ref(idx, name),
+            other if idx == 1 && !matches!(other, RosyValue::VE(_)) => {
+                std::borrow::Cow::Borrowed(other)
+            }
+            other => std::borrow::Cow::Owned(other.rosy_index(idx, name)),
+        }
+    }
+}
+impl<T: RosyIndexRef + ?Sized> RosyIndexRef for &T {
+    type Out = T::Out;
+    fn rosy_index_ref(&self, idx: usize, name: &str) -> std::borrow::Cow<'_, T::Out> {
+        (**self).rosy_index_ref(idx, name)
+    }
+}
+impl<T: RosyIndexRef + ?Sized> RosyIndexRef for &mut T {
+    type Out = T::Out;
+    fn rosy_index_ref(&self, idx: usize, name: &str) -> std::borrow::Cow<'_, T::Out> {
+        (**self).rosy_index_ref(idx, name)
+    }
+}
+
+#[inline(always)]
+pub fn rosy_get_ref<'a, C: RosyIndexRef + ?Sized>(
+    container: &'a C,
+    one_based: impl IntoF64,
+    var_name: &str,
+) -> std::borrow::Cow<'a, C::Out> {
+    container.rosy_index_ref(one_based.into_f64().round() as usize, var_name)
+}
+
 pub trait RosyMutIndexable {
     type Out: Default;
     fn rosy_index_mut(&mut self, idx: usize, name: &str) -> &mut Self::Out;
@@ -1017,6 +1135,49 @@ mod vezero_tests {
         match &part[2] {
             RosyValue::VE(xs) => assert_eq!(xs, &vec![0.0, 0.001, 0.002, 0.005]),
             other => panic!("expected VE, got {}", other.kind_name()),
+        }
+    }
+}
+
+/// Borrowed array reads answer as the cloning reads did, out of range included.
+#[cfg(test)]
+mod view_tests {
+    use super::*;
+
+    #[test]
+    fn views_and_refs_match_rosy_get() {
+        let grid: Vec<Vec<Vec<f64>>> = vec![vec![vec![1.0, 2.0], vec![3.0]], vec![vec![4.0]]];
+        for (i, j, k) in [
+            (1, 1, 2),
+            (1, 2, 1),
+            (2, 1, 1),
+            (3, 1, 1),
+            (1, 3, 1),
+            (1, 1, 9),
+        ] {
+            let cloned = rosy_get(
+                &rosy_get(&rosy_get(&grid, i as f64, "g"), j as f64, "g"),
+                k as f64,
+                "g",
+            );
+            let viewed = rosy_get(
+                rosy_view(rosy_view(&grid, i as f64, "g"), j as f64, "g"),
+                k as f64,
+                "g",
+            );
+            let borrowed = *rosy_get_ref(
+                rosy_view(rosy_view(&grid, i as f64, "g"), j as f64, "g"),
+                k as f64,
+                "g",
+            );
+            assert_eq!(cloned, viewed, "({i},{j},{k})");
+            assert_eq!(cloned, borrowed, "({i},{j},{k})");
+        }
+        let cells = vec![RosyValue::RE(1.0), RosyValue::VE(vec![5.0, 6.0])];
+        for (i, j) in [(1, 1), (1, 2), (2, 1), (2, 2), (3, 1)] {
+            let want = rosy_get(&rosy_get(&cells, i as f64, "c"), j as f64, "c");
+            let got = rosy_get_ref(rosy_view(&cells, i as f64, "c"), j as f64, "c").into_owned();
+            assert_eq!(want, got, "({i},{j})");
         }
     }
 }
