@@ -654,15 +654,55 @@ fn compose_monomial_values_da(polys: &[DA], args: &[DA], na: usize) -> Result<Da
     })
 }
 
+/// `sum c_i * value_i`, accumulated in one buffer. Same rounding, cutoff,
+/// and term order as `result = result + value_i * c_i` term by term, without
+/// two temporaries per monomial (M2L composes once per interaction pair).
 fn dot_poly_da(poly: &DA, values: &DaMonomialValues) -> Result<DA> {
+    let rt = crate::taylor::get_runtime()?;
+    let eps = rt.config.epsilon;
+    let max_order = rt.config.max_order as u8;
+    let orders = &rt.monomial_orders;
     let mut result = DA::from_coeff(poly.coeffs.first().copied().unwrap_or(0.0));
+    let mut present = vec![false; result.coeffs.len()];
+    for &k in &result.nonzero {
+        present[k as usize] = true;
+    }
+    let mut dropped = false;
     for &idx in &poly.nonzero {
         if idx == 0 {
             continue;
         }
         let c = poly.coeffs[idx as usize];
+        if c.abs() <= eps {
+            continue;
+        }
         let node = values.compact[idx as usize] as usize;
-        result = (&result + &(&values.values[node] * c)?)?;
+        let term = &values.values[node];
+        for &k in &term.nonzero {
+            let ku = k as usize;
+            let t = term.coeffs[ku] * c;
+            if t.abs() <= eps || orders[ku] > max_order {
+                continue;
+            }
+            let sum = result.coeffs[ku] + t;
+            if sum.abs() > eps {
+                result.coeffs[ku] = sum;
+                if !present[ku] {
+                    present[ku] = true;
+                    result.nonzero.push(k);
+                }
+            } else {
+                result.coeffs[ku] = 0.0;
+                if present[ku] {
+                    present[ku] = false;
+                    dropped = true;
+                }
+            }
+        }
+        if dropped {
+            result.nonzero.retain(|&k| present[k as usize]);
+            dropped = false;
+        }
     }
     Ok(result)
 }

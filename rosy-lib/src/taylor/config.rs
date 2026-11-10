@@ -7,6 +7,8 @@
 
 use anyhow::{Context, Result, bail};
 use rustc_hash::FxHashMap;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::RwLock;
 
 use super::{DEFAULT_EPSILON, MAX_VARS, Monomial, monomial::enumerate_monomials};
@@ -99,21 +101,51 @@ pub struct TaylorRuntime {
     pub dense_pairs: Vec<[u32; 3]>,
     /// `dense_pairs[..dense_prefix[o]]` are the pairs whose product has order `<= o`.
     pub dense_prefix: Vec<usize>,
+    /// Start of each run of `dense_pairs` that shares one `k`, plus a final
+    /// end offset. `dense_groups[..=dense_group_prefix[o]]` covers order `<= o`.
+    pub dense_groups: Vec<u32>,
+    pub dense_group_prefix: Vec<usize>,
+    /// `dense_pairs[t]` packed as `i | j << 16`, for the multiply's inner loop.
+    pub dense_ij: Vec<u32>,
+    /// Output index `k` of each group in `dense_groups`.
+    pub dense_group_k: Vec<u32>,
+    /// `quot_table[g * n + m]` is the `d` with `g * d == m`, or
+    /// `MULT_INVALID`. Division walks it instead of hashing exponent
+    /// differences. Built only when it is small.
+    pub quot_table: Option<Vec<u32>>,
 }
 
 /// Read guard wrapper that dereferences directly to `TaylorRuntime`.
-pub struct RuntimeRef(std::sync::RwLockReadGuard<'static, Option<TaylorRuntime>>);
+pub struct RuntimeRef(Rc<TaylorRuntime>);
 
 impl std::ops::Deref for RuntimeRef {
     type Target = TaylorRuntime;
     #[inline]
     fn deref(&self) -> &TaylorRuntime {
-        // SAFETY: get_runtime() checks is_some() before constructing RuntimeRef
-        unsafe { self.0.as_ref().unwrap_unchecked() }
+        &self.0
     }
 }
 
-static TAYLOR_RUNTIME: RwLock<Option<TaylorRuntime>> = RwLock::new(None);
+// One runtime per thread. Every DA operation looks it up, and a global
+// RwLock cost two atomics per lookup. A Rosy program runs DA on one thread
+// (MPI ranks are processes), so a thread-local Rc is enough.
+thread_local! {
+    static TAYLOR_RUNTIME: RefCell<Option<Rc<TaylorRuntime>>> = const { RefCell::new(None) };
+}
+
+/// Mutable access for DAEPS / DANOT. No `RuntimeRef` may be alive, the same
+/// rule the RwLock enforced by deadlocking.
+fn with_runtime_mut<R>(f: impl FnOnce(&mut TaylorRuntime) -> Result<R>) -> Result<R> {
+    TAYLOR_RUNTIME.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        let rc = slot
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("Taylor system not initialized"))?;
+        let rt =
+            Rc::get_mut(rc).ok_or_else(|| anyhow::anyhow!("Taylor runtime is still borrowed"))?;
+        f(rt)
+    })
+}
 
 /// Weight vector set by DANOTW. Each element is the "cost" of one power of the
 /// corresponding variable. `None` means unweighted (all weights = 1).
@@ -184,11 +216,7 @@ static CURRENT_EPSILON: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(DEFAULT_EPSILON.to_bits());
 
 pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
-    let mut guard = TAYLOR_RUNTIME
-        .write()
-        .map_err(|e| anyhow::anyhow!("Failed to acquire runtime lock: {}", e))?;
-
-    if guard.is_some() {
+    if is_initialized() {
         bail!("Taylor system already initialized. Call cleanup_taylor() first.");
     }
 
@@ -263,7 +291,9 @@ pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
                 }
             }
             // Same order of accumulation into each `k` as the sparse loop.
-            pairs.sort_by_key(|&[i, j, k]| (monomial_orders[k as usize], i, j));
+            // Each `k` is one contiguous run, so the multiply can keep its sum
+            // in a register.
+            pairs.sort_by_key(|&[i, j, k]| (monomial_orders[k as usize], k, i, j));
             let top = monomial_orders.iter().copied().max().unwrap_or(0) as usize;
             let mut prefix = vec![0usize; top + 2];
             for o in 0..prefix.len() {
@@ -273,6 +303,43 @@ pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
             (pairs, prefix)
         }
         None => (Vec::new(), Vec::new()),
+    };
+    let mut dense_groups: Vec<u32> = Vec::new();
+    for (t, p) in dense_pairs.iter().enumerate() {
+        if t == 0 || dense_pairs[t - 1][2] != p[2] {
+            dense_groups.push(t as u32);
+        }
+    }
+    let dense_group_prefix: Vec<usize> = dense_prefix
+        .iter()
+        .map(|&end| dense_groups.partition_point(|&g| (g as usize) < end))
+        .collect();
+    let dense_group_k: Vec<u32> = dense_groups
+        .iter()
+        .map(|&g| dense_pairs[g as usize][2])
+        .collect();
+    dense_groups.push(dense_pairs.len() as u32);
+    // A dense table only exists for n <= ~8k monomials, so i and j fit 16 bits.
+    let dense_ij: Vec<u32> = if num_monomials <= u16::MAX as usize {
+        dense_pairs.iter().map(|&[i, j, _]| i | (j << 16)).collect()
+    } else {
+        Vec::new()
+    };
+    let quot_table = match &mult_table {
+        Some(table) if num_monomials * num_monomials * 4 <= 64 << 20 => {
+            let n = num_monomials;
+            let mut quot = vec![MULT_INVALID; n * n];
+            for g in 0..n {
+                for d in 0..n {
+                    let m = table[g * n + d];
+                    if m != MULT_INVALID {
+                        quot[g * n + m as usize] = d as u32;
+                    }
+                }
+            }
+            Some(quot)
+        }
+        _ => None,
     };
 
     // Build precomputed derivative/integral index tables (#19 + #21).
@@ -351,7 +418,7 @@ pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
         }
     }
 
-    *guard = Some(TaylorRuntime {
+    let runtime = TaylorRuntime {
         config,
         init_order: max_order,
         num_monomials,
@@ -368,7 +435,13 @@ pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
         horner_var,
         dense_pairs,
         dense_prefix,
-    });
+        dense_groups,
+        dense_group_prefix,
+        dense_ij,
+        dense_group_k,
+        quot_table,
+    };
+    TAYLOR_RUNTIME.with(|cell| *cell.borrow_mut() = Some(Rc::new(runtime)));
 
     Ok(num_monomials)
 }
@@ -423,13 +496,10 @@ pub fn dump_addressing_arrays() -> Result<()> {
 /// In single-threaded Rosy programs, this has no contention.
 #[inline]
 pub fn get_runtime() -> Result<RuntimeRef> {
-    let guard = TAYLOR_RUNTIME
-        .read()
-        .map_err(|e| anyhow::anyhow!("Failed to acquire runtime lock: {}", e))?;
-    if guard.is_none() {
-        bail!("Taylor system not initialized. Call init_taylor() first.");
+    match TAYLOR_RUNTIME.with(|cell| cell.borrow().clone()) {
+        Some(rc) => Ok(RuntimeRef(rc)),
+        None => bail!("Taylor system not initialized. Call init_taylor() first."),
     }
-    Ok(RuntimeRef(guard))
 }
 
 /// Get the current Taylor configuration (convenience wrapper).
@@ -443,16 +513,12 @@ pub fn get_config() -> Result<TaylorConfig> {
 /// # Returns
 /// The previous epsilon value
 pub fn set_epsilon(epsilon: f64) -> Result<f64> {
-    let mut guard = TAYLOR_RUNTIME
-        .write()
-        .map_err(|e| anyhow::anyhow!("Failed to acquire runtime lock: {}", e))?;
-    let rt = guard
-        .as_mut()
-        .ok_or_else(|| anyhow::anyhow!("Taylor system not initialized"))?;
-    let old = rt.config.epsilon;
-    rt.config.epsilon = epsilon;
-    CURRENT_EPSILON.store(epsilon.to_bits(), std::sync::atomic::Ordering::Relaxed);
-    Ok(old)
+    with_runtime_mut(|rt| {
+        let old = rt.config.epsilon;
+        rt.config.epsilon = epsilon;
+        CURRENT_EPSILON.store(epsilon.to_bits(), std::sync::atomic::Ordering::Relaxed);
+        Ok(old)
+    })
 }
 
 /// Set the momentary truncation order for DA/CD computations (DANOT).
@@ -462,34 +528,28 @@ pub fn set_epsilon(epsilon: f64) -> Result<f64> {
 /// # Returns
 /// The previous truncation order
 pub fn set_truncation_order(order: u32) -> Result<u32> {
-    let mut guard = TAYLOR_RUNTIME
-        .write()
-        .map_err(|e| anyhow::anyhow!("Failed to acquire runtime lock: {}", e))?;
-    let rt = guard
-        .as_mut()
-        .ok_or_else(|| anyhow::anyhow!("Taylor system not initialized"))?;
-    if order > rt.init_order {
-        bail!(
-            "Cannot set truncation order ({}) above init order ({})",
-            order,
-            rt.init_order
-        );
-    }
-    let old = rt.config.max_order;
-    rt.config.max_order = order;
-    Ok(old)
+    with_runtime_mut(|rt| {
+        if order > rt.init_order {
+            bail!(
+                "Cannot set truncation order ({}) above init order ({})",
+                order,
+                rt.init_order
+            );
+        }
+        let old = rt.config.max_order;
+        rt.config.max_order = order;
+        Ok(old)
+    })
 }
 
 /// Check if Taylor system is initialized.
 pub fn is_initialized() -> bool {
-    TAYLOR_RUNTIME.read().map(|g| g.is_some()).unwrap_or(false)
+    TAYLOR_RUNTIME.with(|cell| cell.borrow().is_some())
 }
 
 /// Clean up the Taylor system (for re-initialization).
 pub fn cleanup_taylor() {
-    if let Ok(mut guard) = TAYLOR_RUNTIME.write() {
-        *guard = None;
-    }
+    TAYLOR_RUNTIME.with(|cell| *cell.borrow_mut() = None);
 }
 
 #[cfg(test)]

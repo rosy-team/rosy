@@ -675,6 +675,11 @@ pub trait ToRosy {
     fn slice_re(&self, _start: usize, _end: usize) -> Option<RosyValue> {
         None
     }
+    /// The operand as one real, when it is exactly that.
+    #[inline]
+    fn as_scalar_re(&self) -> Option<f64> {
+        None
+    }
 }
 
 /// A 1-based inclusive range inside `len`, as `VE|VE` accepts it.
@@ -684,6 +689,13 @@ fn range_ok(start: usize, end: usize, len: usize) -> bool {
 impl ToRosy for RosyValue {
     fn to_rosy(&self) -> Cow<'_, RosyValue> {
         Cow::Borrowed(self)
+    }
+    #[inline]
+    fn as_scalar_re(&self) -> Option<f64> {
+        match peel_singleton_arr(self) {
+            RosyValue::RE(x) => Some(*x),
+            _ => None,
+        }
     }
     fn index_re(&self, i: f64) -> Option<RosyValue> {
         match self {
@@ -698,11 +710,13 @@ impl ToRosy for RosyValue {
     fn slice_re(&self, start: usize, end: usize) -> Option<RosyValue> {
         match self {
             RosyValue::VE(v) => v.slice_re(start, end),
-            // A series list stays a list of series on the full path.
+            // A series in the range stays a list of series on the full path.
+            // Only the range is checked: scanning the whole list made every
+            // `snumbs|(a&b)` cost the length of `snumbs`.
             RosyValue::Arr(items)
                 if items.len() > 1
                     && range_ok(start, end, items.len())
-                    && !items
+                    && !items[start - 1..end]
                         .iter()
                         .any(|x| matches!(x, RosyValue::DA(_) | RosyValue::CD(_))) =>
             {
@@ -717,6 +731,10 @@ impl ToRosy for RosyValue {
 impl ToRosy for f64 {
     fn to_rosy(&self) -> Cow<'_, RosyValue> {
         Cow::Owned(RosyValue::RE(*self))
+    }
+    #[inline]
+    fn as_scalar_re(&self) -> Option<f64> {
+        Some(*self)
     }
 }
 impl ToRosy for String {
@@ -866,6 +884,23 @@ pub fn rosy_append_ve(dest: &mut Vec<f64>, rhs: &RosyValue) -> Result<()> {
 }
 
 pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Result<RosyValue> {
+    // Two reals: the same f64 result the RE,RE arms give, without the
+    // dispatch. Untyped fox index cells (`Y(IINDEX+4)`) land here.
+    if let (Some(a), Some(b)) = (lhs.as_scalar_re(), rhs.as_scalar_re()) {
+        match op {
+            BinaryOp::Add => return Ok(RosyValue::RE(a + b)),
+            BinaryOp::Sub => return Ok(RosyValue::RE(a - b)),
+            BinaryOp::Mult => return Ok(RosyValue::RE(a * b)),
+            BinaryOp::Div => return Ok(RosyValue::RE(a / b)),
+            BinaryOp::Eq => return Ok(RosyValue::LO(a == b)),
+            BinaryOp::Neq => return Ok(RosyValue::LO(a != b)),
+            BinaryOp::Lt => return Ok(RosyValue::LO(a < b)),
+            BinaryOp::Gt => return Ok(RosyValue::LO(a > b)),
+            BinaryOp::Lte => return Ok(RosyValue::LO(a <= b)),
+            BinaryOp::Gte => return Ok(RosyValue::LO(a >= b)),
+            _ => {}
+        }
+    }
     if op == BinaryOp::Extract {
         let index = rhs.to_rosy();
         match peel_singleton_arr(index.as_ref()) {
