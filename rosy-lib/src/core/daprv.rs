@@ -148,7 +148,9 @@ fn format_daprv(
     });
 
     // One row per monomial; each component is one G14.7 field.
-    let num_vars = get_runtime().map(|rt| rt.config.num_vars).unwrap_or(_max_vars);
+    let num_vars = get_runtime()
+        .map(|rt| rt.config.num_vars)
+        .unwrap_or(_max_vars);
     let nv = daprv_exponent_digits(current_vars, num_vars);
     let components = num_components.min(array.len());
     for monomial in &all_monomials {
@@ -294,7 +296,9 @@ pub fn rosy_darev(
         array[i] = DA::zero();
     }
 
-    let num_vars = get_runtime().map(|rt| rt.config.num_vars).unwrap_or(_max_vars);
+    let num_vars = get_runtime()
+        .map(|rt| rt.config.num_vars)
+        .unwrap_or(_max_vars);
     let nv = daprv_exponent_digits(_current_vars, num_vars);
 
     let components = num_components.min(array.len());

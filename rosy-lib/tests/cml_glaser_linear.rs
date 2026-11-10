@@ -237,7 +237,10 @@ fn glaser_linear_map_converges_and_is_symplectic() {
     eprintln!("rk4 h-refine max|Δ| = {dh:e}");
     eprintln!("rk4 vs midpoint max|Δ| = {dmethod:e}");
     let rt = eye_err(&matmul(&cml_inverse(0.005), &rk_fine));
-    eprintln!("symplectic inf-err rk_fine = {:e}", symplectic_err(&rk_fine));
+    eprintln!(
+        "symplectic inf-err rk_fine = {:e}",
+        symplectic_err(&rk_fine)
+    );
     eprintln!("M_inv ∘ M vs I = {rt:e}");
     assert!(dh < 2e-7, "rk4 did not stabilize: {dh:e}");
     assert!(dmethod < 2e-7, "rk4 and midpoint disagree by {dmethod:e}");
@@ -246,7 +249,10 @@ fn glaser_linear_map_converges_and_is_symplectic() {
         "linear map is not symplectic: {:e}",
         symplectic_err(&rk_fine)
     );
-    assert!(rt < 1e-6, "forward+reverse field map is not identity: {rt:e}");
+    assert!(
+        rt < 1e-6,
+        "forward+reverse field map is not identity: {rt:e}"
+    );
 
     // Large terms (~1 and ~0.01). COSY MAP(1) from metis; rosy from this
     // tree after the NORM __loc_I fix. ESET 1e-10.

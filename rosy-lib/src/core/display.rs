@@ -73,7 +73,10 @@ pub(crate) fn display_re(
         // beamlet radius ratio.
         let fixed = format!("{:.*}", precision, num.abs());
         if fixed.as_bytes().get(2).copied() == Some(b'1')
-            || fixed.as_bytes().get(2).is_some_and(|c| *c != b'0' && fixed.starts_with("0."))
+            || fixed
+                .as_bytes()
+                .get(2)
+                .is_some_and(|c| *c != b'0' && fixed.starts_with("0."))
         {
             let digits: String = fixed.chars().skip(2).take(precision).collect();
             let pad = " ".repeat(spaces);

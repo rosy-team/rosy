@@ -493,47 +493,47 @@ fn flow_impl<T: DACoefficient>(
     // cutoff has to be the live one for the duration of the flow.
     crate::taylor::set_epsilon(epsilon)?;
     let flowed = (|| {
-    const MAX_ITER: usize = 200;
+        const MAX_ITER: usize = 200;
 
-    for i in 0..n_ic {
-        let mut term = ic[i].clone();
-        let mut sum = term.clone();
+        for i in 0..n_ic {
+            let mut term = ic[i].clone();
+            let mut sum = term.clone();
 
-        for k in 1..=MAX_ITER {
-            // term_k = (1/k) · L_f(term_{k-1})
-            let lie = lie_derivative_scalar(
-                &term,
-                &rhs[..dim],
-                dim,
-                epsilon,
-                &deriv_targets,
-                &deriv_exponents,
-                n,
-            )?;
-            let scale = T::one() / T::from_usize(k);
-            term = (&lie * scale).context("Flow: scaling failed")?;
+            for k in 1..=MAX_ITER {
+                // term_k = (1/k) · L_f(term_{k-1})
+                let lie = lie_derivative_scalar(
+                    &term,
+                    &rhs[..dim],
+                    dim,
+                    epsilon,
+                    &deriv_targets,
+                    &deriv_exponents,
+                    n,
+                )?;
+                let scale = T::one() / T::from_usize(k);
+                term = (&lie * scale).context("Flow: scaling failed")?;
 
-            // Check convergence: max |coefficient| in the new term
-            let term_norm: f64 = term
-                .nonzero
-                .iter()
-                .map(|&idx| term.coeffs[idx as usize].abs())
-                .fold(0.0f64, f64::max);
+                // Check convergence: max |coefficient| in the new term
+                let term_norm: f64 = term
+                    .nonzero
+                    .iter()
+                    .map(|&idx| term.coeffs[idx as usize].abs())
+                    .fold(0.0f64, f64::max);
 
-            if term_norm < epsilon {
-                break;
+                if term_norm < epsilon {
+                    break;
+                }
+
+                sum = (&sum + &term).context("Flow: accumulation failed")?;
             }
 
-            sum = (&sum + &term).context("Flow: accumulation failed")?;
+            if let Some(r) = result.get_mut(i) {
+                *r = sum;
+            } else {
+                result.push(sum);
+            }
         }
-
-        if let Some(r) = result.get_mut(i) {
-            *r = sum;
-        } else {
-            result.push(sum);
-        }
-    }
-    Ok(())
+        Ok(())
     })();
     crate::taylor::set_epsilon(saved_eps)?;
     flowed

@@ -90,10 +90,7 @@ mod tests {
         ];
         for e in expect {
             let g = rosy_reran();
-            assert!(
-                (g - e).abs() < 1e-15,
-                "reran {g:.16} vs cosy {e:.16}"
-            );
+            assert!((g - e).abs() < 1e-15, "reran {g:.16} vs cosy {e:.16}");
         }
     }
 }
