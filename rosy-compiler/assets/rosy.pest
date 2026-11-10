@@ -189,7 +189,7 @@ endif = { ^"ENDIF" ~ semicolon }
 /// [ LOOPS / WHILES ]
   ///
   /// [ LOOP ]
-  loop = { start_loop ~ statement+ ~ end_loop }
+  loop = { start_loop ~ statement* ~ end_loop }
   start_loop = { ^"LOOP" ~ variable_name ~ arg ~ arg ~ arg? ~ semicolon }
   end_loop = { ^"ENDLOOP" ~ semicolon }
   /// [ PLOOP ]

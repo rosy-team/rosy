@@ -362,6 +362,9 @@ impl Transpile for LoopStatement {
         // fresh `I` the body never reads. RK's nested NORM was indexing
         // `__loc_I` (stuck at 0) while the counter lived in `I`.
         let bind = context.rust_ident(iter);
+        // COSY stores the start value even when the body never runs, and
+        // leaves the last value taken. PHAD's `LOOP TIMESTEPCOUNTER 1 0`
+        // then `TIMESTEPCOUNTER+1` depends on that.
         let (it, sync, bump) = if let Some(existing) = &outer {
             let rust_it = format!("__rosy_loop_{iter}");
             // ANY cells store the counter as a real-in-a-box. A captured
@@ -388,6 +391,7 @@ impl Transpile for LoopStatement {
                  let __{iter}_end: RE = rosy_as_f64(&({end}));\n\
                  let __{iter}_step: RE = rosy_as_f64(&({step}));\n\
                  if __{iter}_step == 0.0_f64 {{ anyhow::bail!(\"LOOP step must not be 0\"); }}\n\
+                 {sync}\n\
                  while (__{iter}_step > 0.0_f64 && {it} <= __{iter}_end) || (__{iter}_step < 0.0_f64 && {it} >= __{iter}_end) {{\n\
                  {sync}\n\
                  {body}\n\
@@ -398,6 +402,7 @@ impl Transpile for LoopStatement {
             format!(
                 "let mut {it}: RE = rosy_as_f64(&({start}));\n\
                  let __{iter}_end: RE = rosy_as_f64(&({end}));\n\
+                 {sync}\n\
                  while {it} <= __{iter}_end {{\n\
                  {sync}\n\
                  {body}\n\
