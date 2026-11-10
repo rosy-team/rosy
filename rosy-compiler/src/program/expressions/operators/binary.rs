@@ -33,6 +33,30 @@ fn series_const_compare(op: BinaryOp, left: &RosyType, right: &RosyType) -> bool
     numeric(left) && numeric(right) && (*left != RosyType::RE() || *right != RosyType::RE())
 }
 
+/// `(Y(I)-Y(K))*(Y(I)-Y(K))`: both operands are the same computed value.
+/// Evaluate it once and pass it twice. Only when the operand calls no user
+/// FUNCTION or PROCEDURE, so evaluating it once cannot skip a side effect;
+/// operators and intrinsics are pure, and the result is bit-identical.
+/// PHAD's SIMO pair loop spends three of its 27 DA operations on this.
+fn shared_operand_call(
+    op: BinaryOp,
+    left: &TranspilationOutput,
+    right: &TranspilationOutput,
+) -> Option<String> {
+    if !matches!(left.value_kind, ValueKind::Owned)
+        || left.serialization != right.serialization
+        || left.serialization.contains("__fn_")
+        || left.serialization.contains("__proc_")
+    {
+        return None;
+    }
+    Some(format!(
+        "{{ let __shared = {}; {}(&__shared, &__shared)? }}",
+        left.serialization,
+        op.rust_call()
+    ))
+}
+
 fn collect_concat_leaves<'a>(expr: &'a Expr, out: &mut Vec<&'a Expr>) {
     if let ExprKind::Binary(bin) = &expr.inner
         && bin.op == BinaryOp::Concat
@@ -185,7 +209,7 @@ impl TranspileableExpr for BinaryExpr {
         dest: &str,
         context: &mut TranspilationInputContext,
     ) -> Option<Result<TranspilationOutput, Vec<Error>>> {
-        if self.op != BinaryOp::Concat {
+        if !matches!(self.op, BinaryOp::Concat | BinaryOp::Add) {
             return None;
         }
         let left_ident = match &self.left.inner {
@@ -209,6 +233,36 @@ impl TranspileableExpr for BinaryExpr {
 
         let left_type = self.left.type_of(context).ok()?;
         let right_type = self.right.type_of(context).ok()?;
+
+        // `X := X + E` on one DA: add into X. E is evaluated first, so it may
+        // read X. Same result as the full add, without a new buffer.
+        if self.op == BinaryOp::Add {
+            if left_type != RosyType::DA() || right_type != RosyType::DA() {
+                return None;
+            }
+            let right_output = match self.right.transpile(context) {
+                Ok(out) => out,
+                Err(e) => return Some(Err(e)),
+            };
+            let mut requested_variables = BTreeSet::new();
+            requested_variables.extend(right_output.requested_variables.iter().cloned());
+            if matches!(
+                context.variables.get(target_var).map(|v| &v.scope),
+                Some(VariableScope::Higher)
+            ) {
+                requested_variables.insert(target_var.to_string());
+            }
+            // A plain reference (`X := X + Y`) could alias X; keep the full path.
+            if !matches!(right_output.value_kind, ValueKind::Owned) {
+                return None;
+            }
+            let rhs = format!("let __rhs: DA = {};", right_output.serialization);
+            return Some(Ok(TranspilationOutput {
+                serialization: format!("{{ {rhs} ({dest}).add_assign_exact(&__rhs)?; }}"),
+                requested_variables,
+                ..Default::default()
+            }));
+        }
 
         // `X := X & CELL` with a list X and an untyped cell: append in place.
         // The full path copied all of X on every append, so a loop that
@@ -425,10 +479,12 @@ impl Transpile for BinaryExpr {
                     let sym = if self.op == BinaryOp::Eq { "==" } else { "!=" };
                     format!("({l} {sym} {r})")
                 }
-                _ => format!("{}({lref}, {rref})?", self.op.rust_call()),
+                _ => shared_operand_call(self.op, &left_output, &right_output)
+                    .unwrap_or_else(|| format!("{}({lref}, {rref})?", self.op.rust_call())),
             }
         } else {
-            format!("{}({lref}, {rref})?", self.op.rust_call())
+            shared_operand_call(self.op, &left_output, &right_output)
+                .unwrap_or_else(|| format!("{}({lref}, {rref})?", self.op.rust_call()))
         };
 
         if errors.is_empty() {
