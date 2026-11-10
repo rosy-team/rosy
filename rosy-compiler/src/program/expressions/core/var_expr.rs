@@ -479,9 +479,13 @@ pub fn function_call_transpile_helper(
             .get(var)
             .cloned()
             .unwrap_or(var_data.data.r#type);
-        let use_outer = context.capture_uses_outer(var, &child_ty);
+        let use_outer = context.pass_outer_cell(var, &child_ty, &func_context.inner_shadows);
         let rust_name = if use_outer {
-            var.clone()
+            context
+                .outer_bindings
+                .get(var)
+                .map(|o| o.data.name.clone())
+                .unwrap_or_else(|| var.clone())
         } else {
             context.rust_ident(var)
         };
@@ -498,7 +502,7 @@ pub fn function_call_transpile_helper(
         serialized_args.push(serialized_arg);
     }
     for name in func_context.loc_shadows.keys() {
-        let rust = TranspilationInputContext::loc_ident(name);
+        let rust = context.shadow_param_name(name);
         let pass = match context.variables.get(name).map(|v| v.scope.clone()) {
             Some(VariableScope::Local) => format!("&mut {rust}"),
             _ => rust,
@@ -544,9 +548,13 @@ pub fn function_call_transpile_helper(
             .or_else(|| context.variables.get(var).map(|v| v.data.r#type));
         let rust = if child_ty
             .as_ref()
-            .is_some_and(|t| context.capture_uses_outer(var, t))
+            .is_some_and(|t| context.pass_outer_cell(var, t, &func_context.inner_shadows))
         {
-            var.clone()
+            context
+                .outer_bindings
+                .get(var)
+                .map(|o| o.data.name.clone())
+                .unwrap_or_else(|| var.clone())
         } else {
             context.rust_ident(var)
         };
@@ -671,7 +679,11 @@ pub fn function_call_transpile_helper(
     // Serialize the function call.
     // Uses the `__fn_` prefix to match the generated Rust function name
     // (the prefix avoids shadowing by the implicit return variable).
-    let rust_fn_name = format!("__fn_{}", name);
+    let declared = context
+        .functions
+        .declared_key(name)
+        .unwrap_or(name.as_str());
+    let rust_fn_name = format!("__fn_{declared}");
     let raw_call = format!("{}({})?", rust_fn_name, serialized_args.join(", "));
     let call = if func_context.return_type.is_any() {
         format!("RosyValue::from({raw_call})")

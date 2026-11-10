@@ -22,8 +22,10 @@
 //! breadcrumbs for error diagnostics.
 
 use crate::{
+    compiler::name_map::NameMap,
     program::statements::SourceLocation,
     resolve::{ExprRecipe, ScopeContext, TypeResolver, TypeSlot},
+    syntax_config,
 };
 use anyhow::{Error, Result};
 use rosy_lib::{RosyBaseType, RosyType};
@@ -122,6 +124,9 @@ pub struct TranspilationInputFunctionContext {
     pub requested_types: HashMap<String, RosyType>,
     /// Parent local that shadows a different outer cell. Threaded as `__loc_<name>`.
     pub loc_shadows: BTreeMap<String, RosyType>,
+    /// Capture named the visible same-type shadow, not the outer cell.
+    /// Set for a procedure or function nested under that shadow.
+    pub inner_shadows: BTreeSet<String>,
 }
 #[derive(Debug, Clone)]
 pub struct TranspilationInputProcedureContext {
@@ -130,21 +135,23 @@ pub struct TranspilationInputProcedureContext {
     pub requested_types: HashMap<String, RosyType>,
     /// Parent local that shadows a different outer cell. Threaded as `__loc_<name>`.
     pub loc_shadows: BTreeMap<String, RosyType>,
+    /// Capture named the visible same-type shadow, not the outer cell.
+    pub inner_shadows: BTreeSet<String>,
     /// Defined in a `.fox` file, so the rust fn is `__proc_<name>`.
     pub cosy_syntax: bool,
 }
 #[derive(Default, Clone)]
 pub struct TranspilationInputContext {
-    pub variables: HashMap<String, ScopedVariableData>,
-    pub functions: HashMap<String, TranspilationInputFunctionContext>,
-    pub procedures: HashMap<String, TranspilationInputProcedureContext>,
+    pub variables: NameMap<ScopedVariableData>,
+    pub functions: NameMap<TranspilationInputFunctionContext>,
+    pub procedures: NameMap<TranspilationInputProcedureContext>,
     pub in_loop: bool,
     /// True inside IF/ELSEIF/ELSE rust blocks. Locals may be redeclared
     /// (shadowed) without treating the parent binding as a captured Higher ref.
     pub in_block: bool,
     /// Higher bindings hidden by a local of the same name. RK's step `H`
     /// shadows the global curvature `H`; ODE/POTFLD still need the outer one.
-    pub outer_bindings: HashMap<String, ScopedVariableData>,
+    pub outer_bindings: NameMap<ScopedVariableData>,
     /// Set while emitting COSY `PROCEDURE RK`, whose local step `H` must not
     /// hide the global curvature `H` captured by ODE/POTFLD.
     pub split_rk_h: bool,
@@ -185,8 +192,13 @@ impl TranspilationInputContext {
     /// COSY RK's step `H` vs global curvature `H` is the same pattern even when
     /// both are `f64`.
     pub fn uses_loc_ident(&self, name: &str) -> bool {
+        let is_step_h = if syntax_config::is_cosy_syntax() {
+            name.eq_ignore_ascii_case("H")
+        } else {
+            name == "H"
+        };
         if self.split_rk_h
-            && name == "H"
+            && is_step_h
             && self
                 .variables
                 .get(name)
@@ -197,17 +209,16 @@ impl TranspilationInputContext {
         let Some(cur) = self.variables.get(name) else {
             return false;
         };
-        if !self.outer_bindings.contains_key(name) {
+        let Some(outer) = self.outer_bindings.get(name) else {
             return false;
-        }
+        };
         if matches!(cur.scope, VariableScope::Local | VariableScope::Arg) {
             return true;
         }
         // Nested procedure: the parent's local still shadows a different
         // outer cell. Keep the outer name (`A`) and the shadow (`__loc_A`).
         cur.scope == VariableScope::Higher
-            && cur.data.r#type.as_rust_type()
-                != self.outer_bindings[name].data.r#type.as_rust_type()
+            && cur.data.r#type.as_rust_type() != outer.data.r#type.as_rust_type()
     }
 
     /// Shadow living in a parent, so this fn must take it as `__loc_<name>`.
@@ -225,15 +236,48 @@ impl TranspilationInputContext {
     /// COSY RK names its step `H`, same as global curvature. Keep both.
     /// Typed rosy locals that shadow a fox cell of the same name also split.
     pub fn rust_ident(&self, name: &str) -> String {
+        // Emit the declaration's spelling. A `.fox` use may differ in case.
+        let declared = self
+            .variables
+            .get(name)
+            .map(|v| v.data.name.as_str())
+            .unwrap_or(name);
         if self.uses_loc_ident(name) {
-            Self::loc_ident(name)
+            Self::loc_ident(declared)
         } else {
-            name.to_string()
+            declared.to_string()
         }
     }
 
-    /// Callee closed over `wanted`. If a local shadows that name with a
-    /// different rust type, pass the outer binding instead.
+    /// Parameter name for a captured cell. The body emits `rust_ident`
+    /// (the first declaration's spelling). A loc-split outer cell keeps
+    /// that bare spelling; the shadow is `shadow_param_name`.
+    pub fn capture_param_name(&self, name: &str) -> String {
+        if self.uses_loc_ident(name) {
+            self.outer_bindings
+                .get(name)
+                .map(|o| o.data.name.clone())
+                .unwrap_or_else(|| name.to_string())
+        } else {
+            self.rust_ident(name)
+        }
+    }
+
+    /// `__loc_` parameter. The body spells this from the declaration,
+    /// not from the use site that landed in `requested_variables`.
+    pub fn shadow_param_name(&self, name: &str) -> String {
+        let declared = self
+            .variables
+            .get(name)
+            .map(|v| v.data.name.clone())
+            .unwrap_or_else(|| name.to_string());
+        Self::loc_ident(&declared)
+    }
+
+    /// Callee closed over `wanted`. A same rust type means the outer cell
+    /// (RK's step `H` must not replace global curvature `H`). A callee
+    /// nested under the shadow lists the name in `inner_shadows` and is
+    /// excluded by [`Self::pass_outer_cell`].
     pub fn capture_uses_outer(&self, name: &str, wanted: &RosyType) -> bool {
         if !self.uses_loc_ident(name) {
             return false;
@@ -242,6 +286,31 @@ impl TranspilationInputContext {
             return false;
         };
         outer.data.r#type.as_rust_type() == wanted.as_rust_type()
+    }
+
+    /// Visible binding is a same-type shadow of an outer cell. A nested
+    /// procedure that mentions the name closed over this cell.
+    pub fn closes_over_visible_shadow(&self, name: &str) -> bool {
+        if self.uses_loc_ident(name) {
+            return false;
+        }
+        let Some(cur) = self.variables.get(name) else {
+            return false;
+        };
+        cur.scope == VariableScope::Higher && self.outer_bindings.contains_key(name)
+    }
+
+    /// Pass the outer cell rather than the `__loc_` shadow.
+    pub fn pass_outer_cell(
+        &self,
+        name: &str,
+        wanted: &RosyType,
+        inner_shadows: &BTreeSet<String>,
+    ) -> bool {
+        if inner_shadows.contains(name) {
+            return false;
+        }
+        self.capture_uses_outer(name, wanted) || (self.split_rk_h && name == "H")
     }
 }
 
@@ -471,7 +540,9 @@ pub fn emit_unwrap_rosy_value(expr: String, ty: &RosyType) -> String {
         return format!("({expr}).expect_arr()?.into_iter().map(|x| x.as_cd()).collect()");
     }
     if ty.dimensions > 0 && ty.base_type == RosyBaseType::DA {
-        return format!("({expr}).expect_arr()?.into_iter().map(|x| x.expect_da().unwrap_or_else(|_| DA::zero())).collect()");
+        return format!(
+            "({expr}).expect_arr()?.into_iter().map(|x| x.expect_da().unwrap_or_else(|_| DA::zero())).collect()"
+        );
     }
     match ty.base_type {
         RosyBaseType::ANY => expr,

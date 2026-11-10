@@ -20,8 +20,8 @@ use crate::{
     ast::*,
     program::expressions::Expr,
     transpile::{
-        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
-        add_context_to_all,
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement, add_context_to_all,
     },
 };
 
@@ -102,9 +102,15 @@ impl Transpile for WritebStatement {
 
             requested_variables.extend(output.requested_variables.iter().cloned());
 
-            serialized_stmts.push(format!(
-                "rosy_lib::core::file_io::rosy_writeb_to_unit(__rosy_unit, &rosy_lib::core::file_io::RosyToBinary::to_binary({}))?;",
+            // An untyped fox cell is ANY. Binary output of one is a real.
+            let ty = expr.type_of(context).map_err(|e| vec![e])?;
+            let bin_arg = if ty.is_any() && ty.dimensions == 0 {
+                format!("&(({}).expect_re()?)", output.as_value())
+            } else {
                 output.as_ref()
+            };
+            serialized_stmts.push(format!(
+                "rosy_lib::core::file_io::rosy_writeb_to_unit(__rosy_unit, &rosy_lib::core::file_io::RosyToBinary::to_binary({bin_arg}))?;"
             ));
         }
 

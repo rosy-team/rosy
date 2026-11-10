@@ -20,8 +20,8 @@ use crate::{
     ast::*,
     program::expressions::Expr,
     transpile::{
-        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
-        add_context_to_all,
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement, add_context_to_all,
     },
 };
 
@@ -64,9 +64,19 @@ impl Transpile for OsCallStatement {
         })?;
         requested_variables.extend(cmd_output.requested_variables.iter().cloned());
 
+        let cmd_ty = self
+            .cmd_expr
+            .type_of(context)
+            .map_err(|e| vec![e.context("...while typing OS command")])?;
+        // ANY holds the command string after `outputpath & 'file' & SI(I)`.
+        let cmd_string = if cmd_ty.is_any() {
+            format!("RosyST::rosy_to_string(&{})", cmd_output.as_value())
+        } else {
+            format!("({}).to_string()", cmd_output.as_ref())
+        };
+
         let serialization = format!(
-            "{{\n    let __os_cmd: String = ({}).to_string();\n    if cfg!(windows) {{\n        std::process::Command::new(\"cmd\").args(&[\"/C\", &__os_cmd]).status().ok();\n    }} else {{\n        std::process::Command::new(\"sh\").args(&[\"-c\", &__os_cmd]).status().ok();\n    }}\n}}",
-            cmd_output.as_ref(),
+            "{{\n    let __os_cmd: String = {cmd_string};\n    if cfg!(windows) {{\n        std::process::Command::new(\"cmd\").args(&[\"/C\", &__os_cmd]).status().ok();\n    }} else {{\n        std::process::Command::new(\"sh\").args(&[\"-c\", &__os_cmd]).status().ok();\n    }}\n}}"
         );
 
         Ok(TranspilationOutput {

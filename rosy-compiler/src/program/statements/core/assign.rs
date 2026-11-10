@@ -27,7 +27,7 @@ use crate::errors::RosyError;
 use crate::{
     ast::*,
     program::{
-        expressions::{Expr, core::variable_identifier::VariableIdentifier},
+        expressions::{Expr, ExprKind, core::variable_identifier::VariableIdentifier},
         statements::SourceLocation,
     },
     resolve::*,
@@ -43,6 +43,53 @@ fn da_concat_nest_promote(elem_or_old: &RosyType, rhs_or_new: &RosyType) -> bool
     matches!(elem_or_old.base_type, RosyBaseType::DA | RosyBaseType::CD)
         && elem_or_old.base_type == rhs_or_new.base_type
         && rhs_or_new.dimensions == elem_or_old.dimensions + 1
+}
+
+/// `cell|0` is the constant term of a DA. Remember the cell so a later real
+/// guess does not flatten it. `|1` and up also index vectors, so those stay put.
+fn note_zero_coef_extracts(resolver: &mut TypeResolver, expr: &Expr, ctx: &ScopeContext) {
+    match &expr.inner {
+        ExprKind::Binary(bin) => {
+            if bin.op == rosy_lib::BinaryOp::Extract
+                && let ExprKind::Number(n) = &bin.right.inner
+                && *n == 0.0
+                && let Some(slot) = coef_base_slot(&bin.left, ctx)
+            {
+                resolver.note_coef_cell(&slot);
+            }
+            note_zero_coef_extracts(resolver, &bin.left, ctx);
+            note_zero_coef_extracts(resolver, &bin.right, ctx);
+        }
+        ExprKind::Neg(neg) => note_zero_coef_extracts(resolver, &neg.operand, ctx),
+        ExprKind::Not(not) => note_zero_coef_extracts(resolver, &not.operand, ctx),
+        ExprKind::Intrinsic(call) => {
+            for arg in &call.args {
+                note_zero_coef_extracts(resolver, arg, ctx);
+            }
+        }
+        ExprKind::Var(var) => {
+            for group in &var.identifier.paren_groups {
+                for index in group {
+                    note_zero_coef_extracts(resolver, index, ctx);
+                }
+            }
+            for index in &var.identifier.bracket_indices {
+                note_zero_coef_extracts(resolver, index, ctx);
+            }
+        }
+        ExprKind::Da(da) => note_zero_coef_extracts(resolver, &da.index, ctx),
+        ExprKind::Cd(cd) => note_zero_coef_extracts(resolver, &cd.index, ctx),
+        ExprKind::Ident(_) | ExprKind::Number(_) | ExprKind::Boolean(_) | ExprKind::String(_) => {}
+    }
+}
+
+fn coef_base_slot(expr: &Expr, ctx: &ScopeContext) -> Option<TypeSlot> {
+    let name = match &expr.inner {
+        ExprKind::Var(var) => &var.identifier.name,
+        ExprKind::Ident(ident) => &ident.name,
+        _ => return None,
+    };
+    ctx.variables.get(name).cloned()
 }
 
 fn bump_da_array_nesting(resolver: &mut TypeResolver, var_slot: &TypeSlot, new_type: RosyType) {
@@ -139,10 +186,18 @@ impl TranspileableStatement for AssignStatement {
             Some(s) => s.clone(),
             None => return Some(Ok(())), // unknown variable, skip
         };
+        if self.identifier.num_index_dimensions() > 0 {
+            resolver.note_indexed(&var_slot);
+        }
 
         // Build a recipe for the RHS expression and collect its dependencies
         let mut deps = HashSet::new();
         let recipe = resolver.build_expr_recipe(value, ctx, &mut deps);
+        resolver.note_assignment(&var_slot, &recipe, &deps);
+        // `OUTPUT(1)|0` reads a Taylor coefficient. A vector extract is 1-based,
+        // so a zero index marks that cell as a series without touching `source_x`.
+        note_zero_coef_extracts(resolver, value, ctx);
+        resolver.note_type_probes(value, ctx);
 
         if let Some(node) = resolver.nodes.get(&var_slot) {
             if let Some(&resolved) = node.resolved.as_ref() {
@@ -657,10 +712,16 @@ impl Transpile for AssignStatement {
             matches!(variable_type.base_type, RosyBaseType::DA | RosyBaseType::CD)
                 && variable_type.base_type == value_type.base_type
                 && variable_type.dimensions == value_type.dimensions + 1;
+        // `xsource := Y` after POLVAL. Y is a series. The particle array is
+        // f64, and the stored value is the constant term.
+        let re_from_series = variable_type == RosyType::RE()
+            && value_type.dimensions == 0
+            && matches!(value_type.base_type, RosyBaseType::DA | RosyBaseType::CD);
         if variable_type != value_type
             && !variable_type.is_any()
             && !value_type.is_any()
             && !da_singleton_wrap
+            && !re_from_series
             && re_da_assignment_type(variable_type, value_type) != Some(variable_type)
             && re_ve_assignment_type(variable_type, value_type) != Some(variable_type)
         {
@@ -732,8 +793,26 @@ impl Transpile for AssignStatement {
             .as_ref()
             .map(|t| t.is_any() || t.as_rust_type().contains("RosyValue"))
             .unwrap_or(false);
-        let serialized_value = if (variable_type.is_any()
-            || (num_indices > 0 && container_rosyvalue))
+        // `QUIT_FLAG := 1` on `VARIABLE QUIT_FLAG 1 NP` is a scalar written
+        // into a 1-d ANY array. COSY fills every element. Indexed writes stay
+        // on the cell path below.
+        let serialized_value = if variable_type.is_any()
+            && variable_type.dimensions == 1
+            && num_indices == 0
+            && value_type.dimensions == 0
+        {
+            let cell = if value_type.is_any() {
+                let owned = value_output.as_owned(&value_type);
+                if owned.contains("RosyValue") {
+                    owned
+                } else {
+                    format!("RosyValue::from({owned})")
+                }
+            } else {
+                format!("RosyValue::from({})", value_output.as_owned(&value_type))
+            };
+            format!("vec![{cell}; {serialized_identifier}.len()]")
+        } else if (variable_type.is_any() || (num_indices > 0 && container_rosyvalue))
             && !value_type.is_any()
         {
             format!("RosyValue::from({})", value_output.as_owned(&value_type))
@@ -1050,6 +1129,57 @@ END ;
     }
 
     #[test]
+    fn fox_any_temp_extract_concat_promotes_to_ve() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+PROCEDURE FILL A ;
+ENDPROCEDURE ;
+VARIABLE TEMP 10 ;
+VARIABLE X 2000 ;
+VARIABLE X1 1 ;
+VARIABLE D_IN 1 ;
+VARIABLE MAP 4000 8 ;
+FILL TEMP ;
+X := TEMP|3 ;
+LOOP I 2 5 ;
+    X := X & (TEMP|3) ;
+ENDLOOP ;
+X1 := X|1 ;
+D_IN := (X1-1)*(X|2) ;
+END ;
+"#,
+        );
+        assert_eq!(slot_type(&resolver, "X"), RosyType::VE());
+        assert_eq!(slot_type(&resolver, "TEMP"), RosyType::ANY());
+        assert_eq!(slot_type(&resolver, "X1"), RosyType::RE());
+        assert_eq!(slot_type(&resolver, "D_IN"), RosyType::RE());
+        assert_eq!(
+            slot_type(&resolver, "MAP"),
+            RosyType::new(RosyBaseType::ANY, 1)
+        );
+    }
+
+    #[test]
+    fn fox_da_concat_does_not_flatten_to_reals() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+VARIABLE T 300 ;
+VARIABLE X 2000 ;
+VARIABLE NM 1 ;
+DAINI 2 1 0 NM ;
+T := DA(1) ;
+X := T ;
+X := X & T ;
+END ;
+"#,
+        );
+        assert_ne!(slot_type(&resolver, "X"), RosyType::VE());
+        assert_eq!(slot_type(&resolver, "T"), RosyType::DA());
+    }
+
+    #[test]
     fn fox_re_then_concat_still_promotes_to_ve() {
         let resolver = resolve_fox(
             r#"
@@ -1063,6 +1193,38 @@ END ;
 "#,
         );
         assert_eq!(slot_type(&resolver, "X"), RosyType::VE());
+    }
+
+    #[test]
+    fn fox_string_concat_stays_out_of_ve() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+VARIABLE T 80 ;
+VARIABLE TMP 20 ;
+T := 'Enge Function' ;
+T := T&' Derivative ' ;
+TMP := 'Di' ;
+END ;
+"#,
+        );
+        assert_ne!(slot_type(&resolver, "T"), RosyType::VE());
+        assert_ne!(slot_type(&resolver, "TMP"), RosyType::VE());
+    }
+
+    #[test]
+    fn fox_indexed_concat_stays_a_cell() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+VARIABLE S 20 ;
+S := 0 ;
+S := S&0 ;
+VELSET S 1 1 ;
+END ;
+"#,
+        );
+        assert_ne!(slot_type(&resolver, "S"), RosyType::VE());
     }
 
     #[test]
@@ -1287,5 +1449,260 @@ END ;
             slot_type(&resolver, "MAP"),
             RosyType::new(RosyBaseType::ANY, 1)
         );
+    }
+
+    #[test]
+    fn fox_indexed_real_self_update_stays_re_array() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+PROCEDURE RUN ;
+VARIABLE A 1 8 ;
+VARIABLE S 1 ;
+S := 2 ;
+LOOP I 1 4 ;
+    A(I) := 2 * A(I) + S ;
+ENDLOOP ;
+ENDPROCEDURE ;
+RUN ;
+END ;
+"#,
+        );
+        assert_eq!(
+            slot_type(&resolver, "A"),
+            RosyType::new(RosyBaseType::RE, 1),
+            "A was {:?}",
+            slot_type(&resolver, "A")
+        );
+        assert_eq!(slot_type(&resolver, "S"), RosyType::RE());
+    }
+
+    #[test]
+    fn fox_unit_cell_passed_to_any_formal_stays_re() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+PROCEDURE SCALE R ;
+    R := R * 2 ;
+ENDPROCEDURE ;
+VARIABLE RELG 1 ;
+VARIABLE BIG 300 ;
+RELG := 1 ;
+SCALE RELG ;
+SCALE BIG ;
+END ;
+"#,
+        );
+        assert_eq!(slot_type(&resolver, "RELG"), RosyType::RE());
+        assert_eq!(slot_type(&resolver, "BIG"), RosyType::ANY());
+    }
+
+    #[test]
+    fn fox_real_array_cycle_stays_re() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+PROCEDURE RUN ;
+VARIABLE A 1 4 ;
+VARIABLE B 1 4 ;
+A := B ;
+B := A ;
+ENDPROCEDURE ;
+RUN ;
+END ;
+"#,
+        );
+        assert_eq!(
+            slot_type(&resolver, "A"),
+            RosyType::new(RosyBaseType::RE, 1),
+            "A was {:?}",
+            slot_type(&resolver, "A")
+        );
+        assert_eq!(
+            slot_type(&resolver, "B"),
+            RosyType::new(RosyBaseType::RE, 1),
+            "B was {:?}",
+            slot_type(&resolver, "B")
+        );
+    }
+
+    #[test]
+    fn fox_indexed_concat_stays_vec_when_source_is_real() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+PROCEDURE RUN ;
+VARIABLE SRC 1 4 ;
+VARIABLE S 1 ;
+VARIABLE POINTS 1 3 ;
+S := 1 ;
+LOOP I 1 4 ;
+    SRC(I) := 2 * SRC(I) + S ;
+ENDLOOP ;
+POINTS(1) := SRC(1) - S ;
+LOOP I 2 4 ;
+    POINTS(1) := POINTS(1) & SRC(I) - S ;
+ENDLOOP ;
+ENDPROCEDURE ;
+RUN ;
+END ;
+"#,
+        );
+        assert_eq!(
+            slot_type(&resolver, "SRC"),
+            RosyType::new(RosyBaseType::RE, 1),
+            "SRC was {:?}",
+            slot_type(&resolver, "SRC")
+        );
+        assert_eq!(
+            slot_type(&resolver, "POINTS"),
+            RosyType::new(RosyBaseType::VE, 1),
+            "POINTS was {:?}",
+            slot_type(&resolver, "POINTS")
+        );
+    }
+
+    #[test]
+    fn fox_derive_cell_stays_any_and_copy_out_stays_real() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+PROCEDURE RUN ;
+VARIABLE PHI 1 6 ;
+VARIABLE Y 1 6 ;
+VARIABLE OUTB 1 4 ;
+VARIABLE S 1 ;
+S := 1 ;
+PHI(1) := S ;
+Y(1) := S ;
+PHI(1) := PHI(1)%(-1) ;
+Y(1) := PHI(1) ;
+OUTB(1) := Y(1) ;
+ENDPROCEDURE ;
+RUN ;
+END ;
+"#,
+        );
+        assert_eq!(
+            slot_type(&resolver, "PHI"),
+            RosyType::new(RosyBaseType::DA, 1),
+            "PHI was {:?}",
+            slot_type(&resolver, "PHI")
+        );
+        assert_eq!(
+            slot_type(&resolver, "Y"),
+            RosyType::new(RosyBaseType::DA, 1),
+            "Y was {:?}",
+            slot_type(&resolver, "Y")
+        );
+        assert_eq!(
+            slot_type(&resolver, "OUTB"),
+            RosyType::new(RosyBaseType::RE, 1),
+            "OUTB was {:?}",
+            slot_type(&resolver, "OUTB")
+        );
+    }
+
+    #[test]
+    fn fox_zero_coef_extract_keeps_series_and_copy_out_stays_real() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+PROCEDURE RUN ;
+VARIABLE OUTPUT 12 1 ;
+VARIABLE PHI 12 6 ;
+VARIABLE Y 12 6 ;
+VARIABLE OUTB 1 4 ;
+VARIABLE S 1 ;
+VARIABLE COEF 12 ;
+S := 1 ;
+PHI(1) := S ;
+Y(1) := S ;
+PHI(1) := PHI(1)%(-1) ;
+Y(1) := PHI(1) ;
+OUTPUT(1) := Y(1)*Y(1) ;
+OUTB(1) := Y(1) ;
+COEF := ABS(OUTPUT(1)|0) ;
+ENDPROCEDURE ;
+RUN ;
+END ;
+"#,
+        );
+        assert_eq!(
+            slot_type(&resolver, "OUTPUT"),
+            RosyType::new(RosyBaseType::DA, 1),
+            "OUTPUT was {:?}",
+            slot_type(&resolver, "OUTPUT")
+        );
+        assert_eq!(
+            slot_type(&resolver, "Y"),
+            RosyType::new(RosyBaseType::DA, 1),
+            "Y was {:?}",
+            slot_type(&resolver, "Y")
+        );
+        assert_eq!(
+            slot_type(&resolver, "OUTB"),
+            RosyType::new(RosyBaseType::RE, 1),
+            "OUTB was {:?}",
+            slot_type(&resolver, "OUTB")
+        );
+    }
+
+    #[test]
+    fn fox_series_formal_types_the_body_as_da_and_type_probe_stays_any() {
+        let resolver = resolve_fox(
+            r#"
+BEGIN ;
+PROCEDURE BFIELD ALPHA ;
+VARIABLE BX 1 ;
+BX := 0 ;
+BX := ALPHA * ALPHA ;
+ENDPROCEDURE ;
+PROCEDURE RUN ;
+VARIABLE PHI 1 2 ;
+VARIABLE Y 1 2 ;
+VARIABLE OUTB 1 2 ;
+VARIABLE LOCEXP 1 2 ;
+VARIABLE S 1 ;
+S := 1 ;
+PHI(1) := S ;
+Y(1) := S ;
+PHI(1) := PHI(1)%(-1) ;
+Y(1) := PHI(1) ;
+BFIELD Y(1) ;
+OUTB(1) := Y(1) ;
+LOCEXP(1) := 0 ;
+LOCEXP(1) := DA(1) ;
+IF TYPE(LOCEXP(1))=TYPE(DA(1)) ;
+S := 1 ;
+ENDIF ;
+ENDPROCEDURE ;
+RUN ;
+END ;
+"#,
+        );
+        assert_eq!(
+            slot_type(&resolver, "PHI"),
+            RosyType::new(RosyBaseType::DA, 1),
+            "PHI was {:?}",
+            slot_type(&resolver, "PHI")
+        );
+        assert_eq!(
+            slot_type(&resolver, "OUTB"),
+            RosyType::new(RosyBaseType::RE, 1),
+            "OUTB was {:?}",
+            slot_type(&resolver, "OUTB")
+        );
+        assert_eq!(
+            slot_type(&resolver, "LOCEXP"),
+            RosyType::new(RosyBaseType::ANY, 1),
+            "LOCEXP was {:?}",
+            slot_type(&resolver, "LOCEXP")
+        );
+        let bx = resolver.nodes.iter().find(
+            |(slot, _)| matches!(slot, crate::resolve::TypeSlot::Variable(_, name) if name == "BX"),
+        );
+        let bx_ty = bx.and_then(|(_, n)| n.resolved);
+        assert_eq!(bx_ty, Some(RosyType::DA()), "BX was {bx_ty:?}");
     }
 }

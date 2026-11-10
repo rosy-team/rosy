@@ -101,6 +101,7 @@ impl FromRule for FunctionStatement {
                     name: arg_name.to_string(),
                     r#type: argument_type,
                     dimension_exprs: argument_dimensions,
+                    unit_cell: false,
                 };
                 args.push(argument_data);
             }
@@ -115,6 +116,7 @@ impl FromRule for FunctionStatement {
                         name: name.clone(),
                         r#type: return_type,
                         dimension_exprs: Vec::new(),
+                        unit_cell: false,
                     },
                 }
                 .into(),
@@ -331,6 +333,7 @@ impl Transpile for FunctionStatement {
                     requested_variables: BTreeSet::new(),
                     requested_types: Default::default(),
                     loc_shadows: BTreeMap::new(),
+                    inner_shadows: BTreeSet::new(),
                 },
             )
             .is_some();
@@ -406,11 +409,20 @@ impl Transpile for FunctionStatement {
             }
             inner_context.uses_loc_ident(var)
         });
+        {
+            let mut seen = BTreeSet::new();
+            requested_variables.retain(|name| seen.insert(inner_context.capture_param_name(name)));
+        }
 
         // Update the function context with the requested variables
         let loc_shadows: BTreeMap<String, RosyType> = requested_variables
             .iter()
             .filter_map(|n| inner_context.higher_shadow_type(n).map(|t| (n.clone(), t)))
+            .collect();
+        let inner_shadows: BTreeSet<String> = requested_variables
+            .iter()
+            .filter(|n| inner_context.closes_over_visible_shadow(n))
+            .cloned()
             .collect();
 
         if let Some(func_context) = context.functions.get_mut(&self.name) {
@@ -429,6 +441,7 @@ impl Transpile for FunctionStatement {
                 })
                 .collect();
             func_context.loc_shadows = loc_shadows.clone();
+            func_context.inner_shadows = inner_shadows;
         } else {
             errors.push(
                 anyhow!(
@@ -459,24 +472,22 @@ impl Transpile for FunctionStatement {
                     continue;
                 };
 
-                let (rust_name, ty) = if inner_context.uses_loc_ident(var_name) {
-                    (
-                        var_name.clone(),
-                        inner_context
-                            .outer_bindings
-                            .get(var_name)
-                            .map(|o| o.data.r#type)
-                            .unwrap_or(var_data.data.r#type),
-                    )
+                let rust_name = inner_context.capture_param_name(var_name);
+                let ty = if inner_context.uses_loc_ident(var_name) {
+                    inner_context
+                        .outer_bindings
+                        .get(var_name)
+                        .map(|o| o.data.r#type)
+                        .unwrap_or(var_data.data.r#type)
                 } else {
-                    (var_name.clone(), var_data.data.r#type)
+                    var_data.data.r#type
                 };
                 serialized_args.push(format!("{}: &mut {}", rust_name, ty.as_rust_type()));
             }
             for (name, ty) in &loc_shadows {
                 serialized_args.push(format!(
                     "{}: &mut {}",
-                    TranspilationInputContext::loc_ident(name),
+                    inner_context.shadow_param_name(name),
                     ty.as_rust_type()
                 ));
             }

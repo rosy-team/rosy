@@ -23,14 +23,15 @@
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};
+use rosy_lib::RosyType;
 use std::collections::BTreeSet;
 
 use crate::{
     ast::*,
     program::expressions::Expr,
     transpile::{
-        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
-        add_context_to_all,
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement, add_context_to_all,
     },
 };
 
@@ -135,14 +136,23 @@ impl Transpile for DatrnStatement {
         })?;
         requested_variables.extend(out_output.requested_variables.clone());
 
+        let input_ty = self.input_expr.type_of(context).map_err(|e| vec![e])?;
+        let scales_ty = self.scales_expr.type_of(context).map_err(|e| vec![e])?;
+        let shifts_ty = self.shifts_expr.type_of(context).map_err(|e| vec![e])?;
+        let out_ty = self.output_expr.type_of(context).map_err(|e| vec![e])?;
+
+        // Concrete `Vec<DA>` / `Vec<f64>` stay as references. An ANY cell, a
+        // single DA, or `Vec<RosyValue>` is copied into the vector rosy_datrn
+        // wants, then the output is stored back with AsDaDst.
+        let (in_pre, in_pass) = bind_read_da(&input_output, &input_ty, "__datrn_in");
+        let (sc_pre, sc_pass) = bind_read_re(&scales_output, &scales_ty, "__datrn_scales");
+        let (sh_pre, sh_pass) = bind_read_re(&shifts_output, &shifts_ty, "__datrn_shifts");
+        let (out_pre, out_pass, out_wb) = bind_write_da(&out_output, &out_ty, "__datrn_out");
+
         let serialization = format!(
-            "rosy_lib::core::daprv::rosy_datrn({}, {}, {}, rosy_as_usize(&({})), rosy_as_usize(&({})), {})?;",
-            input_output.as_ref(),
-            scales_output.as_ref(),
-            shifts_output.as_ref(),
+            "{{ {in_pre}{sc_pre}{sh_pre}{out_pre}rosy_lib::core::daprv::rosy_datrn({in_pass}, {sc_pass}, {sh_pass}, rosy_as_usize(&({})), rosy_as_usize(&({})), {out_pass})?; {out_wb}}}",
             m1_output.as_value(),
             m2_output.as_value(),
-            out_output.as_mut_ref(),
         );
 
         Ok(TranspilationOutput {
@@ -154,3 +164,49 @@ impl Transpile for DatrnStatement {
 }
 
 impl TranspileableStatement for DatrnStatement {}
+
+fn bind_read_da(out: &TranspilationOutput, ty: &RosyType, tmp: &str) -> (String, String) {
+    if ty.as_rust_type() == "Vec<DA>" {
+        (String::new(), out.as_ref())
+    } else {
+        (
+            format!(
+                "let {tmp}: Vec<DA> = rosy_lib::AsDaRef::as_da_vec({});",
+                out.as_ref()
+            ),
+            format!("&{tmp}"),
+        )
+    }
+}
+
+fn bind_read_re(out: &TranspilationOutput, ty: &RosyType, tmp: &str) -> (String, String) {
+    if ty.as_rust_type() == "Vec<f64>" {
+        (String::new(), out.as_ref())
+    } else {
+        (
+            format!(
+                "let {tmp}: Vec<f64> = rosy_lib::PolvalReSrc::to_re_vec({});",
+                out.as_ref()
+            ),
+            format!("&{tmp}"),
+        )
+    }
+}
+
+fn bind_write_da(out: &TranspilationOutput, ty: &RosyType, tmp: &str) -> (String, String, String) {
+    if ty.as_rust_type() == "Vec<DA>" {
+        (String::new(), out.as_mut_ref(), String::new())
+    } else {
+        (
+            format!(
+                "let mut {tmp}: Vec<DA> = rosy_lib::AsDaRef::as_da_vec({});",
+                out.as_ref()
+            ),
+            format!("&mut {tmp}"),
+            format!(
+                "rosy_lib::AsDaDst::store_da_vec({}, {tmp});",
+                out.as_mut_ref()
+            ),
+        )
+    }
+}

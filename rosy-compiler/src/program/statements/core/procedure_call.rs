@@ -280,11 +280,14 @@ impl Transpile for ProcedureCallStatement {
                 .get(var)
                 .cloned()
                 .unwrap_or(var_data.data.r#type);
-            let use_outer =
-                context.capture_uses_outer(var, &child_ty) || (context.split_rk_h && *var == "H");
+            let use_outer = context.pass_outer_cell(var, &child_ty, &proc_context.inner_shadows);
             let (provided, cap_scope, rust_name) = if use_outer {
                 let outer = context.outer_bindings.get(var).unwrap_or(var_data);
-                (outer.data.r#type, VariableScope::Higher, var.clone())
+                (
+                    outer.data.r#type,
+                    VariableScope::Higher,
+                    outer.data.name.clone(),
+                )
             } else {
                 (
                     var_data.data.r#type,
@@ -298,7 +301,7 @@ impl Transpile for ProcedureCallStatement {
             serialized_args.push(pass);
         }
         for name in proc_context.loc_shadows.keys() {
-            let rust = TranspilationInputContext::loc_ident(name);
+            let rust = context.shadow_param_name(name);
             let pass = match context.variables.get(name).map(|v| v.scope.clone()) {
                 Some(VariableScope::Local) => format!("&mut {rust}"),
                 _ => rust,
@@ -329,9 +332,13 @@ impl Transpile for ProcedureCallStatement {
                 .or_else(|| context.variables.get(var).map(|v| v.data.r#type));
             let rust = if child_ty
                 .as_ref()
-                .is_some_and(|t| context.capture_uses_outer(var, t))
+                .is_some_and(|t| context.pass_outer_cell(var, t, &proc_context.inner_shadows))
             {
-                var.clone()
+                context
+                    .outer_bindings
+                    .get(var)
+                    .map(|o| o.data.name.clone())
+                    .unwrap_or_else(|| var.clone())
             } else {
                 context.rust_ident(var)
             };
@@ -486,10 +493,14 @@ impl Transpile for ProcedureCallStatement {
         // temps are needed so they're scoped to this single call). Writebacks
         // run *after* the call to copy duplicate-arg clones back into their
         // source variables (see writeback_decls comment above).
+        let declared = context
+            .procedures
+            .declared_key(&self.name)
+            .unwrap_or(self.name.as_str());
         let rust_name = if proc_context.cosy_syntax {
-            format!("__proc_{}", self.name)
+            format!("__proc_{declared}")
         } else {
-            self.name.clone()
+            declared.to_string()
         };
         let call = format!(
             "{}({}).context(\"...while calling procedure '{}'\")?;",

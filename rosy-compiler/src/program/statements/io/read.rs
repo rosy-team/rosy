@@ -21,7 +21,7 @@ use crate::{
     program::expressions::{Expr, core::variable_identifier::VariableIdentifier},
     transpile::{
         TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
-        TranspileableStatement, add_context_to_all,
+        TranspileableStatement, VariableScope, add_context_to_all,
     },
 };
 
@@ -117,17 +117,32 @@ impl Transpile for ReadStatement {
         })?;
         requested_variables.extend(unit_output.requested_variables.iter().cloned());
 
+        // Arg and Higher bindings are `&mut T`. A local is the value itself.
+        let dereference = match context
+            .variables
+            .get(&self.identifier.name)
+            .map(|v| v.scope.clone())
+        {
+            Some(VariableScope::Arg) => "*".to_string(),
+            Some(VariableScope::Higher) => {
+                requested_variables.insert(self.identifier.name.clone());
+                "*".to_string()
+            }
+            _ => String::new(),
+        };
+
         // Runtime dispatch on unit value
         let serialization = format!(
             "{{ let __rosy_unit = ({}).round() as i64; \
             if __rosy_unit == 5 {{ \
-                {dest} = rosy_lib::intrinsics::from_st::from_stdin::<{typ}>().context(\"Failed to READ into {name}\")?; \
+                {deref}{dest} = rosy_lib::intrinsics::from_st::from_stdin::<{typ}>().context(\"Failed to READ into {name}\")?; \
             }} else {{ \
                 let __rosy_read_str = rosy_lib::core::file_io::rosy_read_from_unit(__rosy_unit as u64)?; \
-                {dest} = <{typ} as rosy_lib::intrinsics::from_st::RosyFromST>::rosy_from_st(__rosy_read_str)\
+                {deref}{dest} = <{typ} as rosy_lib::intrinsics::from_st::RosyFromST>::rosy_from_st(__rosy_read_str)\
                     .context(\"Failed to parse value from file unit into {name}\")?; \
             }} }}",
             unit_output.as_value(),
+            deref = dereference,
             dest = serialized_variable_identifier,
             typ = serialized_variable_type,
             name = self.identifier.name,

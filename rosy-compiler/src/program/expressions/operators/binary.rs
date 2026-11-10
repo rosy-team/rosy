@@ -17,6 +17,22 @@ pub struct BinaryExpr {
     pub right: Box<Expr>,
 }
 
+/// `d_in > 0` and `LIST|i < PIVOT` when one side is a series.
+/// COSY compares the constant term.
+fn series_const_compare(op: BinaryOp, left: &RosyType, right: &RosyType) -> bool {
+    if !matches!(
+        op,
+        BinaryOp::Lt | BinaryOp::Gt | BinaryOp::Lte | BinaryOp::Gte | BinaryOp::Eq | BinaryOp::Neq
+    ) {
+        return false;
+    }
+    if left.dimensions != 0 || right.dimensions != 0 {
+        return false;
+    }
+    let numeric = |ty: &RosyType| matches!(ty.base_type, RosyBaseType::RE | RosyBaseType::DA);
+    numeric(left) && numeric(right) && (*left != RosyType::RE() || *right != RosyType::RE())
+}
+
 fn collect_concat_leaves<'a>(expr: &'a Expr, out: &mut Vec<&'a Expr>) {
     if let ExprKind::Binary(bin) = &expr.inner
         && bin.op == BinaryOp::Concat
@@ -115,14 +131,21 @@ impl TranspileableExpr for BinaryExpr {
     fn type_of(&self, context: &TranspilationInputContext) -> Result<RosyType> {
         let left_type = self.left.type_of(context)?;
         let right_type = self.right.type_of(context)?;
-        self.op.return_type(&left_type, &right_type).ok_or_else(|| {
-            anyhow!(
-                "Cannot apply {:?} to types '{}' and '{}'!",
-                self.op,
-                left_type,
-                right_type
-            )
-        })
+        if let Some(ty) = self.op.return_type(&left_type, &right_type) {
+            return Ok(ty);
+        }
+        // Mixed RE/DA relations compare the constant term. `return_type`
+        // has no arm for that pair, and `LO(...)` / WHILE ask `type_of`
+        // before emit.
+        if series_const_compare(self.op, &left_type, &right_type) {
+            return Ok(RosyType::LO());
+        }
+        Err(anyhow!(
+            "Cannot apply {:?} to types '{}' and '{}'!",
+            self.op,
+            left_type,
+            right_type
+        ))
     }
 
     fn discover_expr_function_calls(
@@ -244,7 +267,9 @@ impl Transpile for BinaryExpr {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let left_type = self.left.type_of(context).map_err(|e| vec![e])?;
         let right_type = self.right.type_of(context).map_err(|e| vec![e])?;
-        if self.op.return_type(&left_type, &right_type).is_none() {
+        if self.op.return_type(&left_type, &right_type).is_none()
+            && !series_const_compare(self.op, &left_type, &right_type)
+        {
             return Err(vec![anyhow!(
                 "Cannot apply {:?} to types '{}' and '{}'!",
                 self.op,
@@ -284,7 +309,10 @@ impl Transpile for BinaryExpr {
         };
         requested_variables.extend(right_output.requested_variables.iter().cloned());
 
-        let result_type = self.op.return_type(&left_type, &right_type).unwrap();
+        let result_type = self
+            .op
+            .return_type(&left_type, &right_type)
+            .unwrap_or_else(RosyType::LO);
         let scalar = left_type.dimensions == 0 && right_type.dimensions == 0;
         let l = left_output.as_value();
         let r = right_output.as_value();
@@ -292,7 +320,29 @@ impl Transpile for BinaryExpr {
         let rref = right_output.as_ref();
         let pair = (left_type.base_type, right_type.base_type);
 
-        let serialization = if left_type.is_any() || right_type.is_any() {
+        let serialization = if series_const_compare(self.op, &left_type, &right_type) {
+            let as_re = |ty: &RosyType, value: &str, refer: &str| {
+                if *ty == RosyType::RE() {
+                    value.to_string()
+                } else {
+                    format!("rosy_as_f64(&{refer})")
+                }
+            };
+            let op = match self.op {
+                BinaryOp::Lt => "<",
+                BinaryOp::Gt => ">",
+                BinaryOp::Lte => "<=",
+                BinaryOp::Gte => ">=",
+                BinaryOp::Eq => "==",
+                BinaryOp::Neq => "!=",
+                _ => "==",
+            };
+            format!(
+                "({} {op} {})",
+                as_re(&left_type, &l, &lref),
+                as_re(&right_type, &r, &rref)
+            )
+        } else if left_type.is_any() || right_type.is_any() {
             emit_unwrap_rosy_value(
                 format!(
                     "rosy_dyn_binary(BinaryOp::{:?}, {}, {})?",

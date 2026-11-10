@@ -25,7 +25,10 @@ use anyhow::{Context, Error, Result, anyhow, ensure};
 
 use crate::{
     ast::*,
-    program::{expressions::Expr, statements::SourceLocation},
+    program::{
+        expressions::{Expr, ExprKind},
+        statements::SourceLocation,
+    },
     resolve::{ScopeContext, TypeResolver, TypeSlot},
     syntax_config,
     transpile::*,
@@ -37,6 +40,8 @@ pub struct VariableDeclarationData {
     pub name: String,
     pub r#type: Option<RosyType>,
     pub dimension_exprs: Vec<Expr>,
+    /// Fox `VARIABLE name 1` and nothing after it.
+    pub unit_cell: bool,
 }
 impl VariableDeclarationData {
     /// Helper to unwrap the type or return a descriptive error.
@@ -186,6 +191,7 @@ impl FromRule for VarDeclStatement {
 
         // Collect all memory_size expressions from the grammar
         let mut memory_sizes: Vec<Expr> = Vec::new();
+        let mut unit_cell = false;
         for mem_pair in inner {
             if mem_pair.as_rule() == Rule::memory_size {
                 let mem_inner = mem_pair
@@ -213,7 +219,10 @@ impl FromRule for VarDeclStatement {
                      Hint: Rosy files (`.rosy`) omit the memory size."
                 );
             }
-            // First memory_size is allocation hint (discarded), rest are array dimensions
+            // First memory_size is allocation hint (discarded), rest are array dimensions.
+            // A lone `1` is one real cell. A bigger hint can hold a DA.
+            unit_cell = memory_sizes.len() == 1
+                && matches!(memory_sizes[0].inner, ExprKind::Number(n) if n == 1.0);
             if memory_sizes.len() > 1 {
                 dimension_exprs.extend(memory_sizes.into_iter().skip(1));
             }
@@ -243,13 +252,11 @@ impl FromRule for VarDeclStatement {
             }
         }
 
-        // Extra memsize numbers after the first are array dimensions. Leave
-        // the element type open so assignments can infer (DA maps, VE particle
-        // rows, …). Unassigned fox arrays still default to ANY cells.
         let data = VariableDeclarationData {
             name,
             r#type,
             dimension_exprs,
+            unit_cell,
         };
 
         Ok(Some(VarDeclStatement { data }))
@@ -272,6 +279,7 @@ impl TranspileableStatement for VarDeclStatement {
         let extra_dims = self.data.dimension_exprs.len();
         if let Some(node) = resolver.nodes.get_mut(&slot) {
             node.extra_dims = extra_dims;
+            node.unit_cell = self.data.unit_cell;
             // COSY library globals (`VARIABLE MAP 4000 8`) are untyped cells
             // shared across procedures. Inferring DA/VE there breaks captures.
             // Locals inside a procedure (17's COORD/MAP1) still infer.

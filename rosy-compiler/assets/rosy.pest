@@ -371,8 +371,10 @@ neg_expr = { "-" ~ term }
 boolean = { ^"TRUE" | ^"FALSE" }
 
 // NOT expression (prefix unary operator) - ROSY extension
-// Use `!` directly adjacent to operand
-not_expr = { ("!" | ^"NOT") ~ (boolean | variable_identifier | "(" ~ WHITESPACE* ~ expr ~ WHITESPACE* ~ ")") }
+// `!` sits against its operand. `NOT` is a whole word, so
+// `notselfsourcenumber` stays one name.
+not_word = @{ ^"NOT" ~ !(ASCII_ALPHANUMERIC | "_") }
+not_expr = { ("!" | not_word) ~ (boolean | variable_identifier | "(" ~ WHITESPACE* ~ expr ~ WHITESPACE* ~ ")") }
 
 // Infix operators
 // Note: lte/gte must come before lt/gt to avoid `<=` being parsed as `<` then `=`

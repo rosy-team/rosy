@@ -92,12 +92,46 @@ impl RosyFromST for bool {
 
 impl RosyFromST for crate::RosyValue {
     fn rosy_from_st(st: String) -> Result<Self> {
-        // A number stays a number. A text record, like an MFFLD header,
-        // stays a string so R() and SS() can slice it.
+        // One number stays a number. More than one token is the whole
+        // line as text: PARSETEXT splits a positions line that way.
+        // A text record, like an MFFLD header, stays a string.
+        // A declared real still uses `f64::rosy_from_st` and keeps the
+        // first token only.
+        if st.trim().split_whitespace().nth(1).is_some() {
+            return Ok(crate::RosyValue::ST(st));
+        }
         match f64::rosy_from_st(st.clone()) {
             Ok(x) => Ok(crate::RosyValue::RE(x)),
             Err(_) => Ok(crate::RosyValue::ST(st)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn any_read_keeps_a_multi_number_line_as_text() {
+        let line = "1.61001e-03 -1.38884e-03 -2.52247e-04".to_string();
+        let value = crate::RosyValue::rosy_from_st(line.clone()).unwrap();
+        match value {
+            crate::RosyValue::ST(text) => assert_eq!(text, line),
+            other => panic!("expected ST, got {}", other.kind_name()),
+        }
+        let scalar = f64::rosy_from_st(line).unwrap();
+        assert!((scalar - 1.61001e-03).abs() < 1e-12);
+    }
+
+    #[test]
+    fn any_read_keeps_a_single_number_as_real() {
+        let value = crate::RosyValue::rosy_from_st("50000".to_string()).unwrap();
+        match value {
+            crate::RosyValue::RE(x) => assert!((x - 50000.0).abs() < 1e-9),
+            other => panic!("expected RE, got {}", other.kind_name()),
+        }
+        let header = crate::RosyValue::rosy_from_st("MFFLD header".to_string()).unwrap();
+        assert!(matches!(header, crate::RosyValue::ST(_)));
     }
 }
 

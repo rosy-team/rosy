@@ -419,6 +419,29 @@ pub fn rosy_reads_string_from_unit(unit: u64) -> Result<String> {
         .to_string())
 }
 
+/// COSY Infinity real record. 48 bytes, little-endian f64 at offset 36.
+/// Same bytes as fmmcpp `binaryOutput`. No length prefix in front.
+const COSY_RE_HEADER: [u8; 36] = [
+    0x04, 0x00, 0x00, 0x00, 0xCB, 0x10, 0x03, 0x00, 0x04, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
+];
+const COSY_RE_TRAILER: [u8; 4] = [0x0C, 0x00, 0x00, 0x00];
+
+fn cosy_re_record(value: f64) -> Vec<u8> {
+    let mut rec = Vec::with_capacity(48);
+    rec.extend_from_slice(&COSY_RE_HEADER);
+    rec.extend_from_slice(&value.to_le_bytes());
+    rec.extend_from_slice(&COSY_RE_TRAILER);
+    rec
+}
+
+fn is_cosy_re_record(data: &[u8]) -> bool {
+    data.len() == 48
+        && data[..COSY_RE_HEADER.len()] == COSY_RE_HEADER
+        && data[44..] == COSY_RE_TRAILER
+}
+
 /// Write binary data to a file unit (WRITEB).
 pub fn rosy_writeb_to_unit(unit: u64, data: &[u8]) -> Result<()> {
     ensure_registry();
@@ -438,13 +461,16 @@ pub fn rosy_writeb_to_unit(unit: u64, data: &[u8]) -> Result<()> {
         .as_mut()
         .with_context(|| format!("File on unit {} is not open for writing", unit))?;
 
-    // Write the length prefix (8 bytes, little-endian u64)
-    let len = data.len() as u64;
-    writer
-        .write_all(&len.to_le_bytes())
-        .with_context(|| format!("Failed to write length prefix to file on unit {}", unit))?;
+    // A COSY real is the 48-byte record by itself. A length prefix in front
+    // makes fmmcpp reject the file. Strings, vectors, bools, and complexes
+    // still get the 8-byte little-endian length.
+    if !is_cosy_re_record(data) {
+        let len = data.len() as u64;
+        writer
+            .write_all(&len.to_le_bytes())
+            .with_context(|| format!("Failed to write length prefix to file on unit {}", unit))?;
+    }
 
-    // Write the data
     writer
         .write_all(data)
         .with_context(|| format!("Failed to write binary data to file on unit {}", unit))?;
@@ -472,14 +498,24 @@ pub fn rosy_readb_from_unit(unit: u64) -> Result<Vec<u8>> {
         .as_mut()
         .with_context(|| format!("File on unit {} is not open for reading", unit))?;
 
-    // Read length prefix
-    let mut len_buf = [0u8; 8];
+    let mut head = [0u8; 8];
     reader
-        .read_exact(&mut len_buf)
-        .with_context(|| format!("Failed to read length prefix from file on unit {}", unit))?;
-    let len = u64::from_le_bytes(len_buf) as usize;
+        .read_exact(&mut head)
+        .with_context(|| format!("Failed to read binary header from file on unit {}", unit))?;
 
-    // Read the data
+    // COSY real: 48-byte record, value at offset 36. Return the whole record
+    // so from_binary can pick the double out. Anything else is a length prefix.
+    if head == COSY_RE_HEADER[..8] {
+        let mut rec = Vec::with_capacity(48);
+        rec.extend_from_slice(&head);
+        rec.resize(48, 0);
+        reader
+            .read_exact(&mut rec[8..])
+            .with_context(|| format!("Failed to read COSY real from file on unit {}", unit))?;
+        return Ok(rec);
+    }
+
+    let len = u64::from_le_bytes(head) as usize;
     let mut data = vec![0u8; len];
     reader
         .read_exact(&mut data)
@@ -498,23 +534,28 @@ pub trait RosyFromBinary: Sized {
     fn from_binary(data: &[u8]) -> Result<Self>;
 }
 
-// Binary serialization for RE (f64)
+// Binary serialization for RE (f64): COSY 48-byte record, value at offset 36.
 impl RosyToBinary for f64 {
     fn to_binary(&self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
+        cosy_re_record(*self)
     }
 }
 
 impl RosyFromBinary for f64 {
     fn from_binary(data: &[u8]) -> Result<Self> {
-        if data.len() < 8 {
+        let bytes = if data.len() >= 48 && data[..8] == COSY_RE_HEADER[..8] {
+            &data[36..44]
+        } else if data.len() >= 8 {
+            // Older Rosy files stored a bare little-endian f64.
+            &data[..8]
+        } else {
             bail!(
                 "Not enough data to deserialize f64: expected 8 bytes, got {}",
                 data.len()
             );
-        }
+        };
         let mut buf = [0u8; 8];
-        buf.copy_from_slice(&data[..8]);
+        buf.copy_from_slice(bytes);
         Ok(f64::from_le_bytes(buf))
     }
 }
@@ -632,5 +673,64 @@ impl RosyToBinary for crate::taylor::DA {
 impl RosyFromBinary for crate::taylor::DA {
     fn from_binary(_data: &[u8]) -> Result<Self> {
         bail!("Binary I/O for DA is not yet supported in Rosy. Use DAPRV/DAREV for ASCII DA I/O.")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cosy_real_record_round_trip() {
+        let value = -1.25f64;
+        let rec = value.to_binary();
+        assert_eq!(rec.len(), 48);
+        assert_eq!(&rec[..36], &COSY_RE_HEADER);
+        assert_eq!(&rec[36..44], &value.to_le_bytes());
+        assert_eq!(&rec[44..], &COSY_RE_TRAILER);
+        assert_eq!(f64::from_binary(&rec).unwrap(), value);
+
+        let path = std::env::temp_dir().join("rosy-writeb-re.bin");
+        let path_s = path.to_str().unwrap();
+        let _ = std::fs::remove_file(&path);
+        rosy_openfb(190.0, path_s, "replace").unwrap();
+        rosy_writeb_to_unit(190, &1.5f64.to_binary()).unwrap();
+        rosy_writeb_to_unit(190, &(-2.0f64).to_binary()).unwrap();
+        rosy_closef(190.0).unwrap();
+
+        let raw = std::fs::read(&path).unwrap();
+        assert_eq!(raw.len(), 96);
+        assert_eq!(f64::from_le_bytes(raw[36..44].try_into().unwrap()), 1.5);
+        assert_eq!(f64::from_le_bytes(raw[84..92].try_into().unwrap()), -2.0);
+
+        rosy_openfb(190.0, path_s, "old").unwrap();
+        assert_eq!(
+            f64::from_binary(&rosy_readb_from_unit(190).unwrap()).unwrap(),
+            1.5
+        );
+        assert_eq!(
+            f64::from_binary(&rosy_readb_from_unit(190).unwrap()).unwrap(),
+            -2.0
+        );
+        rosy_closef(190.0).unwrap();
+
+        // A vector keeps the length prefix. The construct tests depend on that.
+        let vec_path = std::env::temp_dir().join("rosy-writeb-ve.bin");
+        let vec_s = vec_path.to_str().unwrap();
+        let _ = std::fs::remove_file(&vec_path);
+        let values = vec![10.0, 20.0, 30.0];
+        rosy_openfb(191.0, vec_s, "replace").unwrap();
+        rosy_writeb_to_unit(191, &values.to_binary()).unwrap();
+        rosy_closef(191.0).unwrap();
+        let vec_raw = std::fs::read(&vec_path).unwrap();
+        assert_eq!(u64::from_le_bytes(vec_raw[..8].try_into().unwrap()), 32);
+        rosy_openfb(191.0, vec_s, "old").unwrap();
+        assert_eq!(
+            Vec::<f64>::from_binary(&rosy_readb_from_unit(191).unwrap()).unwrap(),
+            values
+        );
+        rosy_closef(191.0).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&vec_path);
     }
 }

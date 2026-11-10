@@ -60,13 +60,31 @@ impl TranspileableExpr for String {
         ExprRecipe::Literal(RosyType::ST())
     }
 }
+/// COSY strings are single-quoted and may contain `"`. Emit a Rust
+/// string literal so those quotes do not end the literal.
+fn rust_string_literal(s: &str) -> String {
+    let mut out = String::from("String::from(\"");
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
+    out.push_str("\")");
+    out
+}
+
 impl Transpile for String {
     fn transpile(
         &self,
         _context: &mut TranspilationInputContext,
     ) -> Result<TranspilationOutput, Vec<Error>> {
         Ok(TranspilationOutput {
-            serialization: format!("String::from(\"{}\")", self),
+            serialization: rust_string_literal(self),
             requested_variables: BTreeSet::new(),
             value_kind: ValueKind::Owned,
         })

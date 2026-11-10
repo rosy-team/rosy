@@ -21,7 +21,7 @@ use crate::{
     program::expressions::{Expr, core::variable_identifier::VariableIdentifier},
     transpile::{
         TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
-        TranspileableStatement, add_context_to_all,
+        TranspileableStatement, VariableScope, add_context_to_all,
     },
 };
 
@@ -97,7 +97,12 @@ impl Transpile for ReadbStatement {
             }
         };
 
-        let serialized_variable_type = variable_type.as_rust_type();
+        // An untyped fox cell is ANY. Binary particle data is a real.
+        let (serialized_variable_type, rhs_wrap) = if variable_type.is_any() {
+            ("f64".to_string(), "RosyValue::from")
+        } else {
+            (variable_type.as_rust_type(), "")
+        };
 
         // Transpile unit expression
         let unit_output = self.unit.transpile(context).map_err(|e| {
@@ -108,11 +113,26 @@ impl Transpile for ReadbStatement {
         })?;
         requested_variables.extend(unit_output.requested_variables.iter().cloned());
 
+        let dereference = match context
+            .variables
+            .get(&self.identifier.name)
+            .map(|v| v.scope.clone())
+        {
+            Some(VariableScope::Arg) => "*".to_string(),
+            Some(VariableScope::Higher) => {
+                requested_variables.insert(self.identifier.name.clone());
+                "*".to_string()
+            }
+            _ => String::new(),
+        };
+
         let serialization = format!(
-            "{{\n\tlet __rosy_unit = ({}).round() as u64;\n\tlet _readb_data = rosy_lib::core::file_io::rosy_readb_from_unit(__rosy_unit)?;\n\t{} = <{} as rosy_lib::core::file_io::RosyFromBinary>::from_binary(&_readb_data)?;\n}}",
+            "{{\n\tlet __rosy_unit = ({}).round() as u64;\n\tlet _readb_data = rosy_lib::core::file_io::rosy_readb_from_unit(__rosy_unit)?;\n\t{deref}{dest} = {wrap}(<{typ} as rosy_lib::core::file_io::RosyFromBinary>::from_binary(&_readb_data)?);\n}}",
             unit_output.as_value(),
-            serialized_variable_identifier,
-            serialized_variable_type,
+            deref = dereference,
+            dest = serialized_variable_identifier,
+            wrap = rhs_wrap,
+            typ = serialized_variable_type,
         );
 
         if errors.is_empty() {

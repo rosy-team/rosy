@@ -12,6 +12,7 @@
 //! 3. Topologically sort (Kahn's algorithm) and resolve from leaves inward
 //! 4. Report cycles as errors
 
+use crate::compiler::name_map::NameMap;
 use crate::errors::RosyError;
 use crate::program::Program;
 use crate::program::expressions::*;
@@ -162,6 +163,117 @@ impl ExprRecipe {
             }
         }
     }
+
+    /// Derive / DA stays a cell. Concatenation builds a vector.
+    fn open_kind(&self) -> OpenKind {
+        match self {
+            ExprRecipe::Literal(t) => match t.base_type {
+                rosy_lib::RosyBaseType::DA | rosy_lib::RosyBaseType::CD => OpenKind::Da,
+                rosy_lib::RosyBaseType::VE => OpenKind::Vec,
+                _ => OpenKind::Plain,
+            },
+            ExprRecipe::Concat(left, right) => {
+                left.open_kind().join(right.open_kind()).join(OpenKind::Vec)
+            }
+            ExprRecipe::BinaryOp { op, left, right } => {
+                let inner = left.open_kind().join(right.open_kind());
+                if *op == rosy_lib::BinaryOp::Derive {
+                    inner.join(OpenKind::Da)
+                } else {
+                    inner
+                }
+            }
+            // TYPE((0&0)) is a real type code. Don't inherit the inner concat.
+            ExprRecipe::UnaryIntrinsic { name, .. } => {
+                if name.eq_ignore_ascii_case("DA") || name.eq_ignore_ascii_case("CD") {
+                    OpenKind::Da
+                } else if name.eq_ignore_ascii_case("VE") {
+                    OpenKind::Vec
+                } else {
+                    OpenKind::Plain
+                }
+            }
+            ExprRecipe::WithDimensions(inner, _) => inner.open_kind(),
+            ExprRecipe::Variable(_)
+            | ExprRecipe::IndexedVariable(_, _)
+            | ExprRecipe::Unknown(_) => OpenKind::Plain,
+        }
+    }
+
+    /// Slots that flow out as a series. A constant term, a coefficient, a
+    /// comparison, or `VMIN` stops the flow: the result is a real.
+    fn collect_series_flow(&self, flow: &mut HashSet<TypeSlot>, indexed: &mut Vec<TypeSlot>) {
+        match self {
+            ExprRecipe::Literal(_) | ExprRecipe::Unknown(_) => {}
+            ExprRecipe::Variable(slot) => {
+                flow.insert(slot.clone());
+            }
+            ExprRecipe::IndexedVariable(slot, n) => {
+                flow.insert(slot.clone());
+                if *n > 0 {
+                    indexed.push(slot.clone());
+                }
+            }
+            ExprRecipe::Concat(left, right) => {
+                left.collect_series_flow(flow, indexed);
+                right.collect_series_flow(flow, indexed);
+            }
+            ExprRecipe::WithDimensions(inner, _) => inner.collect_series_flow(flow, indexed),
+            ExprRecipe::BinaryOp { op, left, right } => {
+                let stops = matches!(
+                    op,
+                    rosy_lib::BinaryOp::Eq
+                        | rosy_lib::BinaryOp::Neq
+                        | rosy_lib::BinaryOp::Lt
+                        | rosy_lib::BinaryOp::Gt
+                        | rosy_lib::BinaryOp::Lte
+                        | rosy_lib::BinaryOp::Gte
+                        | rosy_lib::BinaryOp::And
+                        | rosy_lib::BinaryOp::Or
+                        | rosy_lib::BinaryOp::Extract
+                );
+                if !stops {
+                    left.collect_series_flow(flow, indexed);
+                    right.collect_series_flow(flow, indexed);
+                }
+            }
+            ExprRecipe::UnaryIntrinsic { name, inner } => {
+                if !real_result_intrinsic(name) {
+                    inner.collect_series_flow(flow, indexed);
+                }
+            }
+        }
+    }
+}
+
+/// `CONS` / `VMIN` / `LENGTH` return a real even when the argument is a series.
+fn real_result_intrinsic(name: &str) -> bool {
+    const NAMES: &[&str] = &[
+        "CONS", "TYPE", "LENGTH", "VMIN", "VMAX", "NINT", "INT", "NORM",
+    ];
+    NAMES.iter().any(|n| name.eq_ignore_ascii_case(n))
+}
+
+/// `M(I)` on a 0-d cell is a COSY array. A scalar DA cannot be indexed.
+fn scalar_index_blocks_da(node: &GraphNode) -> bool {
+    node.indexed && node.resolved.is_none_or(|ty| ty.dimensions == 0)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OpenKind {
+    Plain,
+    Vec,
+    Da,
+}
+
+impl OpenKind {
+    fn join(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Da, _) | (_, Self::Da) => Self::Da,
+            (Self::Vec, _) | (_, Self::Vec) => Self::Vec,
+            _ => Self::Plain,
+        }
+    }
 }
 
 // ─── Dependency Graph Node ──────────────────────────────────────────────────
@@ -182,6 +294,121 @@ pub struct GraphNode {
     /// Fox `VARIABLE X mem d1 d2…` extra dimension count. Unused arrays with
     /// extra dims stay ANY cells (COSY scratch/maps); assigned arrays infer.
     pub extra_dims: usize,
+    /// Fox `VARIABLE name 1` with no further dimensions: one real cell.
+    /// A bigger memory size can hold a DA, so those stay ANY when untyped.
+    pub unit_cell: bool,
+    /// Some assignment uses derive or a DA/CD value.
+    pub saw_da: bool,
+    /// Some assignment builds the cell with `&`.
+    pub saw_vec: bool,
+    /// Every slot referenced by any assignment, including ones that did not
+    /// win the recipe.
+    pub seen_deps: HashSet<TypeSlot>,
+    /// Slots whose value survives into this cell. `Y := PHI` flows PHI.
+    /// `CONS(ALPHA)` and `OUTPUT|1` do not: those results are reals.
+    pub series_flow: HashSet<TypeSlot>,
+    /// Parentheses or `VELSET` index this cell. A 0-d ANY that is indexed
+    /// is a COSY array (`M(I)`), so it cannot become a scalar DA.
+    pub indexed: bool,
+    /// `TYPE(name)` reads the runtime kind. Those cells stay ANY so an empty
+    /// real still looks empty. `FMMDOWN` uses that to skip index 0.
+    pub type_probed: bool,
+    /// Every assignment recipe, kept so a later real-vector promotion can
+    /// retype readers (`x1 := x1i|s`) that were locked to ANY too early.
+    pub assign_recipes: Vec<ExprRecipe>,
+}
+
+/// How a recipe sits relative to one unresolved slot.
+enum Arm {
+    /// The recipe is exactly that slot.
+    Slot,
+    /// A scalar string, or a concat that includes one.
+    String,
+    /// A number, a vector, or a use that is not string glue.
+    Number,
+    /// ANY, or not known yet. Does not prove a string.
+    Neutral,
+}
+
+fn type_arm(t: RosyType) -> Arm {
+    if t.is_any() {
+        return Arm::Neutral;
+    }
+    if t.dimensions == 0 && t.base_type == rosy_lib::RosyBaseType::ST {
+        return Arm::String;
+    }
+    Arm::Number
+}
+
+fn merge_arm(a: Arm, b: Arm) -> Arm {
+    match (a, b) {
+        (Arm::Number, _) | (_, Arm::Number) => Arm::Number,
+        (Arm::String, Arm::Slot | Arm::String | Arm::Neutral)
+        | (Arm::Slot | Arm::Neutral, Arm::String) => Arm::String,
+        (Arm::Slot, Arm::Slot) => Arm::Slot,
+        (Arm::Slot, Arm::Neutral) | (Arm::Neutral, Arm::Slot) | (Arm::Neutral, Arm::Neutral) => {
+            Arm::Neutral
+        }
+    }
+}
+
+fn shallow_type(recipe: &ExprRecipe, nodes: &HashMap<TypeSlot, GraphNode>) -> Option<RosyType> {
+    match recipe {
+        ExprRecipe::Literal(t) => Some(*t),
+        ExprRecipe::Variable(s) | ExprRecipe::IndexedVariable(s, _) => {
+            nodes.get(s).and_then(|n| n.resolved)
+        }
+        _ => None,
+    }
+}
+
+fn arm_of(recipe: &ExprRecipe, slot: &TypeSlot, nodes: &HashMap<TypeSlot, GraphNode>) -> Arm {
+    match recipe {
+        ExprRecipe::Literal(t) => type_arm(*t),
+        ExprRecipe::Unknown(_) => Arm::Neutral,
+        ExprRecipe::Variable(s) if s == slot => Arm::Slot,
+        ExprRecipe::Variable(s) => nodes
+            .get(s)
+            .and_then(|n| n.resolved)
+            .map(type_arm)
+            .unwrap_or(Arm::Neutral),
+        ExprRecipe::IndexedVariable(s, _) if s == slot => Arm::Number,
+        ExprRecipe::IndexedVariable(s, _) => nodes
+            .get(s)
+            .and_then(|n| n.resolved)
+            .map(type_arm)
+            .unwrap_or(Arm::Neutral),
+        ExprRecipe::Concat(left, right) => {
+            merge_arm(arm_of(left, slot, nodes), arm_of(right, slot, nodes))
+        }
+        ExprRecipe::BinaryOp { left, right, .. } => {
+            if left.references_slot(slot) || right.references_slot(slot) {
+                Arm::Number
+            } else {
+                match merge_arm(arm_of(left, slot, nodes), arm_of(right, slot, nodes)) {
+                    // `+` and friends do not produce a string.
+                    Arm::String => Arm::Neutral,
+                    other => other,
+                }
+            }
+        }
+        ExprRecipe::UnaryIntrinsic { name, inner } => {
+            if inner.references_slot(slot) {
+                return Arm::Number;
+            }
+            shallow_type(inner, nodes)
+                .and_then(|t| rosy_lib::unary_return_type(name, &t))
+                .map(type_arm)
+                .unwrap_or(Arm::Neutral)
+        }
+        ExprRecipe::WithDimensions(inner, _) => {
+            if inner.references_slot(slot) {
+                Arm::Number
+            } else {
+                Arm::Neutral
+            }
+        }
+    }
 }
 
 // ─── Scope Context (used during graph construction) ─────────────────────────
@@ -191,11 +418,11 @@ pub struct GraphNode {
 pub struct ScopeContext {
     pub scope_path: Vec<String>,
     /// Maps variable name → its TypeSlot.
-    pub variables: HashMap<String, TypeSlot>,
+    pub variables: NameMap<TypeSlot>,
     /// Maps function name → (return_type_slot, vec of (arg_name, arg_slot)).
-    pub functions: HashMap<String, (TypeSlot, Vec<(String, TypeSlot)>)>,
+    pub functions: NameMap<(TypeSlot, Vec<(String, TypeSlot)>)>,
     /// Maps procedure name → vec of (arg_name, arg_slot).
-    pub procedures: HashMap<String, Vec<(String, TypeSlot)>>,
+    pub procedures: NameMap<Vec<(String, TypeSlot)>>,
 }
 
 // ─── Type Resolver ──────────────────────────────────────────────────────────
@@ -203,6 +430,9 @@ pub struct ScopeContext {
 pub struct TypeResolver {
     /// All nodes in the dependency graph, keyed by their slot.
     pub nodes: HashMap<TypeSlot, GraphNode>,
+    /// Procedure argument, and the slots named by the actual argument.
+    /// `BFIELD Y(i)` records `Y` so a series argument types the formal as DA.
+    pub call_arg_deps: Vec<(TypeSlot, Vec<TypeSlot>)>,
 }
 
 impl Default for TypeResolver {
@@ -215,6 +445,7 @@ impl TypeResolver {
     pub fn new() -> Self {
         TypeResolver {
             nodes: HashMap::new(),
+            call_arg_deps: Vec::new(),
         }
     }
 
@@ -305,6 +536,14 @@ impl TypeResolver {
                     declared_at,
                     assigned_at: None,
                     extra_dims: 0,
+                    unit_cell: false,
+                    saw_da: false,
+                    saw_vec: false,
+                    seen_deps: HashSet::new(),
+                    series_flow: HashSet::new(),
+                    indexed: false,
+                    type_probed: false,
+                    assign_recipes: Vec::new(),
                 },
             );
         } else {
@@ -317,7 +556,115 @@ impl TypeResolver {
                 declared_at,
                 assigned_at: None,
                 extra_dims: 0,
+                unit_cell: false,
+                saw_da: false,
+                saw_vec: false,
+                seen_deps: HashSet::new(),
+                series_flow: HashSet::new(),
+                indexed: false,
+                type_probed: false,
+                assign_recipes: Vec::new(),
             });
+        }
+    }
+
+    pub fn note_indexed(&mut self, slot: &TypeSlot) {
+        if let Some(node) = self.nodes.get_mut(slot) {
+            node.indexed = true;
+        }
+    }
+
+    /// Remember a RHS that is not plain real arithmetic.
+    /// Explicit cells are left alone.
+    pub fn note_assignment(
+        &mut self,
+        slot: &TypeSlot,
+        recipe: &ExprRecipe,
+        deps: &HashSet<TypeSlot>,
+    ) {
+        let mut flow = HashSet::new();
+        let mut indexed = Vec::new();
+        recipe.collect_series_flow(&mut flow, &mut indexed);
+        for used in &indexed {
+            self.note_indexed(used);
+        }
+        let Some(node) = self.nodes.get_mut(slot) else {
+            return;
+        };
+        if matches!(node.rule, ResolutionRule::Explicit(_)) {
+            return;
+        }
+        node.assign_recipes.push(recipe.clone());
+        match recipe.open_kind() {
+            OpenKind::Da => node.saw_da = true,
+            OpenKind::Vec => node.saw_vec = true,
+            OpenKind::Plain => {}
+        }
+        node.seen_deps.extend(deps.iter().cloned());
+        node.series_flow.extend(flow);
+    }
+
+    /// `name|0` or `name(i)|0` is a Taylor coefficient, not a vector element.
+    pub fn note_coef_cell(&mut self, slot: &TypeSlot) {
+        let Some(node) = self.nodes.get_mut(slot) else {
+            return;
+        };
+        if matches!(node.rule, ResolutionRule::Explicit(_)) {
+            return;
+        }
+        node.saw_da = true;
+    }
+
+    /// `TYPE(name)` or `TYPE(name(i))` keeps that cell as ANY.
+    pub fn note_type_probe(&mut self, slot: &TypeSlot) {
+        if let Some(node) = self.nodes.get_mut(slot) {
+            node.type_probed = true;
+        }
+    }
+
+    /// Walk an expression for `TYPE(cell)` so the FMM scatter stays a cell.
+    pub fn note_type_probes(&mut self, expr: &Expr, ctx: &ScopeContext) {
+        match &expr.inner {
+            ExprKind::Intrinsic(call) => {
+                if call.name.eq_ignore_ascii_case("TYPE") {
+                    for arg in &call.args {
+                        if let Some(slot) = Self::base_slot(arg, ctx) {
+                            self.note_type_probe(&slot);
+                        }
+                    }
+                }
+                for arg in &call.args {
+                    self.note_type_probes(arg, ctx);
+                }
+            }
+            ExprKind::Binary(bin) => {
+                self.note_type_probes(&bin.left, ctx);
+                self.note_type_probes(&bin.right, ctx);
+            }
+            ExprKind::Neg(neg) => self.note_type_probes(&neg.operand, ctx),
+            ExprKind::Not(not) => self.note_type_probes(&not.operand, ctx),
+            ExprKind::Var(var) => {
+                if (!var.identifier.paren_groups.is_empty()
+                    || !var.identifier.bracket_indices.is_empty())
+                    && let Some(slot) = ctx.variables.get(&var.identifier.name)
+                {
+                    self.note_indexed(slot);
+                }
+                for group in &var.identifier.paren_groups {
+                    for index in group {
+                        self.note_type_probes(index, ctx);
+                    }
+                }
+                for index in &var.identifier.bracket_indices {
+                    self.note_type_probes(index, ctx);
+                }
+            }
+            ExprKind::Da(da) => self.note_type_probes(&da.index, ctx),
+            ExprKind::Cd(cd) => self.note_type_probes(&cd.index, ctx),
+            ExprKind::Ident(_)
+            | ExprKind::Number(_)
+            | ExprKind::Boolean(_)
+            | ExprKind::String(_) => {}
         }
     }
 
@@ -395,6 +742,18 @@ impl TypeResolver {
         if let Some(params) = &param_slots {
             for (i, arg_expr) in args.iter().enumerate() {
                 if let Some((_, param_slot)) = params.get(i) {
+                    let mut arg_deps = HashSet::new();
+                    let recipe = self.build_expr_recipe(arg_expr, ctx, &mut arg_deps);
+                    let mut flow = HashSet::new();
+                    let mut indexed = Vec::new();
+                    recipe.collect_series_flow(&mut flow, &mut indexed);
+                    for used in &indexed {
+                        self.note_indexed(used);
+                    }
+                    self.call_arg_deps
+                        .push((param_slot.clone(), flow.into_iter().collect()));
+                }
+                if let Some((_, param_slot)) = params.get(i) {
                     // Only update if the parameter slot is unresolved
                     if let Some(param_node) = self.nodes.get(param_slot) {
                         if param_node.resolved.is_some() {
@@ -440,7 +799,10 @@ impl TypeResolver {
                     };
                     match param_ty {
                         Some(t) if t.is_any() => {
-                            if node.resolved.is_none() {
+                            // `VARIABLE relg 1` is one real. Stamping it ANY
+                            // makes every later multiply a dynamic call.
+                            // Larger cells (DA) still take the ANY stamp.
+                            if node.resolved.is_none() && !node.unit_cell {
                                 node.resolved = Some(RosyType::ANY());
                                 node.rule = ResolutionRule::InferredFrom {
                                     recipe: ExprRecipe::Literal(RosyType::ANY()),
@@ -483,6 +845,35 @@ impl TypeResolver {
     }
 
     // ─── Phase 2: Topological Resolution ────────────────────────────────
+
+    /// An unresolved fox scalar is a string when every use is `&` beside text.
+    /// `1 & X` stays a real. A bare `Y := X` stays a real.
+    fn unresolved_string_glue(
+        nodes: &HashMap<TypeSlot, GraphNode>,
+        slot: &TypeSlot,
+        dependents: &HashMap<TypeSlot, Vec<TypeSlot>>,
+    ) -> bool {
+        let Some(deps) = dependents.get(slot) else {
+            return false;
+        };
+        let mut saw_string = false;
+        for dep in deps {
+            let Some(node) = nodes.get(dep) else {
+                continue;
+            };
+            let ResolutionRule::InferredFrom { recipe, .. } = &node.rule else {
+                continue;
+            };
+            if !recipe.references_slot(slot) {
+                continue;
+            }
+            match arm_of(recipe, slot, nodes) {
+                Arm::String => saw_string = true,
+                Arm::Slot | Arm::Number | Arm::Neutral => return false,
+            }
+        }
+        saw_string
+    }
 
     /// Process nodes whose dependencies are all resolved first, resolve them,
     /// then process their dependents, and so on. One pass — no iteration.
@@ -539,20 +930,27 @@ impl TypeResolver {
                     // COSY maps/scratch (written only by library procedures)
                     // can still hold DA.
                     let extra_dims = self.nodes.get(&slot).map(|n| n.extra_dims).unwrap_or(0);
-                    let fox_array = extra_dims > 0
-                        && self
-                            .nodes
-                            .get(&slot)
-                            .and_then(|n| n.declared_at.as_ref())
-                            .and_then(|l| l.file.as_deref())
-                            .is_some_and(syntax_config::is_fox_path);
+                    let is_fox = self
+                        .nodes
+                        .get(&slot)
+                        .and_then(|n| n.declared_at.as_ref())
+                        .and_then(|l| l.file.as_deref())
+                        .is_some_and(syntax_config::is_fox_path);
+                    let fox_array = extra_dims > 0 && is_fox;
+                    let string_glue = is_fox
+                        && !fox_array
+                        && Self::unresolved_string_glue(&self.nodes, &slot, &dependents);
                     let default_type = if fox_array {
                         RosyType::new(rosy_lib::RosyBaseType::ANY, extra_dims)
+                    } else if string_glue {
+                        RosyType::ST()
                     } else {
                         RosyType::RE()
                     };
                     let reason = if fox_array {
                         "unassigned fox array defaults to ANY cells"
+                    } else if string_glue {
+                        "untyped fox name used only in string concatenation"
                     } else {
                         "untyped variables default to RE"
                     };
@@ -596,22 +994,15 @@ impl TypeResolver {
             .map(|n| n.slot.clone())
             .collect();
         if !leftover_fox.is_empty() {
-            for slot in leftover_fox {
-                if let Some(node) = self.nodes.get_mut(&slot) {
-                    node.resolved = Some(RosyType::ANY());
-                    node.rule = ResolutionRule::InferredFrom {
-                        recipe: ExprRecipe::Literal(RosyType::ANY()),
-                        reason: "cycle/untyped cell defaulted to ANY".to_string(),
-                    };
-                }
-            }
-            if self
-                .nodes
-                .values()
-                .all(|n| n.resolved.is_some() || warned_slots.contains(&n.slot))
-            {
-                return Ok(warnings);
-            }
+            self.resolve_real_cycles(&leftover_fox);
+        }
+        self.reopen_mixed_reals();
+        if self
+            .nodes
+            .values()
+            .all(|n| n.resolved.is_some() || warned_slots.contains(&n.slot))
+        {
+            return Ok(warnings);
         }
 
         let unresolved: Vec<&GraphNode> = self
@@ -785,6 +1176,399 @@ impl TypeResolver {
         }
     }
 
+    /// A self-update `A(i) := real ops on A(i)` is a real array.
+    /// A self-update that produces DA/CD/VE stays an ANY cell array.
+    fn real_array_self_update(
+        &mut self,
+        slot: &TypeSlot,
+        recipe: &ExprRecipe,
+        extra: usize,
+    ) -> Option<RosyType> {
+        let guess = RosyType::new(rosy_lib::RosyBaseType::RE, extra);
+        self.nodes.get_mut(slot)?.resolved = Some(guess);
+        let got = self.evaluate_recipe(recipe).ok()?;
+        self.nodes.get_mut(slot)?.resolved = None;
+        if got.base_type == rosy_lib::RosyBaseType::RE && got.dimensions == extra {
+            Some(got)
+        } else {
+            None
+        }
+    }
+
+    /// Cycles with no DA anchor (`source_n` copied from `new_source_n` and
+    /// back) are real arrays. A cycle whose recipe is not a real stays ANY.
+    fn resolve_real_cycles(&mut self, leftovers: &[TypeSlot]) {
+        let mut guess: HashMap<TypeSlot, RosyType> = leftovers
+            .iter()
+            .map(|slot| {
+                let extra = self.nodes.get(slot).map(|n| n.extra_dims).unwrap_or(0);
+                (
+                    slot.clone(),
+                    RosyType::new(rosy_lib::RosyBaseType::RE, extra),
+                )
+            })
+            .collect();
+
+        for _ in 0..=leftovers.len() {
+            let mut changed = false;
+            for slot in leftovers {
+                let extra = guess.get(slot).map(|t| t.dimensions).unwrap_or(0);
+                for (s, t) in &guess {
+                    if let Some(node) = self.nodes.get_mut(s) {
+                        node.resolved = Some(*t);
+                    }
+                }
+                let recipe = self.nodes.get(slot).map(|n| n.rule.clone());
+                let next = match recipe {
+                    Some(ResolutionRule::InferredFrom { recipe, .. }) => {
+                        match self.evaluate_recipe(&recipe) {
+                            Ok(t)
+                                if t.base_type == rosy_lib::RosyBaseType::RE
+                                    && t.dimensions == extra =>
+                            {
+                                RosyType::new(rosy_lib::RosyBaseType::RE, extra)
+                            }
+                            _ => RosyType::ANY(),
+                        }
+                    }
+                    _ => RosyType::ANY(),
+                };
+                if guess.get(slot) != Some(&next) {
+                    guess.insert(slot.clone(), next);
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+
+        for slot in leftovers {
+            let ty = guess.get(slot).copied().unwrap_or_else(RosyType::ANY);
+            let real = ty.base_type == rosy_lib::RosyBaseType::RE;
+            if let Some(node) = self.nodes.get_mut(slot) {
+                node.resolved = Some(ty);
+                node.rule = ResolutionRule::InferredFrom {
+                    recipe: ExprRecipe::Literal(ty),
+                    reason: if real {
+                        "real cycle".to_string()
+                    } else {
+                        "cycle/untyped cell defaulted to ANY".to_string()
+                    },
+                };
+            }
+        }
+    }
+
+    fn base_slot(expr: &Expr, ctx: &ScopeContext) -> Option<TypeSlot> {
+        let name = match &expr.inner {
+            ExprKind::Var(var) => &var.identifier.name,
+            ExprKind::Ident(ident) => &ident.name,
+            _ => return None,
+        };
+        ctx.variables.get(name).cloned()
+    }
+
+    /// A real recipe is not the whole story.
+    /// `POINTS(1) := POINTS(1) & x` is a vector.
+    /// `PHI := PHI % (-1)` is a DA cell.
+    /// A direct `Y := PHI` follows that DA. The next copy does not,
+    /// so the particle arrays stay f64.
+    fn reopen_mixed_reals(&mut self) {
+        self.keep_mixed_cells_untyped();
+        let structural_da: HashSet<TypeSlot> = self
+            .nodes
+            .iter()
+            .filter(|(_, n)| n.saw_da)
+            .map(|(s, _)| s.clone())
+            .collect();
+        // One hop along a value that is still a series, like `Y := PHI`.
+        // `CONS(ALPHA)` and `OUTPUT|1` do not flow, so coef lists and the
+        // particle times stay real. The hop stops there, so `source_x := Y`
+        // stays f64. A 0-d cell that is indexed (`M(I)`) stays ANY.
+        let hop: Vec<TypeSlot> = self
+            .nodes
+            .iter()
+            .filter(|(_, n)| {
+                !n.saw_da
+                    && !n.type_probed
+                    && !scalar_index_blocks_da(n)
+                    && n.series_flow.iter().any(|dep| structural_da.contains(dep))
+            })
+            .map(|(s, _)| s.clone())
+            .collect();
+        for slot in hop {
+            if let Some(node) = self.nodes.get_mut(&slot) {
+                node.saw_da = true;
+            }
+        }
+
+        // ANY temps in a callee (`BX := ALPHA * ALPHA`) follow a series
+        // argument for as many steps as the body is deep. Real arrays do
+        // not, so the particle coordinates stay f64.
+        let mut series: HashSet<TypeSlot> = self
+            .nodes
+            .iter()
+            .filter(|(_, n)| n.saw_da)
+            .map(|(s, _)| s.clone())
+            .collect();
+        loop {
+            let mut grew = false;
+            // A formal becomes DA only when every call passes a series.
+            // `ENGE(S)` is also called as `ENGE(5)`, and `M(I)` is an array,
+            // so those stay ANY.
+            let mut calls: HashMap<TypeSlot, (usize, usize)> = HashMap::new();
+            for (param, flows) in &self.call_arg_deps {
+                let entry = calls.entry(param.clone()).or_insert((0, 0));
+                entry.0 += 1;
+                if flows.iter().any(|dep| series.contains(dep)) {
+                    entry.1 += 1;
+                }
+            }
+            let promote: Vec<TypeSlot> = calls
+                .into_iter()
+                .filter(|(_, (total, hits))| *total > 0 && hits == total)
+                .map(|(param, _)| param)
+                .collect();
+            for param in promote {
+                if let Some(node) = self.nodes.get_mut(&param)
+                    && !node.saw_da
+                    && !node.type_probed
+                    && !scalar_index_blocks_da(node)
+                {
+                    node.saw_da = true;
+                    series.insert(param);
+                    grew = true;
+                }
+            }
+            let more: Vec<TypeSlot> = self
+                .nodes
+                .iter()
+                .filter(|(slot, n)| {
+                    !series.contains(*slot)
+                        && !n.type_probed
+                        && !scalar_index_blocks_da(n)
+                        && n.resolved.is_some_and(|t| t.is_any())
+                        && n.series_flow.iter().any(|dep| series.contains(dep))
+                })
+                .map(|(s, _)| s.clone())
+                .collect();
+            if !more.is_empty() {
+                grew = true;
+                for slot in more {
+                    if let Some(node) = self.nodes.get_mut(&slot) {
+                        node.saw_da = true;
+                    }
+                    series.insert(slot);
+                }
+            }
+            if !grew {
+                break;
+            }
+        }
+
+        let slots: Vec<TypeSlot> = self.nodes.keys().cloned().collect();
+        for slot in slots {
+            let (explicit, ty, saw_da, saw_vec, probed, indexed, recipes) = {
+                let Some(node) = self.nodes.get(&slot) else {
+                    continue;
+                };
+                let Some(ty) = node.resolved else { continue };
+                (
+                    matches!(node.rule, ResolutionRule::Explicit(_)),
+                    ty,
+                    node.saw_da,
+                    node.saw_vec,
+                    node.type_probed,
+                    node.indexed,
+                    if node.saw_vec {
+                        node.assign_recipes.clone()
+                    } else {
+                        Vec::new()
+                    },
+                )
+            };
+            // `&` is also string glue. A literal in the recipe is enough to
+            // tell those cells from `x1i := TEMP|3 ; x1i := x1i & TEMP|3`.
+            let stringish = saw_vec
+                && recipes
+                    .iter()
+                    .any(|recipe| matches!(arm_of(recipe, &slot, &self.nodes), Arm::String));
+            // A fox formal is explicit ANY. A series argument replaces that.
+            if explicit && !(ty.is_any() && saw_da && !probed) {
+                continue;
+            }
+            let next = if probed {
+                if ty.is_any() {
+                    None
+                } else {
+                    Some((
+                        RosyType::new(rosy_lib::RosyBaseType::ANY, ty.dimensions),
+                        "TYPE() reads this cell",
+                    ))
+                }
+            } else if saw_da
+                && !saw_vec
+                && matches!(
+                    ty.base_type,
+                    rosy_lib::RosyBaseType::RE
+                        | rosy_lib::RosyBaseType::VE
+                        | rosy_lib::RosyBaseType::ANY
+                )
+            {
+                Some((
+                    RosyType::new(rosy_lib::RosyBaseType::DA, ty.dimensions),
+                    "holds a DA",
+                ))
+            } else if saw_vec && indexed && !saw_da && !probed && ty.dimensions == 0 {
+                // `S := 0 ; S := S&0` and then VELGET / `S#0`. One COSY cell
+                // is a vector and a scalar. An indexed array (`COORD(I)`)
+                // keeps its rank and can still become VE.
+                Some((
+                    RosyType::new(rosy_lib::RosyBaseType::ANY, ty.dimensions),
+                    "indexed cell stays untyped",
+                ))
+            } else if saw_vec && ty.base_type == rosy_lib::RosyBaseType::RE {
+                Some((
+                    RosyType::new(rosy_lib::RosyBaseType::VE, ty.dimensions),
+                    "built by concatenation",
+                ))
+            } else if saw_vec
+                && !saw_da
+                && !probed
+                && !indexed
+                && !stringish
+                && ty.base_type == rosy_lib::RosyBaseType::ANY
+            {
+                // `x1i := TEMP|3` then `x1i := x1i & TEMP|3`. TEMP is an ANY
+                // cell (PARSETEXT), so the concat resolved as ANY and every
+                // later `x1i|s` cloned the whole array. The values are reals.
+                Some((
+                    RosyType::new(rosy_lib::RosyBaseType::VE, ty.dimensions),
+                    "real concatenation",
+                ))
+            } else {
+                None
+            };
+            if let Some((next_ty, reason)) = next
+                && let Some(node) = self.nodes.get_mut(&slot)
+            {
+                node.resolved = Some(next_ty);
+                node.rule = ResolutionRule::InferredFrom {
+                    recipe: ExprRecipe::Literal(next_ty),
+                    reason: reason.to_string(),
+                };
+            }
+        }
+        self.refine_real_uses();
+    }
+
+    /// A COSY cell can hold a real on one path and a series on another:
+    /// `DELTI(1) := T-(TC|I)`, or `DELTI(1) := DA(1)+T-(TC|I)`.
+    /// As a DA, the real path comes back as a series, and a later `TC|I` reads
+    /// a Taylor coefficient instead of a list element. Those cells stay ANY.
+    /// `Y(I) := source_x(P)` is not mixed: an f64 store is only an initial value.
+    fn keep_mixed_cells_untyped(&mut self) {
+        let series: HashSet<TypeSlot> = self
+            .nodes
+            .iter()
+            .filter(|(_, n)| n.saw_da)
+            .map(|(s, _)| s.clone())
+            .collect();
+        let mixed: Vec<TypeSlot> = self
+            .nodes
+            .iter()
+            .filter(|(_, n)| {
+                n.saw_da
+                    && n.assign_recipes
+                        .iter()
+                        .any(|r| r.open_kind() == OpenKind::Da)
+                    && n.assign_recipes.iter().any(|r| {
+                        r.open_kind() != OpenKind::Da
+                            && !matches!(r, ExprRecipe::Literal(_))
+                            && !series.iter().any(|dep| r.references_slot(dep))
+                            && self.evaluate_recipe(r).is_ok_and(|t| t.is_any())
+                    })
+            })
+            .map(|(s, _)| s.clone())
+            .collect();
+        for slot in mixed {
+            if let Some(node) = self.nodes.get_mut(&slot) {
+                node.saw_da = false;
+                node.series_flow.clear();
+            }
+        }
+    }
+
+    /// Readers of a real vector were typed ANY while the vector was still a
+    /// cell (`x1 := x1i|s`, then `d_in := (cons(a)-x1)*(nxi1|s)`). Once the
+    /// vector is `Vec<f64>`, those readers are plain reals. `d_in` waits
+    /// until `x1` has been updated, so this repeats.
+    fn refine_real_uses(&mut self) {
+        loop {
+            let mut changed = false;
+            let slots: Vec<TypeSlot> = self.nodes.keys().cloned().collect();
+            for slot in slots {
+                let Some(node) = self.nodes.get(&slot) else {
+                    continue;
+                };
+                if node.saw_da
+                    || node.type_probed
+                    || node.extra_dims > 0
+                    || node.assign_recipes.is_empty()
+                    || matches!(node.rule, ResolutionRule::Explicit(_))
+                    || !node.resolved.is_some_and(|t| t.is_any())
+                {
+                    continue;
+                }
+                let recipes = node.assign_recipes.clone();
+                let mut next: Option<RosyType> = None;
+                let mut keep = true;
+                for recipe in &recipes {
+                    let Ok(t) = self.evaluate_recipe(recipe) else {
+                        keep = false;
+                        break;
+                    };
+                    // A VE recipe is a list (`PARTICLES := ZEROVEC`, then
+                    // `EMPTY := PARTICLES` and `EMPTY#0`). Only a cell whose
+                    // every store is a scalar real becomes RE.
+                    if t.is_any()
+                        || t.dimensions != 0
+                        || !matches!(
+                            t.base_type,
+                            rosy_lib::RosyBaseType::RE | rosy_lib::RosyBaseType::LO
+                        )
+                    {
+                        keep = false;
+                        break;
+                    }
+                    next = Some(match next {
+                        Some(prev) if prev == t => prev,
+                        Some(_) => {
+                            keep = false;
+                            break;
+                        }
+                        None => t,
+                    });
+                }
+                if keep
+                    && let Some(next_ty) = next
+                    && let Some(node) = self.nodes.get_mut(&slot)
+                {
+                    node.resolved = Some(next_ty);
+                    node.rule = ResolutionRule::InferredFrom {
+                        recipe: ExprRecipe::Literal(next_ty),
+                        reason: "real uses of a real vector".to_string(),
+                    };
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+
     /// Resolve a single node by evaluating its rule.
     fn resolve_node(&mut self, slot: &TypeSlot) -> Result<()> {
         let file = self
@@ -817,8 +1601,12 @@ impl TypeResolver {
                     Err(_) if self_referential && syntax_config::is_cosy_syntax() => {
                         let extra = self.nodes.get(slot).map(|n| n.extra_dims).unwrap_or(0);
                         if extra > 0 {
-                            // `SSL(I) := SSL(I) + DA(...)` — COSY cell array, not a real.
-                            RosyType::new(rosy_lib::RosyBaseType::ANY, extra)
+                            // `A(I) := 2*A(I)+1` is a real array.
+                            // `SSL(I) := SSL(I) + DA(...)` stays a cell array.
+                            self.real_array_self_update(slot, &recipe, extra)
+                                .unwrap_or_else(|| {
+                                    RosyType::new(rosy_lib::RosyBaseType::ANY, extra)
+                                })
                         } else {
                             RosyType::RE()
                         }

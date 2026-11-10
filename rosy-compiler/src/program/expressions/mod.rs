@@ -203,12 +203,18 @@ impl FromRule for Expr {
                     }
                     Rule::not_expr => {
                         // NOT expression: parse the inner operand
-                        // The inner can be: boolean, variable_identifier, or expr (parenthesized)
+                        // The inner can be: not_word (skipped), boolean,
+                        // variable_identifier, or expr (parenthesized)
                         let not_loc = loc.clone();
                         let mut inner = primary.into_inner();
-                        let operand_pair = inner
+                        let mut operand_pair = inner
                             .next()
                             .ok_or_else(|| anyhow::anyhow!("NOT expression missing operand"))?;
+                        if operand_pair.as_rule() == Rule::not_word {
+                            operand_pair = inner
+                                .next()
+                                .ok_or_else(|| anyhow::anyhow!("NOT expression missing operand"))?;
+                        }
 
                         // Handle different operand types
                         let operand = match operand_pair.as_rule() {

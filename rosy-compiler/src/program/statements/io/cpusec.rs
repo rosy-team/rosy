@@ -20,8 +20,8 @@ use crate::{
     ast::*,
     program::expressions::core::variable_identifier::VariableIdentifier,
     transpile::{
-        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableStatement,
-        VariableScope,
+        TranspilationInputContext, TranspilationOutput, Transpile, TranspileableExpr,
+        TranspileableStatement, VariableScope,
     },
 };
 
@@ -107,10 +107,15 @@ impl Transpile for CpusecStatement {
 
         // rosy_cpu_time() returns POSIX clock() / CLOCKS_PER_SEC — CPU time, not wall time.
         // PWTIME uses start.elapsed() for wall-clock time.
-        let serialization = format!(
-            "{}{} = rosy_cpu_time();",
-            dereference, serialized_identifier
-        );
+        // An untyped fox cell is ANY, so the real has to be boxed.
+        let rhs = match self.identifier.type_of(context) {
+            Ok(ty) if ty.is_any() => "RosyValue::from(rosy_cpu_time())".to_string(),
+            Ok(_) => "rosy_cpu_time()".to_string(),
+            Err(e) => {
+                return Err(vec![e]);
+            }
+        };
+        let serialization = format!("{dereference}{serialized_identifier} = {rhs};");
 
         Ok(TranspilationOutput {
             serialization,

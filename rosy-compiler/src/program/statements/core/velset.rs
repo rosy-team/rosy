@@ -154,6 +154,9 @@ impl TranspileableStatement for VelsetStatement {
                 "...while discovering function call dependencies in VELSET value expression",
             )));
         }
+        if let Some(slot) = ctx.variables.get(&self.vector_ident.name) {
+            resolver.note_indexed(slot);
+        }
         Some(Ok(()))
     }
 }

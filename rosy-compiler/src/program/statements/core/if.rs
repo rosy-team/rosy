@@ -182,12 +182,14 @@ impl TranspileableStatement for IfStatement {
         ctx: &mut ScopeContext,
         _source_location: SourceLocation,
     ) -> Option<Result<()>> {
+        resolver.note_type_probes(&self.condition, ctx);
         let mut then_ctx = ctx.clone();
         then_ctx.scope_path.push("<if-then>".to_string());
         if let Err(e) = resolver.discover_slots(&self.then_body, &mut then_ctx) {
             return Some(Err(e));
         }
         for (i, elseif) in self.elseif_clauses.iter().enumerate() {
+            resolver.note_type_probes(&elseif.condition, ctx);
             let mut elseif_ctx = ctx.clone();
             elseif_ctx.scope_path.push(format!("<elseif-{i}>"));
             if let Err(e) = resolver.discover_slots(&elseif.body, &mut elseif_ctx) {

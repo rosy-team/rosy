@@ -254,17 +254,28 @@ impl Transpile for LoopStatement {
         let mut errors = Vec::new();
 
         let outer = context.variables.get(&self.iterator).cloned();
-        inner_context.variables.insert(
-            self.iterator.clone(),
-            ScopedVariableData {
-                scope: VariableScope::Local,
-                data: VariableData {
-                    name: self.iterator.clone(),
-                    r#type: RosyType::RE(),
-                    declared_dims: None,
+        // A parent local used as the index has to be captured.
+        if outer
+            .as_ref()
+            .is_some_and(|v| v.scope == VariableScope::Higher)
+        {
+            requested_variables.insert(self.iterator.clone());
+        }
+        // An existing index keeps its spelling, scope, and type. Forcing
+        // a fresh RE local made `I` and an ANY `__loc_I` disagree.
+        if outer.is_none() {
+            inner_context.variables.insert(
+                self.iterator.clone(),
+                ScopedVariableData {
+                    scope: VariableScope::Local,
+                    data: VariableData {
+                        name: self.iterator.clone(),
+                        r#type: RosyType::RE(),
+                        declared_dims: None,
+                    },
                 },
-            },
-        );
+            );
+        }
 
         // Transpile each inner statement
         for stmt in &self.body {
@@ -351,14 +362,23 @@ impl Transpile for LoopStatement {
         // fresh `I` the body never reads. RK's nested NORM was indexing
         // `__loc_I` (stuck at 0) while the counter lived in `I`.
         let bind = context.rust_ident(iter);
-        let (it, sync, bump) = if outer.is_some() {
+        let (it, sync, bump) = if let Some(existing) = &outer {
             let rust_it = format!("__rosy_loop_{iter}");
-            let sync = if context.uses_loc_ident(iter) {
-                format!("{bind} = {rust_it};")
+            // ANY cells store the counter as a real-in-a-box. A captured
+            // binding is `&mut T`, so the store goes through `*`.
+            let rhs = if existing.data.r#type.is_any() {
+                format!("RosyValue::from({rust_it})")
             } else {
-                format!("let mut {bind}: RE = {rust_it};")
+                rust_it.clone()
             };
-            (rust_it, sync, true)
+            // `__loc_I` is owned in the procedure that declares it, and a
+            // `&mut` parameter once a nested procedure captures it.
+            let star = if matches!(existing.scope, VariableScope::Arg | VariableScope::Higher) {
+                "*"
+            } else {
+                ""
+            };
+            (rust_it, format!("{star}{bind} = {rhs};"), true)
         } else {
             (iter.clone(), String::new(), false)
         };
