@@ -38,6 +38,7 @@
 //!
 //! - **[`scrlen`]** — `SCRLEN c;` — DA scratch size (set, or query if `c < 0`)
 //! - **[`pnpro`]** — `PNPRO var;` — number of concurrent processes
+//! - **[`proot`]** — `PROOT var;` — 1 on the root of the current PLOOP group, else 0
 
 pub mod argget;
 pub mod assign;
@@ -57,6 +58,7 @@ pub mod ploop;
 pub mod pnpro;
 pub mod procedure;
 pub mod procedure_call;
+pub mod proot;
 pub mod quit;
 pub mod ranseed;
 pub mod recst;

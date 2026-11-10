@@ -18,6 +18,15 @@ impl RosyMPIContext {
         Ok(Self { size: 1, rank: 0 })
     }
 
+    pub fn ploop_enter(&mut self, _num_groups: RE) {}
+
+    pub fn ploop_exit(&mut self) {}
+
+    /// COSY `PROOT`. One process is always the root.
+    pub fn proot(&self) -> RE {
+        1.0
+    }
+
     pub fn get_group_num(&self, num_groups: &mut RE) -> Result<RE> {
         let num_groups = *num_groups as i32;
         ensure!(
@@ -30,9 +39,31 @@ impl RosyMPIContext {
         Ok((self.rank / processes_per_group) as RE)
     }
 
+    pub fn sync_extent(&self, len: usize) -> Result<usize> {
+        Ok(len)
+    }
+
     pub fn coordinate<T>(
         &self,
         _value: &mut Vec<T>,
+        _communication_standard: u8,
+        _num_groups: &mut RE,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    pub fn coordinate_rows<T>(
+        &self,
+        _rows: &mut Vec<Vec<T>>,
+        _communication_standard: u8,
+        _num_groups: &mut RE,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    pub fn coordinate_grid<T>(
+        &self,
+        _grid: &mut Vec<Vec<Vec<T>>>,
         _communication_standard: u8,
         _num_groups: &mut RE,
     ) -> Result<()> {

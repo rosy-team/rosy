@@ -14,6 +14,7 @@
 //! ```
 
 use anyhow::{Context, Error, Result, ensure};
+use rosy_lib::RosyType;
 use std::collections::BTreeSet;
 
 use crate::{
@@ -79,11 +80,22 @@ impl Transpile for PnproStatement {
 
         // Returns the total number of MPI processes. In serial mode (no
         // `mpirun`), MPI initializes with size = 1, so this still yields 1.0.
+        // Fox procedure arguments are ANY cells, so the real has to be boxed.
+        let ty = self.identifier.type_of(context).map_err(|e| vec![e])?;
+        if ty != RosyType::RE() && !ty.is_any() {
+            return Err(vec![anyhow::anyhow!(
+                "PNPRO target '{}' must be RE, found {}",
+                self.identifier.name,
+                ty
+            )]);
+        }
+        let rhs = if ty.is_any() {
+            "RosyValue::from(rosy_mpi_context.size as f64)"
+        } else {
+            "rosy_mpi_context.size as f64"
+        };
         requested_variables.insert("rosy_mpi_context".to_string());
-        let serialization = format!(
-            "{}{} = rosy_mpi_context.size as f64;",
-            dereference, output.serialization
-        );
+        let serialization = format!("{dereference}{} = {rhs};", output.serialization);
 
         Ok(TranspilationOutput {
             serialization,

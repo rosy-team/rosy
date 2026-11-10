@@ -44,6 +44,7 @@
 //! | Set RNG seed | **[`core::ranseed`]** |
 //! | Get imaginary unit | **[`core::imunit`]** |
 //! | Get process count | **[`core::pnpro`]** |
+//! | Test for the root process | **[`core::proot`]** |
 //! | Matrix operations | **[`math::linv`]**, **[`math::ldet`]**, **[`math::lev`]**, **[`math::mblock`]** |
 //! | Polynomial evaluation | **[`math::polval`]** |
 //! | Vector math | **[`math::vedot`]**, **[`math::veunit`]**, **[`math::vezero`]** |
@@ -120,6 +121,7 @@ pub use core::memdpv::MemdpvStatement;
 pub use core::memfre::MemfreStatement;
 pub use core::memwrt::MemwrtStatement;
 pub use core::pnpro::PnproStatement;
+pub use core::proot::ProotStatement;
 pub use core::ranseed::RanseedStatement;
 pub use core::recst::RecstStatement;
 pub use core::reran::ReranStatement;
@@ -675,6 +677,15 @@ impl FromRule for Statement {
                 }),
             Rule::pnpro => PnproStatement::from_rule(pair)
                 .context("...while building PNPRO statement!")
+                .with_location(&loc)
+                .map(|opt| {
+                    opt.map(|stmt| Statement {
+                        inner: stmt.into(),
+                        source_location: loc.clone(),
+                    })
+                }),
+            Rule::proot => ProotStatement::from_rule(pair)
+                .context("...while building PROOT statement!")
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {
