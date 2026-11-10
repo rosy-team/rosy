@@ -15,15 +15,13 @@ use std::fmt;
 use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
 
 use super::config::{MULT_INVALID, TaylorRuntime, get_runtime};
-use super::scratch::scratch_reserve;
 use super::{MAX_VARS, Monomial};
 
-/// Best-effort bump reserve for one operator result. Drop restores the cursor.
-/// Misses fall through: named DA results still live in the coeff pool.
-#[inline]
-fn account_result_temp(n: usize) -> super::scratch::ScratchFrame {
-    scratch_reserve(n)
-}
+/// Was a SCRLEN reservation for each operator result, released before the
+/// operator returned, so nothing ever read it. Three thread-local accesses
+/// per DA op for no effect; kept as a no-op so call sites stay readable.
+#[inline(always)]
+fn account_result_temp(_n: usize) {}
 
 // ============================================================================
 // Coefficient trait + pool
@@ -52,17 +50,70 @@ pub trait DACoefficient:
     fn pool_alloc(n: usize) -> Vec<Self>;
     /// Return a Vec to the thread-local free list for reuse.
     fn pool_return(v: Vec<Self>);
+
+    /// Coefficients and an empty nonzero list (room for `cap`) together.
+    #[inline]
+    fn pool_alloc_da(n: usize, cap: usize) -> (Vec<Self>, Vec<u32>) {
+        (Self::pool_alloc(n), nz_alloc(cap))
+    }
+    /// Give back both buffers of a dropped DA.
+    #[inline]
+    fn pool_return_da(v: Vec<Self>, nz: Vec<u32>) {
+        Self::pool_return(v);
+        nz_return(nz);
+    }
 }
 
 // ── f64 pool ────────────────────────────────────────────────────────────────
 
-thread_local! {
-    static F64_POOL: RefCell<Vec<Vec<f64>>> = RefCell::new(Vec::new());
-    static BITSET_POOL: RefCell<Vec<Vec<u64>>> = RefCell::new(Vec::new());
+/// Free lists for `f64` coefficient arrays and for nonzero lists (shared by
+/// every coefficient type). One const thread-local, so an operator touches
+/// thread-local storage once to allocate and once to drop.
+struct DaPool {
+    f64s: Vec<Vec<f64>>,
+    nz: Vec<Vec<u32>>,
 }
 
 thread_local! {
-    static NZ_POOL: RefCell<Vec<Vec<u32>>> = const { RefCell::new(Vec::new()) };
+    static DA_POOL: std::cell::UnsafeCell<DaPool> = const {
+        std::cell::UnsafeCell::new(DaPool { f64s: Vec::new(), nz: Vec::new() })
+    };
+    static BITSET_POOL: RefCell<Vec<Vec<u64>>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Run `f` on the pool. `f` must not call back into the pool.
+#[inline(always)]
+fn with_da_pool<R>(f: impl FnOnce(&mut DaPool) -> R) -> Option<R> {
+    // SAFETY: single thread, and no closure passed here re-enters the pool.
+    DA_POOL.try_with(|cell| f(unsafe { &mut *cell.get() })).ok()
+}
+
+#[inline(always)]
+fn take_f64s(pool: &mut DaPool, n: usize) -> Vec<f64> {
+    while let Some(v) = pool.f64s.pop() {
+        if v.len() == n {
+            return v; // zeroed on return
+        }
+        // Wrong size (DAINI changed parameters): drop it.
+    }
+    vec![0.0; n]
+}
+
+#[inline(always)]
+fn take_nz(pool: &mut DaPool, cap: usize) -> Vec<u32> {
+    let mut v = pool.nz.pop().unwrap_or_default();
+    v.clear();
+    if v.capacity() < cap {
+        v.reserve(cap);
+    }
+    v
+}
+
+#[inline(always)]
+fn give_nz(pool: &mut DaPool, v: Vec<u32>) {
+    if v.capacity() != 0 && pool.nz.len() < 4096 {
+        pool.nz.push(v);
+    }
 }
 
 /// An empty nonzero list with room for `cap` entries, reused from a
@@ -71,16 +122,7 @@ thread_local! {
 /// was about a third of each add or multiply.
 #[inline]
 pub(crate) fn nz_alloc(cap: usize) -> Vec<u32> {
-    let mut v = NZ_POOL
-        .try_with(|pool| pool.borrow_mut().pop())
-        .ok()
-        .flatten()
-        .unwrap_or_default();
-    v.clear();
-    if v.capacity() < cap {
-        v.reserve(cap);
-    }
-    v
+    with_da_pool(|p| take_nz(p, cap)).unwrap_or_else(|| Vec::with_capacity(cap))
 }
 
 #[inline]
@@ -88,12 +130,7 @@ pub(crate) fn nz_return(v: Vec<u32>) {
     if v.capacity() == 0 {
         return;
     }
-    let _ = NZ_POOL.try_with(|pool| {
-        let mut pool = pool.borrow_mut();
-        if pool.len() < 4096 {
-            pool.push(v);
-        }
-    });
+    with_da_pool(|p| give_nz(p, v));
 }
 
 /// Copy of a nonzero list in a pooled buffer.
@@ -186,31 +223,40 @@ impl DACoefficient for f64 {
         f64::abs(*self)
     }
 
+    #[inline]
     fn pool_alloc(n: usize) -> Vec<Self> {
-        F64_POOL.with(|pool| {
-            let mut pool = pool.borrow_mut();
-            while let Some(v) = pool.pop() {
-                if v.len() == n {
-                    return v; // Pre-zeroed from clear-on-return
-                }
-                // Wrong size (DAINI changed parameters), discard
-            }
-            vec![0.0; n]
-        })
+        with_da_pool(|p| take_f64s(p, n)).unwrap_or_else(|| vec![0.0; n])
     }
 
+    #[inline]
     fn pool_return(v: Vec<Self>) {
         if v.is_empty() {
             return;
         }
-        F64_POOL.with(|pool| pool.borrow_mut().push(v));
+        with_da_pool(|p| p.f64s.push(v));
+    }
+
+    #[inline]
+    fn pool_alloc_da(n: usize, cap: usize) -> (Vec<Self>, Vec<u32>) {
+        with_da_pool(|p| (take_f64s(p, n), take_nz(p, cap)))
+            .unwrap_or_else(|| (vec![0.0; n], Vec::with_capacity(cap)))
+    }
+
+    #[inline]
+    fn pool_return_da(v: Vec<Self>, nz: Vec<u32>) {
+        with_da_pool(|p| {
+            if !v.is_empty() {
+                p.f64s.push(v);
+            }
+            give_nz(p, nz);
+        });
     }
 }
 
 // ── Complex64 pool ──────────────────────────────────────────────────────────
 
 thread_local! {
-    static C64_POOL: RefCell<Vec<Vec<Complex64>>> = RefCell::new(Vec::new());
+    static C64_POOL: RefCell<Vec<Vec<Complex64>>> = const { RefCell::new(Vec::new()) };
 }
 
 impl DACoefficient for Complex64 {
@@ -312,13 +358,16 @@ impl<T: DACoefficient> Clone for DA<T> {
         // Copy every stored term. DANOT truncates results of operations,
         // it does not erase coefficients already sitting in a value.
         // COSY still differentiates a stored x^2 after DANOT 1.
-        let mut coeffs = T::pool_alloc(n);
+        let (mut coeffs, mut nonzero) = T::pool_alloc_da(n, self.nonzero.len());
         for &i in &self.nonzero {
             coeffs[i as usize] = self.coeffs[i as usize];
         }
         Self {
             coeffs,
-            nonzero: nz_copy(&self.nonzero),
+            nonzero: {
+                nonzero.extend_from_slice(&self.nonzero);
+                nonzero
+            },
         }
     }
 }
@@ -334,8 +383,7 @@ impl<T: DACoefficient> Drop for DA<T> {
             self.coeffs[i as usize] = T::zero();
         }
         let v = std::mem::take(&mut self.coeffs);
-        T::pool_return(v);
-        nz_return(std::mem::take(&mut self.nonzero));
+        T::pool_return_da(v, std::mem::take(&mut self.nonzero));
     }
 }
 
@@ -382,8 +430,7 @@ impl<T: DACoefficient> DA<T> {
     pub fn from_coeff(value: T) -> Self {
         let rt = get_runtime().expect("Taylor system not initialized");
         let epsilon = rt.config.epsilon;
-        let mut coeffs = T::pool_alloc(rt.num_monomials);
-        let mut nonzero = nz_alloc(1);
+        let (mut coeffs, mut nonzero) = T::pool_alloc_da(rt.num_monomials, 1);
         if value.abs() > epsilon {
             coeffs[0] = value;
             nonzero.push(0);
@@ -571,7 +618,8 @@ impl<T: DACoefficient> Add<&DA<T>> for &DA<T> {
         let words = (n + 63) / 64;
         let mut self_set = bitset_pool_alloc(words);
 
-        let mut coeffs = T::pool_alloc(n);
+        let (mut coeffs, mut nonzero) =
+            T::pool_alloc_da(n, (self.nonzero.len() + rhs.nonzero.len()).min(n));
         for &i in &self.nonzero {
             let iu = i as usize;
             if orders[iu] <= max_order {
@@ -587,7 +635,6 @@ impl<T: DACoefficient> Add<&DA<T>> for &DA<T> {
             }
         }
 
-        let mut nonzero = nz_alloc((self.nonzero.len() + rhs.nonzero.len()).min(n));
         let mut result_set = bitset_pool_alloc(words);
         for &i in &self.nonzero {
             let iu = i as usize;
@@ -617,6 +664,75 @@ impl<T: DACoefficient> Add<&DA<T>> for &DA<T> {
         bitset_pool_return(self_set);
         bitset_pool_return(result_set);
         Ok(DA { coeffs, nonzero })
+    }
+}
+
+impl<T: DACoefficient> DA<T> {
+    /// `self := self + rhs` in place. Same truncation, cutoff, and term
+    /// order as `&self + rhs` (self's terms first, then rhs's new ones), so
+    /// the result is bit-identical; it skips the new result buffer, the copy
+    /// of self, and dropping the old value. PHAD's SIMO loop runs
+    /// `PHI(I) := PHI(I) + ...` and `OUTPUT(1) := OUTPUT(1) + ...` per pair.
+    pub fn add_assign_exact(&mut self, rhs: &DA<T>) -> Result<()> {
+        let rt = get_runtime()?;
+        let n = rt.num_monomials;
+        if self.coeffs.len() != n || rhs.coeffs.len() != n {
+            *self = (&*self + rhs)?;
+            return Ok(());
+        }
+        let epsilon = rt.config.epsilon;
+        let max_order = rt.config.max_order as u8;
+        let orders = &rt.monomial_orders;
+        let words = n.div_ceil(64);
+
+        let mut self_set = bitset_pool_alloc(words);
+        for &i in &self.nonzero {
+            let iu = i as usize;
+            if orders[iu] <= max_order {
+                self_set[iu / 64] |= 1u64 << (iu % 64);
+            } else {
+                self.coeffs[iu] = T::zero();
+            }
+        }
+        for &j in &rhs.nonzero {
+            let ju = j as usize;
+            if orders[ju] <= max_order {
+                self.coeffs[ju] = self.coeffs[ju] + rhs.coeffs[ju];
+            }
+        }
+
+        let old = std::mem::take(&mut self.nonzero);
+        let mut nonzero = nz_alloc((old.len() + rhs.nonzero.len()).min(n));
+        let mut result_set = bitset_pool_alloc(words);
+        for &i in &old {
+            let iu = i as usize;
+            if orders[iu] <= max_order && self.coeffs[iu].abs() > epsilon {
+                if result_set[iu / 64] & (1u64 << (iu % 64)) == 0 {
+                    nonzero.push(i);
+                    result_set[iu / 64] |= 1u64 << (iu % 64);
+                }
+            } else {
+                self.coeffs[iu] = T::zero();
+            }
+        }
+        for &j in &rhs.nonzero {
+            let ju = j as usize;
+            if self_set[ju / 64] & (1u64 << (ju % 64)) == 0 {
+                if orders[ju] <= max_order && self.coeffs[ju].abs() > epsilon {
+                    if result_set[ju / 64] & (1u64 << (ju % 64)) == 0 {
+                        nonzero.push(j);
+                        result_set[ju / 64] |= 1u64 << (ju % 64);
+                    }
+                } else {
+                    self.coeffs[ju] = T::zero();
+                }
+            }
+        }
+        nz_return(old);
+        bitset_pool_return(self_set);
+        bitset_pool_return(result_set);
+        self.nonzero = nonzero;
+        Ok(())
     }
 }
 
@@ -698,7 +814,8 @@ impl<T: DACoefficient> Sub<&DA<T>> for &DA<T> {
         let words = (n + 63) / 64;
         let mut self_set = bitset_pool_alloc(words);
 
-        let mut coeffs = T::pool_alloc(n);
+        let (mut coeffs, mut nonzero) =
+            T::pool_alloc_da(n, (self.nonzero.len() + rhs.nonzero.len()).min(n));
         for &i in &self.nonzero {
             let iu = i as usize;
             if orders[iu] <= max_order {
@@ -714,7 +831,6 @@ impl<T: DACoefficient> Sub<&DA<T>> for &DA<T> {
             }
         }
 
-        let mut nonzero = nz_alloc((self.nonzero.len() + rhs.nonzero.len()).min(n));
         let mut result_set = bitset_pool_alloc(words);
         for &i in &self.nonzero {
             let iu = i as usize;
@@ -929,7 +1045,7 @@ impl<T: DACoefficient> Mul<&DA<T>> for &DA<T> {
         let order_check = max_order < rt.init_order;
 
         let _scratch = account_result_temp(n);
-        let mut result = T::pool_alloc(n);
+        let (mut result, mut nonzero) = T::pool_alloc_da(n, n);
 
         // Dense operands: walk only the valid index triples. An order-6,
         // 3-variable product (PHAD's FMM) is 924 of them, not 84*84 lookups.
@@ -994,7 +1110,6 @@ impl<T: DACoefficient> Mul<&DA<T>> for &DA<T> {
                 result[gk[g] as usize] = acc;
                 g += 1;
             }
-            let mut nonzero = nz_alloc(n);
             for (idx, c) in result.iter_mut().enumerate() {
                 if c.abs() > epsilon {
                     nonzero.push(idx as u32);
@@ -1043,7 +1158,6 @@ impl<T: DACoefficient> Mul<&DA<T>> for &DA<T> {
             }
         }
 
-        let mut nonzero = nz_alloc((self.nonzero.len() * rhs.nonzero.len()).min(n));
         for word_idx in 0..words {
             let mut word = written[word_idx];
             while word != 0 {
@@ -1105,8 +1219,7 @@ impl<T: DACoefficient> Mul<T> for &DA<T> {
             return Ok(DA::zero());
         }
         let _scratch = account_result_temp(rt.num_monomials);
-        let mut coeffs = T::pool_alloc(rt.num_monomials);
-        let mut nonzero = nz_alloc(self.nonzero.len());
+        let (mut coeffs, mut nonzero) = T::pool_alloc_da(rt.num_monomials, self.nonzero.len());
         for &i in &self.nonzero {
             let scaled = self.coeffs[i as usize] * rhs;
             if scaled.abs() > epsilon {
@@ -1154,8 +1267,47 @@ impl<T: DACoefficient> Div<&DA<T>> for &DA<T> {
         g_entries.sort_unstable_by_key(|&(i, _)| i);
 
         let _scratch = account_result_temp(n);
-        let mut result = T::pool_alloc(n);
-        let mut nonzero = nz_alloc(n);
+        let (mut result, mut nonzero) = T::pool_alloc_da(n, n);
+
+        let cut = (max_order as usize).min(rt.dense_group_prefix.len().saturating_sub(1));
+        if !rt.dense_ij.is_empty() && cut < rt.dense_group_prefix.len() {
+            // `dense_pairs` grouped by output `k` lists every (g, d) with
+            // g * d == k, ascending in g: the same terms in the same order as
+            // the loops below. A zero divisor term adds exactly 0.
+            let ng = rt.dense_group_prefix[cut];
+            let groups = &rt.dense_groups[..=ng];
+            let ij = &rt.dense_ij;
+            let gk = &rt.dense_group_k;
+            let rc = &rhs.coeffs;
+            assert!(rc.len() >= n && self.coeffs.len() >= n);
+            assert!(groups.last().is_some_and(|&e| e as usize <= ij.len()));
+            for g in 0..ng {
+                let k = gk[g] as usize;
+                let mut sum = T::zero();
+                for t in groups[g] as usize..groups[g + 1] as usize {
+                    // SAFETY: t < ij.len(); packed indices are < n <= rc.len(), result.len().
+                    unsafe {
+                        let p = *ij.get_unchecked(t);
+                        let gi = (p & 0xffff) as usize;
+                        if gi == 0 {
+                            continue;
+                        }
+                        sum = rc
+                            .get_unchecked(gi)
+                            .mul_add(*result.get_unchecked((p >> 16) as usize), sum);
+                    }
+                }
+                let q_m = (self.coeffs[k] - sum) * g0_inv;
+                if q_m.abs() > epsilon {
+                    result[k] = q_m;
+                    nonzero.push(k as u32);
+                }
+            }
+            return Ok(DA {
+                coeffs: result,
+                nonzero,
+            });
+        }
 
         if let Some(quot) = &rt.quot_table {
             // Same terms in the same order as the exponent search below.

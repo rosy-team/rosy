@@ -88,7 +88,7 @@ fn homog_mul_scaled_add(
 
 fn copy_buf_to_da(n: usize, buf: &[f64], epsilon: f64) -> DA<f64> {
     let mut coeffs = f64::pool_alloc(n);
-    let mut nonzero = Vec::new();
+    let mut nonzero = crate::taylor::da::nz_alloc(n);
     for (i, &v) in buf.iter().enumerate() {
         if v.abs() > epsilon {
             coeffs[i] = v;
