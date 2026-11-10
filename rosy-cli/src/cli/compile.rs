@@ -142,6 +142,23 @@ pub(crate) fn compile_source(
             )
         })?;
 
+    // A COSY procedure Rosy does not know compiles to nothing. Say so: a
+    // silent PROOT was why PHAD reused its first positions every step.
+    if !quiet {
+        let marker = "/* unimplemented COSY proc ";
+        let mut missing = std::collections::BTreeMap::<&str, usize>::new();
+        for piece in serialization.split(marker).skip(1) {
+            if let Some(name) = piece.split(" */").next() {
+                *missing.entry(name).or_default() += 1;
+            }
+        }
+        for (name, uses) in &missing {
+            eprintln!(
+                "{BOLD}{YELLOW}    warning{RESET}: COSY procedure {name} is not implemented; {uses} call(s) do nothing"
+            );
+        }
+    }
+
     // Context is injected whenever PNPRO/PLOOP mention it. The `mpi` crate
     // (and libffi) is only enabled for real parallel ops — serial PNPRO uses
     // the size=1 stub in rosy-lib.
