@@ -83,42 +83,71 @@ impl PolvalAnySrc for Vec<Vec<f64>> {
 }
 
 pub trait PolvalAnyDst {
-    fn store_polval_any(&mut self, v: Vec<RosyValue>);
+    fn store_polval_any(&mut self, v: Vec<RosyValue>) -> Result<()>;
+}
+
+/// A result that is a list of values (one per ray) cannot go into a cell
+/// typed as one real or one DA. Dropping all but the first value is what hid
+/// PHAD's missing far-field kicks, so refuse instead.
+fn single_polval_cell(i: usize, x: &RosyValue) -> Result<()> {
+    let n = match x {
+        RosyValue::VE(v) => v.len(),
+        RosyValue::Arr(v) => v.len(),
+        _ => 1,
+    };
+    if n > 1 {
+        anyhow::bail!(
+            "POLVAL result {} has {} values, but the result array holds one value per entry",
+            i + 1,
+            n
+        );
+    }
+    Ok(())
 }
 impl PolvalAnyDst for Vec<RosyValue> {
-    fn store_polval_any(&mut self, v: Vec<RosyValue>) {
+    fn store_polval_any(&mut self, v: Vec<RosyValue>) -> Result<()> {
         if v.len() > self.len() {
             self.resize(v.len(), RosyValue::RE(0.0));
         }
         for (i, x) in v.into_iter().enumerate() {
             self[i] = x;
         }
+        Ok(())
     }
 }
 impl PolvalAnyDst for RosyValue {
-    fn store_polval_any(&mut self, v: Vec<RosyValue>) {
+    fn store_polval_any(&mut self, v: Vec<RosyValue>) -> Result<()> {
         if v.len() == 1 {
             *self = v.into_iter().next().unwrap();
         } else {
             *self = RosyValue::Arr(v);
         }
+        Ok(())
     }
 }
 impl PolvalAnyDst for Vec<DA> {
-    fn store_polval_any(&mut self, v: Vec<RosyValue>) {
+    fn store_polval_any(&mut self, v: Vec<RosyValue>) -> Result<()> {
+        for (i, x) in v.iter().enumerate() {
+            single_polval_cell(i, x)?;
+        }
         *self = v
             .into_iter()
             .map(|x| x.expect_da().unwrap_or_else(|_| DA::zero()))
             .collect();
+        Ok(())
     }
 }
 impl PolvalAnyDst for Vec<f64> {
-    fn store_polval_any(&mut self, v: Vec<RosyValue>) {
+    fn store_polval_any(&mut self, v: Vec<RosyValue>) -> Result<()> {
+        for (i, x) in v.iter().enumerate() {
+            single_polval_cell(i, x)?;
+        }
         *self = v.into_iter().map(|x| x.as_f64()).collect();
+        Ok(())
     }
 }
 impl PolvalAnyDst for Vec<Vec<f64>> {
-    fn store_polval_any(&mut self, v: Vec<RosyValue>) {
+    fn store_polval_any(&mut self, v: Vec<RosyValue>) -> Result<()> {
         *self = v
             .into_iter()
             .map(|c| match c {
@@ -127,6 +156,7 @@ impl PolvalAnyDst for Vec<Vec<f64>> {
                 other => vec![other.as_f64()],
             })
             .collect();
+        Ok(())
     }
 }
 
@@ -164,7 +194,7 @@ pub fn rosy_polval_any(
     if p_cells.iter().any(rosy_value_is_cd) || a_cells.iter().any(rosy_value_is_cd) {
         let mut out: Vec<CD> = Vec::new();
         rosy_polval_cd(lv, &p_cells, np, &a_cells, na, &mut out, nr)?;
-        r_array.store_polval_any(out.into_iter().map(RosyValue::CD).collect());
+        r_array.store_polval_any(out.into_iter().map(RosyValue::CD).collect())?;
         return Ok(());
     }
     match a_cells.first() {
@@ -184,7 +214,7 @@ pub fn rosy_polval_any(
                 &mut out,
                 crate::rosy_as_usize(&nr.into_f64()),
             )?;
-            r_array.store_polval_any(out.into_iter().map(RosyValue::DA).collect());
+            r_array.store_polval_any(out.into_iter().map(RosyValue::DA).collect())?;
             Ok(())
         }
         Some(RosyValue::Arr(_)) | Some(RosyValue::VE(_)) => {
@@ -211,13 +241,13 @@ pub fn rosy_polval_any(
                 out.into_iter()
                     .map(|col| RosyValue::Arr(col.into_iter().map(RosyValue::RE).collect()))
                     .collect(),
-            );
+            )?;
             Ok(())
         }
         _ => {
             let mut out: Vec<RosyValue> = Vec::new();
             rosy_polval_re(lv, p_array, np, &a_cells, na, &mut out, nr)?;
-            r_array.store_polval_any(out);
+            r_array.store_polval_any(out)?;
             Ok(())
         }
     }

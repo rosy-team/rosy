@@ -997,6 +997,7 @@ impl TypeResolver {
             self.resolve_real_cycles(&leftover_fox);
         }
         self.reopen_mixed_reals();
+        self.sync_mirrors();
         if self
             .nodes
             .values()
@@ -1461,6 +1462,35 @@ impl TypeResolver {
             }
         }
         self.refine_real_uses();
+    }
+
+    /// A mirror copied its source while the source still had its first type.
+    /// The reopen pass can retype that source (`POINTS` becomes a list of
+    /// vectors), so copy it again. PHAD's `POLVAL ... POINTS 3 RESULT 3` kept
+    /// `RESULT` as one real per entry and lost every far-field kick after
+    /// the first particle in a leaf.
+    fn sync_mirrors(&mut self) {
+        for _ in 0..=self.nodes.len() {
+            let stale: Vec<(TypeSlot, RosyType)> = self
+                .nodes
+                .iter()
+                .filter_map(|(slot, node)| {
+                    let ResolutionRule::Mirror { source, .. } = &node.rule else {
+                        return None;
+                    };
+                    let src = self.nodes.get(source)?.resolved?;
+                    (node.resolved != Some(src)).then(|| (slot.clone(), src))
+                })
+                .collect();
+            if stale.is_empty() {
+                return;
+            }
+            for (slot, ty) in stale {
+                if let Some(node) = self.nodes.get_mut(&slot) {
+                    node.resolved = Some(ty);
+                }
+            }
+        }
     }
 
     /// A COSY cell can hold a real on one path and a series on another:
