@@ -700,6 +700,7 @@ impl ToRosy for RosyValue {
     fn index_re(&self, i: f64) -> Option<RosyValue> {
         match self {
             RosyValue::VE(v) => v.index_re(i),
+            RosyValue::ST(st) => st.index_re(i),
             // One element peels to that cell, so `DA|k` stays a coefficient.
             RosyValue::Arr(items) if items.len() > 1 => {
                 items.get((i.round() as usize).wrapping_sub(1)).cloned()
@@ -710,6 +711,7 @@ impl ToRosy for RosyValue {
     fn slice_re(&self, start: usize, end: usize) -> Option<RosyValue> {
         match self {
             RosyValue::VE(v) => v.slice_re(start, end),
+            RosyValue::ST(st) => st.slice_re(start, end),
             // A series in the range stays a list of series on the full path.
             // Only the range is checked: scanning the whole list made every
             // `snumbs|(a&b)` cost the length of `snumbs`.
@@ -740,6 +742,17 @@ impl ToRosy for f64 {
 impl ToRosy for String {
     fn to_rosy(&self) -> Cow<'_, RosyValue> {
         Cow::Owned(RosyValue::ST(self.clone()))
+    }
+    /// `LINE|I` on ASCII text, in bounds: that one character, without
+    /// copying LINE first. Anything else takes the full path and its errors.
+    fn index_re(&self, i: f64) -> Option<RosyValue> {
+        let idx = i.round() as usize;
+        (idx >= 1 && idx <= self.len() && self.is_ascii())
+            .then(|| RosyValue::ST(char::from(self.as_bytes()[idx - 1]).to_string()))
+    }
+    fn slice_re(&self, start: usize, end: usize) -> Option<RosyValue> {
+        (range_ok(start, end, self.len()) && self.is_ascii())
+            .then(|| RosyValue::ST(self[start - 1..end].to_string()))
     }
 }
 impl ToRosy for bool {

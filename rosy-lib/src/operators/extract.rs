@@ -34,6 +34,12 @@ impl RosyExtract<&RE> for &ST {
             bail!("String index {} out of bounds (1-{})", idx, self.len());
         }
 
+        // ASCII: the character is the byte. PHAD's PARSETEXT reads each input
+        // line one `LINE|I` at a time; walking `chars()` made that quadratic.
+        if self.is_ascii() {
+            return Ok(char::from(self.as_bytes()[idx - 1]).to_string());
+        }
+
         // Rosy uses 1-based indexing
         let char_at_idx = self
             .chars()
@@ -65,6 +71,11 @@ impl RosyExtract<&VE> for &ST {
                 end,
                 self.len()
             );
+        }
+
+        // ASCII: characters are bytes, so slice directly.
+        if self.is_ascii() {
+            return Ok(self[start - 1..end].to_string());
         }
 
         // Rosy uses 1-based indexing
