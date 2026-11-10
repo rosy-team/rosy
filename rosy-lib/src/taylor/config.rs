@@ -92,6 +92,13 @@ pub struct TaylorRuntime {
     /// Parent always has a strictly smaller flat index (graded order).
     pub horner_parent: Vec<u32>,
     pub horner_var: Vec<u8>,
+    /// Every `(i, j, k)` with monomial_i × monomial_j = monomial_k within
+    /// `init_order`, sorted by the order of `k`, then `i`, then `j`. Empty when
+    /// there is no `mult_table`. A product of two dense series walks this
+    /// list instead of all `n*n` index pairs.
+    pub dense_pairs: Vec<[u32; 3]>,
+    /// `dense_pairs[..dense_prefix[o]]` are the pairs whose product has order `<= o`.
+    pub dense_prefix: Vec<usize>,
 }
 
 /// Read guard wrapper that dereferences directly to `TaylorRuntime`.
@@ -172,6 +179,10 @@ pub fn get_filter_da() -> Result<Option<Vec<super::da::DA<f64>>>> {
 /// # Arguments
 /// * `max_order` - Maximum order of Taylor expansions
 /// * `num_vars` - Number of variables (≤ MAX_VARS)
+/// The truncation epsilon last set by DAEPS, kept across DAINI.
+static CURRENT_EPSILON: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(DEFAULT_EPSILON.to_bits());
+
 pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
     let mut guard = TAYLOR_RUNTIME
         .write()
@@ -181,7 +192,10 @@ pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
         bail!("Taylor system already initialized. Call cleanup_taylor() first.");
     }
 
-    let config = TaylorConfig::new(max_order, num_vars, DEFAULT_EPSILON)?;
+    // DAEPS outlives DAINI, as in COSY. PHAD sets 1e-100 in its integrator
+    // and then re-initializes for the FMM.
+    let epsilon = f64::from_bits(CURRENT_EPSILON.load(std::sync::atomic::Ordering::Relaxed));
+    let config = TaylorConfig::new(max_order, num_vars, epsilon)?;
 
     // Consume the weight vector (set by DANOTW, if any)
     let weights = take_weight_vector()?;
@@ -235,6 +249,30 @@ pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
         Some(table)
     } else {
         None
+    };
+    let (dense_pairs, dense_prefix) = match &mult_table {
+        Some(table) => {
+            let n = num_monomials;
+            let mut pairs: Vec<[u32; 3]> = Vec::new();
+            for i in 0..n {
+                for j in 0..n {
+                    let k = table[i * n + j];
+                    if k != MULT_INVALID {
+                        pairs.push([i as u32, j as u32, k]);
+                    }
+                }
+            }
+            // Same order of accumulation into each `k` as the sparse loop.
+            pairs.sort_by_key(|&[i, j, k]| (monomial_orders[k as usize], i, j));
+            let top = monomial_orders.iter().copied().max().unwrap_or(0) as usize;
+            let mut prefix = vec![0usize; top + 2];
+            for o in 0..prefix.len() {
+                prefix[o] =
+                    pairs.partition_point(|&[_, _, k]| (monomial_orders[k as usize] as usize) <= o);
+            }
+            (pairs, prefix)
+        }
+        None => (Vec::new(), Vec::new()),
     };
 
     // Build precomputed derivative/integral index tables (#19 + #21).
@@ -328,6 +366,8 @@ pub fn init_taylor(max_order: u32, num_vars: usize) -> Result<usize> {
         degree_offset,
         horner_parent,
         horner_var,
+        dense_pairs,
+        dense_prefix,
     });
 
     Ok(num_monomials)
@@ -411,6 +451,7 @@ pub fn set_epsilon(epsilon: f64) -> Result<f64> {
         .ok_or_else(|| anyhow::anyhow!("Taylor system not initialized"))?;
     let old = rt.config.epsilon;
     rt.config.epsilon = epsilon;
+    CURRENT_EPSILON.store(epsilon.to_bits(), std::sync::atomic::Ordering::Relaxed);
     Ok(old)
 }
 

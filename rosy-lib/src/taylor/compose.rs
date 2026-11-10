@@ -57,7 +57,7 @@ fn homog_mul_scaled_add(
                 let k = table[row + j];
                 if k != MULT_INVALID {
                     let slot = unsafe { &mut *out.add(k as usize) };
-                    *slot = cis.mul_add(bj, *slot);
+                    *slot = crate::taylor::da::fmadd(cis, bj, *slot);
                 }
             }
         }
@@ -78,7 +78,7 @@ fn homog_mul_scaled_add(
                 if product.within_order(trunc) {
                     if let Some(&k) = rt.monomial_index.get(&product) {
                         let slot = unsafe { &mut *out.add(k as usize) };
-                        *slot = cis.mul_add(bj, *slot);
+                        *slot = crate::taylor::da::fmadd(cis, bj, *slot);
                     }
                 }
             }

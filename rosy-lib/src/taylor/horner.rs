@@ -176,7 +176,7 @@ impl FixedMultiplier {
 
             let mut sum = acc.reduce_sum();
             for p in (start + chunks * LANES)..end {
-                sum = lhs_coeffs[lhs_indices[p] as usize].mul_add(rhs_coeffs[p], sum);
+                sum = super::da::fmadd(lhs_coeffs[lhs_indices[p] as usize], rhs_coeffs[p], sum);
             }
             return sum;
         }
@@ -185,7 +185,7 @@ impl FixedMultiplier {
         {
             let mut sum = 0.0f64;
             for p in start..end {
-                sum = lhs_coeffs[lhs_indices[p] as usize].mul_add(rhs_coeffs[p], sum);
+                sum = super::da::fmadd(lhs_coeffs[lhs_indices[p] as usize], rhs_coeffs[p], sum);
             }
             sum
         }

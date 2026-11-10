@@ -588,14 +588,14 @@ fn eval_polys_at_points(
                         .copy_to_slice(&mut out[base..base + LANES]);
                 }
                 for p in (chunks * LANES)..npart {
-                    out[p] = f64::mul_add(c, mval[mk + p], out[p]);
+                    out[p] = crate::taylor::da::fmadd(c, mval[mk + p], out[p]);
                 }
             }
 
             #[cfg(not(feature = "nightly-simd"))]
             {
                 for p in 0..npart {
-                    out[p] = f64::mul_add(c, mval[mk + p], out[p]);
+                    out[p] = crate::taylor::da::fmadd(c, mval[mk + p], out[p]);
                 }
             }
         }

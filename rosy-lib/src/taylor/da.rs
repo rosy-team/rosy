@@ -178,7 +178,22 @@ pub trait MulAdd {
 impl MulAdd for f64 {
     #[inline(always)]
     fn mul_add(self, a: Self, b: Self) -> Self {
-        f64::mul_add(self, a, b)
+        fmadd(self, a, b)
+    }
+}
+
+/// `x*y + z`. A hardware FMA when the target has one. Otherwise a separate
+/// multiply and add: `f64::mul_add` without the `fma` target feature calls a
+/// software routine, and that call dominated DA products on generic x86-64.
+#[inline(always)]
+pub fn fmadd(x: f64, y: f64, z: f64) -> f64 {
+    #[cfg(any(target_feature = "fma", target_arch = "aarch64"))]
+    {
+        f64::mul_add(x, y, z)
+    }
+    #[cfg(not(any(target_feature = "fma", target_arch = "aarch64")))]
+    {
+        x * y + z
     }
 }
 
@@ -470,7 +485,7 @@ impl<T: DACoefficient> Add<&DA<T>> for &DA<T> {
 
         let _scratch = account_result_temp(n);
         let words = (n + 63) / 64;
-        let mut self_set = vec![0u64; words];
+        let mut self_set = bitset_pool_alloc(words);
 
         let mut coeffs = T::pool_alloc(n);
         for &i in &self.nonzero {
@@ -489,7 +504,7 @@ impl<T: DACoefficient> Add<&DA<T>> for &DA<T> {
         }
 
         let mut nonzero = Vec::with_capacity(self.nonzero.len() + rhs.nonzero.len());
-        let mut result_set = vec![0u64; words];
+        let mut result_set = bitset_pool_alloc(words);
         for &i in &self.nonzero {
             let iu = i as usize;
             if orders[iu] <= max_order && coeffs[iu].abs() > epsilon {
@@ -515,6 +530,8 @@ impl<T: DACoefficient> Add<&DA<T>> for &DA<T> {
             }
         }
 
+        bitset_pool_return(self_set);
+        bitset_pool_return(result_set);
         Ok(DA { coeffs, nonzero })
     }
 }
@@ -595,7 +612,7 @@ impl<T: DACoefficient> Sub<&DA<T>> for &DA<T> {
 
         let _scratch = account_result_temp(n);
         let words = (n + 63) / 64;
-        let mut self_set = vec![0u64; words];
+        let mut self_set = bitset_pool_alloc(words);
 
         let mut coeffs = T::pool_alloc(n);
         for &i in &self.nonzero {
@@ -614,7 +631,7 @@ impl<T: DACoefficient> Sub<&DA<T>> for &DA<T> {
         }
 
         let mut nonzero = Vec::with_capacity(self.nonzero.len() + rhs.nonzero.len());
-        let mut result_set = vec![0u64; words];
+        let mut result_set = bitset_pool_alloc(words);
         for &i in &self.nonzero {
             let iu = i as usize;
             if orders[iu] <= max_order && coeffs[iu].abs() > epsilon {
@@ -640,6 +657,8 @@ impl<T: DACoefficient> Sub<&DA<T>> for &DA<T> {
             }
         }
 
+        bitset_pool_return(self_set);
+        bitset_pool_return(result_set);
         Ok(DA { coeffs, nonzero })
     }
 }
@@ -828,6 +847,31 @@ impl<T: DACoefficient> Mul<&DA<T>> for &DA<T> {
         let _scratch = account_result_temp(n);
         let mut result = T::pool_alloc(n);
 
+        // Dense operands: walk only the valid index triples. An order-6,
+        // 3-variable product (PHAD's FMM) is 924 of them, not 84*84 lookups.
+        let cut = (max_order as usize).min(rt.dense_prefix.len().saturating_sub(1));
+        let dense_len = rt.dense_prefix.get(cut).copied().unwrap_or(0);
+        if dense_len > 0 && self.nonzero.len() * rhs.nonzero.len() > dense_len {
+            let a = &self.coeffs;
+            let b = &rhs.coeffs;
+            for &[i, j, k] in &rt.dense_pairs[..dense_len] {
+                let (iu, ju, ku) = (i as usize, j as usize, k as usize);
+                result[ku] = a[iu].mul_add(b[ju], result[ku]);
+            }
+            let mut nonzero = Vec::new();
+            for (idx, c) in result.iter_mut().enumerate() {
+                if c.abs() > epsilon {
+                    nonzero.push(idx as u32);
+                } else {
+                    *c = T::zero();
+                }
+            }
+            return Ok(DA {
+                coeffs: result,
+                nonzero,
+            });
+        }
+
         let words = (n + 63) / 64;
         let mut written = bitset_pool_alloc(words);
 
@@ -938,6 +982,12 @@ impl<T: DACoefficient> Mul<T> for &DA<T> {
     }
 }
 
+/// A divisor constant at or under `DAEPS` is zero. No runtime means exact zero.
+fn da_divisor_vanishes<T: DACoefficient>(g0: T) -> bool {
+    let eps = get_runtime().map(|rt| rt.config.epsilon).unwrap_or(0.0);
+    !g0.abs().is_finite() || g0.abs() <= eps
+}
+
 // ============================================================================
 // Division: order-by-order, pool-allocated
 // ============================================================================
@@ -947,7 +997,9 @@ impl<T: DACoefficient> Div<&DA<T>> for &DA<T> {
 
     fn div(self, rhs: &DA<T>) -> Self::Output {
         let g0 = rhs.coeffs[0];
-        if g0.abs() < 1e-15 {
+        // PHAD sets `DAEPS 10^(-100)`. A constant the algebra kept, such as
+        // 9e-16, is a real divisor. Only a term at or under the cutoff is zero.
+        if da_divisor_vanishes(g0) {
             return Err(anyhow::anyhow!("Division by zero"))
                 .with_context(|| format!("...while dividing with {rhs:#?}"));
         }
@@ -1040,7 +1092,7 @@ impl<T: DACoefficient> Div<T> for DA<T> {
 impl<T: DACoefficient> Div<T> for &DA<T> {
     type Output = Result<DA<T>>;
     fn div(self, rhs: T) -> Self::Output {
-        if rhs.abs() < 1e-15 {
+        if da_divisor_vanishes(rhs) {
             anyhow::bail!("Division by zero");
         }
         let n = self.coeffs.len();
@@ -1237,6 +1289,32 @@ mod tests {
 
         assert_eq!(scaled.num_terms(), 1);
 
+        cleanup_taylor();
+    }
+
+    #[test]
+    #[serial]
+    fn division_allows_a_constant_above_daeps() {
+        cleanup_taylor();
+        init_taylor(4, 1).unwrap();
+        // PHAD uses `DAEPS 10^(-100)`. 9e-16 is a kept coefficient, not zero.
+        set_epsilon(1e-100).unwrap();
+        let tiny = DA::<f64>::from_coeff(9.44e-16);
+        let quot = (&DA::<f64>::from_coeff(1.0) / &tiny).unwrap();
+        let c0 = quot.coeffs[0];
+        assert!((c0 - 1.0 / 9.44e-16).abs() / c0.abs() < 1e-12);
+        cleanup_taylor();
+    }
+
+    #[test]
+    #[serial]
+    fn division_rejects_a_constant_at_or_under_daeps() {
+        cleanup_taylor();
+        init_taylor(2, 1).unwrap();
+        set_epsilon(1e-15).unwrap();
+        let tiny = DA::<f64>::from_coeff(9.44e-16);
+        assert!((&DA::<f64>::from_coeff(1.0) / &tiny).is_err());
+        assert!((&DA::<f64>::from_coeff(1.0) / &DA::<f64>::from_coeff(0.0)).is_err());
         cleanup_taylor();
     }
 

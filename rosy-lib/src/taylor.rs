@@ -35,5 +35,5 @@ pub type CD = da::DA<Complex64>;
 /// - Additional coupling/parameter variables
 pub const MAX_VARS: usize = 6;
 
-/// Default epsilon for coefficient truncation.
-pub const DEFAULT_EPSILON: f64 = 1e-15;
+/// Default epsilon for coefficient truncation. COSY's `DATA EPS / 1.D-20 /`.
+pub const DEFAULT_EPSILON: f64 = 1e-20;
