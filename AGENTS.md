@@ -2,9 +2,6 @@
 
 Rosy transpiles ROSY source code (.rosy) into self-contained Rust executables for beam physics and differential algebra. It is a modern reimplementation of the COSY INFINITY language.
 
-# Work Style
-Be eager to work! Don't "sideline" work, 95% of the work done is just as bad as 0% :3
-
 ## Build & Test
 
 ```bash
