@@ -110,6 +110,25 @@ impl RosyMPIContext {
                     bincode::encode_to_vec(&value[group_num as usize], self.bincode_config)
                         .context("Failed to serialize value for communication")?;
 
+                // `PLOOP I 1 NP` with a 1-D output (PHAD's BARRIER, status and
+                // timer arrays): every rank is its own group, so one allgather
+                // replaces P-1 sends and P-1 wildcard receives per rank.
+                if processes_per_group == 1 {
+                    let (recv, counts, displs) = self.allgather_bytes(&binary_value)?;
+                    for r in 0..self.size as usize {
+                        if r == self.rank as usize {
+                            continue;
+                        }
+                        let start = displs[r] as usize;
+                        let end = start + counts[r] as usize;
+                        let (decoded, _): (T, _) =
+                            bincode::decode_from_slice(&recv[start..end], self.bincode_config)
+                                .context("Failed to deserialize received value")?;
+                        value[r] = decoded;
+                    }
+                    return Ok(());
+                }
+
                 // One tag per call. The next row must not satisfy this receive.
                 // Standard send: a synchronous send here deadlocks, because
                 // every rank sends before anyone posts the matching receive.
@@ -213,11 +232,12 @@ impl RosyMPIContext {
         Ok((group_num, num_groups, partners))
     }
 
-    /// One `MPI_Allgatherv` of each rank's encoded slab. Rank `r` owns column `r`.
-    fn allgather_chunk<T>(&mut self, rows: &mut [Vec<T>], payload: &[u8]) -> Result<()>
-    where
-        T: Encode + Decode<()> + std::fmt::Debug + Clone,
-    {
+    /// Every rank's `payload`, concatenated in rank order, with per-rank
+    /// byte counts and offsets. One count allgather plus one `MPI_Allgatherv`.
+    fn allgather_bytes(
+        &mut self,
+        payload: &[u8],
+    ) -> Result<(Vec<u8>, Vec<mpi::Count>, Vec<mpi::Count>)> {
         use mpi::datatype::PartitionMut;
         let size = self.size as usize;
         let mine = mpi::Count::try_from(payload.len())
@@ -236,6 +256,16 @@ impl RosyMPIContext {
             let mut partition = PartitionMut::new(&mut recv[..], &counts[..], &displs[..]);
             self.world.all_gather_varcount_into(payload, &mut partition);
         }
+        Ok((recv, counts, displs))
+    }
+
+    /// One `MPI_Allgatherv` of each rank's encoded slab. Rank `r` owns column `r`.
+    fn allgather_chunk<T>(&mut self, rows: &mut [Vec<T>], payload: &[u8]) -> Result<()>
+    where
+        T: Encode + Decode<()> + std::fmt::Debug + Clone,
+    {
+        let size = self.size as usize;
+        let (recv, counts, displs) = self.allgather_bytes(payload)?;
         for r in 0..size {
             if r == self.rank as usize {
                 continue;
