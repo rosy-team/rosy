@@ -158,6 +158,21 @@ impl<T: AsF64 + ?Sized> AsF64 for &T {
     }
 }
 
+/// `x.round() as usize`, without the libm call. Baseline x86-64 has no
+/// rounding instruction, so `f64::round` is a function call, and every
+/// array index and list extract in generated code took one (about 2% of a
+/// PHAD rank). For 0 <= x < 2^52 the truncation and fraction are exact, so
+/// this is identical; anything else takes `round()` itself.
+#[inline(always)]
+pub fn rosy_round_index(x: f64) -> usize {
+    if (0.0..4.5e15).contains(&x) {
+        let t = x as u64;
+        (if x - t as f64 >= 0.5 { t + 1 } else { t }) as usize
+    } else {
+        x.round() as usize
+    }
+}
+
 #[inline]
 pub fn rosy_as_usize(v: &impl AsF64) -> usize {
     v.as_f64_val() as usize
@@ -731,7 +746,7 @@ pub fn rosy_get<C: RosyIndexable + ?Sized>(
     one_based: impl IntoF64,
     var_name: &str,
 ) -> C::Out {
-    container.rosy_index(one_based.into_f64().round() as usize, var_name)
+    container.rosy_index(rosy_round_index(one_based.into_f64()), var_name)
 }
 
 /// A shared element of a nested array, for `A(I,J,K)` reads. The levels above
@@ -785,7 +800,7 @@ pub fn rosy_view<'a, C: RosyView + ?Sized>(
     one_based: impl IntoF64,
     var_name: &str,
 ) -> &'a C::Out {
-    container.rosy_view(one_based.into_f64().round() as usize, var_name)
+    container.rosy_view(rosy_round_index(one_based.into_f64()), var_name)
 }
 
 /// [`RosyIndexable`] for a consumer that only borrows the element. In range
@@ -849,7 +864,7 @@ pub fn rosy_get_ref<'a, C: RosyIndexRef + ?Sized>(
     one_based: impl IntoF64,
     var_name: &str,
 ) -> std::borrow::Cow<'a, C::Out> {
-    container.rosy_index_ref(one_based.into_f64().round() as usize, var_name)
+    container.rosy_index_ref(rosy_round_index(one_based.into_f64()), var_name)
 }
 
 pub trait RosyMutIndexable {
@@ -930,7 +945,7 @@ pub fn rosy_get_mut<'a, C: RosyMutIndexable + ?Sized>(
     one_based: impl IntoF64,
     var_name: &str,
 ) -> &'a mut C::Out {
-    container.rosy_index_mut(one_based.into_f64().round() as usize, var_name)
+    container.rosy_index_mut(rosy_round_index(one_based.into_f64()), var_name)
 }
 
 pub type RE = f64;

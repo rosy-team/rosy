@@ -702,9 +702,9 @@ impl ToRosy for RosyValue {
             RosyValue::VE(v) => v.index_re(i),
             RosyValue::ST(st) => st.index_re(i),
             // One element peels to that cell, so `DA|k` stays a coefficient.
-            RosyValue::Arr(items) if items.len() > 1 => {
-                items.get((i.round() as usize).wrapping_sub(1)).cloned()
-            }
+            RosyValue::Arr(items) if items.len() > 1 => items
+                .get(crate::rosy_round_index(i).wrapping_sub(1))
+                .cloned(),
             _ => None,
         }
     }
@@ -746,7 +746,7 @@ impl ToRosy for String {
     /// `LINE|I` on ASCII text, in bounds: that one character, without
     /// copying LINE first. Anything else takes the full path and its errors.
     fn index_re(&self, i: f64) -> Option<RosyValue> {
-        let idx = i.round() as usize;
+        let idx = crate::rosy_round_index(i);
         (idx >= 1 && idx <= self.len() && self.is_ascii())
             .then(|| RosyValue::ST(char::from(self.as_bytes()[idx - 1]).to_string()))
     }
@@ -765,7 +765,7 @@ impl ToRosy for Vec<f64> {
         Cow::Owned(RosyValue::VE(self.clone()))
     }
     fn index_re(&self, i: f64) -> Option<RosyValue> {
-        self.get((i.round() as usize).wrapping_sub(1))
+        self.get(crate::rosy_round_index(i).wrapping_sub(1))
             .map(|x| RosyValue::RE(*x))
     }
     fn slice_re(&self, start: usize, end: usize) -> Option<RosyValue> {
@@ -923,7 +923,7 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
                 }
             }
             RosyValue::VE(r) if r.len() == 2 => {
-                let (a, b) = (r[0].round() as usize, r[1].round() as usize);
+                let (a, b) = (crate::rosy_round_index(r[0]), crate::rosy_round_index(r[1]));
                 if let Some(found) = lhs.slice_re(a, b) {
                     return Ok(found);
                 }
@@ -932,8 +932,8 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
                 if r.len() == 2 && r.iter().all(|x| matches!(x, RosyValue::RE(_))) =>
             {
                 let (a, b) = (
-                    r[0].as_f64().round() as usize,
-                    r[1].as_f64().round() as usize,
+                    crate::rosy_round_index(r[0].as_f64()),
+                    crate::rosy_round_index(r[1].as_f64()),
                 );
                 if let Some(found) = lhs.slice_re(a, b) {
                     return Ok(found);
@@ -1006,7 +1006,7 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
         }
         BinaryOp::Extract => {
             if let (RosyValue::Arr(items), RosyValue::RE(i)) = (lhs, rhs) {
-                let idx = i.round() as usize;
+                let idx = crate::rosy_round_index(*i);
                 if idx < 1 || idx > items.len() {
                     bail!(
                         "extract index {idx} out of bounds for ARR of {}",
@@ -1032,8 +1032,8 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
                         "Vector extraction with vector index requires exactly two elements (start and end)"
                     );
                 }
-                let start = idx[0].round() as usize;
-                let end = idx[1].round() as usize;
+                let start = crate::rosy_round_index(idx[0]);
+                let end = crate::rosy_round_index(idx[1]);
                 if start == 0 || end == 0 || start > items.len() || end > items.len() || start > end
                 {
                     bail!(

@@ -29,7 +29,7 @@ impl RosyExtract<&RE> for &ST {
     type Output = ST;
 
     fn rosy_extract(self, index: &RE) -> Result<Self::Output> {
-        let idx = index.round() as usize;
+        let idx = crate::rosy_round_index(*index);
         if idx == 0 || idx > self.len() {
             bail!("String index {} out of bounds (1-{})", idx, self.len());
         }
@@ -61,8 +61,8 @@ impl RosyExtract<&VE> for &ST {
             );
         }
 
-        let start = index[0].round() as usize;
-        let end = index[1].round() as usize;
+        let start = crate::rosy_round_index(index[0]);
+        let end = crate::rosy_round_index(index[1]);
 
         if start == 0 || end == 0 || start > self.len() || end > self.len() || start > end {
             bail!(
@@ -125,7 +125,7 @@ impl RosyExtract<&RE> for &VE {
     type Output = RE;
 
     fn rosy_extract(self, index: &RE) -> Result<Self::Output> {
-        let idx = index.round() as usize;
+        let idx = crate::rosy_round_index(*index);
         if idx == 0 || idx > self.len() {
             bail!("Vector index {} out of bounds (1-{})", idx, self.len());
         }
@@ -146,8 +146,8 @@ impl RosyExtract<&VE> for &VE {
             );
         }
 
-        let start = index[0].round() as usize;
-        let end = index[1].round() as usize;
+        let start = crate::rosy_round_index(index[0]);
+        let end = crate::rosy_round_index(index[1]);
 
         if start == 0 || end == 0 || start > self.len() || end > self.len() || start > end {
             bail!(
