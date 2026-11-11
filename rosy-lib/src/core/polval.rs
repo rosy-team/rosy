@@ -17,6 +17,9 @@
 use crate::RosyValue;
 use crate::taylor::{CD, DA};
 use anyhow::{Result, bail};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 #[cfg(feature = "nightly-simd")]
 use std::simd::StdFloat;
@@ -400,6 +403,12 @@ pub fn rosy_polval_da(
         r_array.push(DA::zero());
     }
 
+    if let Some(values) = cached_arg_powers(&p_array[..nr], a_array, na)? {
+        for i in 0..nr {
+            r_array[i] = dot_poly_da(&p_array[i], &values)?;
+        }
+        return Ok(());
+    }
     let values = compose_monomial_values_da(&p_array[..nr], a_array, na)?;
     for i in 0..nr {
         r_array[i] = dot_poly_da(&p_array[i], &values)?;
@@ -637,6 +646,200 @@ fn eval_polys_at_points(
 struct DaMonomialValues {
     compact: Vec<u32>,
     values: Vec<DA>,
+}
+
+/// Every power a POLVAL argument set can produce, kept for exact reuse.
+///
+/// PHAD's M2L composes each expansion with a translation map that depends only
+/// on the offset between two boxes, and those maps repeat thousands of times
+/// a step. Building the powers is 83 series products per call; the weighted
+/// sum after it is cheap. Each power here comes from the same product chain a
+/// per-call plan uses (`horner_parent`), so a reused power is bit-identical.
+struct ArgPowers {
+    args: Vec<DA>,
+    max_order: u32,
+    eps_bits: u64,
+    num_monomials: usize,
+    values: Rc<DaMonomialValues>,
+    bytes: usize,
+    last_use: u64,
+}
+
+#[derive(Default)]
+struct PowerCache {
+    map: HashMap<u64, Vec<ArgPowers>>,
+    /// Use order, oldest first: `(key, stamp)` per insert or hit. An entry
+    /// whose stamp no longer matches its `last_use` is stale and skipped, so
+    /// evicting the least recently used map is O(1) amortized.
+    order: std::collections::VecDeque<(u64, u64)>,
+    clock: u64,
+    bytes: usize,
+}
+
+/// Memory one thread's cache may hold, in MB (`ROSY_POLVAL_CACHE_MB`, 0 = off).
+/// An order-6, 3-variable entry is about 85 KB, so the default keeps about
+/// 1500 maps. In PHAD's FMM 71% of calls repeat an earlier map, nearly all
+/// within 2048 calls of it.
+fn power_cache_bytes() -> usize {
+    use std::sync::OnceLock;
+    static LIMIT: OnceLock<usize> = OnceLock::new();
+    *LIMIT.get_or_init(|| {
+        std::env::var("ROSY_POLVAL_CACHE_MB")
+            .ok()
+            .and_then(|v| v.trim().parse::<usize>().ok())
+            .unwrap_or(128)
+            << 20
+    })
+}
+
+thread_local! {
+    static POWER_CACHE: RefCell<PowerCache> = RefCell::new(PowerCache::default());
+}
+
+fn same_da(a: &DA, b: &DA) -> bool {
+    a.nonzero == b.nonzero
+        && a.nonzero
+            .iter()
+            .all(|&i| a.coeffs[i as usize].to_bits() == b.coeffs[i as usize].to_bits())
+}
+
+/// Powers for `args`, from the cache or built and kept. `None` = take the
+/// per-call path (a polynomial uses a variable past `na`, which that path
+/// reports, or the runtime has no monomial table).
+fn cached_arg_powers(polys: &[DA], args: &[DA], na: usize) -> Result<Option<Rc<DaMonomialValues>>> {
+    use std::hash::{Hash, Hasher};
+    if power_cache_bytes() == 0 {
+        return Ok(None);
+    }
+    let rt = crate::taylor::get_runtime()?;
+    let n = rt.num_monomials;
+    if na == 0 || args.len() < na || args[..na].iter().any(|a| a.coeffs.len() != n) {
+        return Ok(None);
+    }
+    let max_order = rt.config.max_order;
+    let eps_bits = rt.config.epsilon.to_bits();
+    let mut h = rustc_hash::FxHasher::default();
+    (max_order, eps_bits, n, na).hash(&mut h);
+    for a in &args[..na] {
+        a.nonzero.hash(&mut h);
+        for &i in &a.nonzero {
+            a.coeffs[i as usize].to_bits().hash(&mut h);
+        }
+    }
+    let key = h.finish();
+
+    let found = POWER_CACHE.with(|c| {
+        let mut c = c.borrow_mut();
+        c.clock += 1;
+        let now = c.clock;
+        let hit = c.map.get_mut(&key).and_then(|bucket| {
+            bucket
+                .iter_mut()
+                .find(|e| {
+                    e.max_order == max_order
+                        && e.eps_bits == eps_bits
+                        && e.num_monomials == n
+                        && e.args.len() == na
+                        && e.args.iter().zip(&args[..na]).all(|(x, y)| same_da(x, y))
+                })
+                .map(|e| {
+                    e.last_use = now;
+                    e.values.clone()
+                })
+        });
+        if hit.is_some() {
+            c.order.push_back((key, now));
+        }
+        hit
+    });
+    let values = match found {
+        Some(v) => v,
+        None => {
+            // Every monomial in the first `na` variables, in index order.
+            let usable: Vec<u32> = (0..n as u32)
+                .filter(|&k| {
+                    rt.monomial_list[k as usize].exponents[na.min(crate::taylor::MAX_VARS)..]
+                        .iter()
+                        .all(|&e| e == 0)
+                })
+                .collect();
+            let plan = horner_plan_from_nonzero(std::iter::once(usable.as_slice()), na)?;
+            let mut values = Vec::with_capacity(plan.ids.len());
+            values.push(DA::from_coeff(1.0));
+            for k in 1..plan.ids.len() {
+                let parent = &values[plan.parent[k] as usize];
+                let arg = &args[plan.var[k] as usize];
+                values.push((parent * arg)?);
+            }
+            let bytes = values
+                .iter()
+                .map(|v| v.coeffs.len() * 8 + v.nonzero.capacity() * 4)
+                .sum::<usize>()
+                + plan.compact.len() * 4;
+            let values = Rc::new(DaMonomialValues {
+                compact: plan.compact,
+                values,
+            });
+            POWER_CACHE.with(|c| {
+                let mut c = c.borrow_mut();
+                let limit = power_cache_bytes();
+                if bytes > limit {
+                    return;
+                }
+                while c.bytes + bytes > limit {
+                    // Drop the least recently used map; skip stale order entries.
+                    let Some((k, stamp)) = c.order.pop_front() else {
+                        break;
+                    };
+                    let mut freed = 0;
+                    if let Some(bucket) = c.map.get_mut(&k) {
+                        if let Some(pos) = bucket.iter().position(|e| e.last_use == stamp) {
+                            freed = bucket.remove(pos).bytes;
+                        }
+                        if bucket.is_empty() {
+                            c.map.remove(&k);
+                        }
+                    }
+                    c.bytes = c.bytes.saturating_sub(freed);
+                }
+                // Hits leave stale order entries behind; keep the queue bounded.
+                let live: usize = c.map.values().map(|b| b.len()).sum();
+                if c.order.len() > 8 * live.max(64) {
+                    let mut stamps: Vec<(u64, u64)> = c
+                        .map
+                        .iter()
+                        .flat_map(|(k, b)| b.iter().map(move |e| (e.last_use, *k)))
+                        .collect();
+                    stamps.sort_unstable();
+                    c.order = stamps.into_iter().map(|(s, k)| (k, s)).collect();
+                }
+                let now = c.clock;
+                c.bytes += bytes;
+                c.order.push_back((key, now));
+                c.map.entry(key).or_default().push(ArgPowers {
+                    args: args[..na].to_vec(),
+                    max_order,
+                    eps_bits,
+                    num_monomials: n,
+                    values: values.clone(),
+                    bytes,
+                    last_use: now,
+                });
+            });
+            values
+        }
+    };
+    // A polynomial term outside the first `na` variables: the per-call path
+    // reports it.
+    let covered = polys.iter().all(|p| {
+        p.nonzero.iter().all(|&i| {
+            values
+                .compact
+                .get(i as usize)
+                .is_some_and(|&c| c != u32::MAX)
+        })
+    });
+    Ok(covered.then_some(values))
 }
 
 fn compose_monomial_values_da(polys: &[DA], args: &[DA], na: usize) -> Result<DaMonomialValues> {
