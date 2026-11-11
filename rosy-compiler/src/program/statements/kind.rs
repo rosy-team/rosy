@@ -129,6 +129,7 @@ stmt_kind! {
     OsCall(OsCallStatement),
     PLoop(PLoopStatement),
     Pnpro(PnproStatement),
+    Pstore(PstoreStatement),
     Proot(ProotStatement),
     Polval(PolvalStatement),
     ProcedureCall(ProcedureCallStatement),

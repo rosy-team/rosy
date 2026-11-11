@@ -23,6 +23,10 @@ libm = "0.2"
 memory-stats = "1"
 libc = "0.2.189"
 
+[[example]]
+name = "pstore_check"
+required-features = ["mpi"]
+
 [dev-dependencies]
 serial_test = "3.2"
 

@@ -18,7 +18,7 @@ impl RosyMPIContext {
         Ok(Self { size: 1, rank: 0 })
     }
 
-    pub fn ploop_enter(&mut self, _num_groups: RE) {}
+    pub fn ploop_enter(&mut self, _num_groups: RE, _line: u32) {}
 
     pub fn ploop_exit(&mut self) {}
 

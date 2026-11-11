@@ -121,6 +121,7 @@ pub use core::memdpv::MemdpvStatement;
 pub use core::memfre::MemfreStatement;
 pub use core::memwrt::MemwrtStatement;
 pub use core::pnpro::PnproStatement;
+pub use core::pstore::PstoreStatement;
 pub use core::proot::ProotStatement;
 pub use core::ranseed::RanseedStatement;
 pub use core::recst::RecstStatement;
@@ -668,6 +669,15 @@ impl FromRule for Statement {
                 }),
             Rule::pwtime => PwtimeStatement::from_rule(pair)
                 .context("...while building PWTIME statement!")
+                .with_location(&loc)
+                .map(|opt| {
+                    opt.map(|stmt| Statement {
+                        inner: stmt.into(),
+                        source_location: loc.clone(),
+                    })
+                }),
+            Rule::pstore => PstoreStatement::from_rule(pair)
+                .context("...while building a particle-store statement!")
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {

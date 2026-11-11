@@ -56,6 +56,7 @@ pub mod memfre;
 pub mod memwrt;
 pub mod ploop;
 pub mod pnpro;
+pub mod pstore;
 pub mod procedure;
 pub mod procedure_call;
 pub mod proot;

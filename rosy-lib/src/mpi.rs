@@ -19,6 +19,10 @@ pub struct RosyMPIContext {
     coord_tag: i32,
     /// Group count of each PLOOP this rank is inside, outermost first.
     ploop_groups: Vec<i32>,
+    /// Per-PLOOP timing, on when `ROSY_MPI_STATS` is set. See [`stats`].
+    stats: Option<Box<stats::Stats>>,
+    /// This rank's share of the distributed particles (`PS*` intrinsics).
+    pub pstore: crate::pstore::ParticleStore,
 }
 impl RosyMPIContext {
     pub fn new() -> Result<Self> {
@@ -32,16 +36,44 @@ impl RosyMPIContext {
             bincode_config: bincode::config::standard(),
             coord_tag: 1,
             ploop_groups: Vec::new(),
+            stats: stats::Stats::from_env(),
+            pstore: Default::default(),
         })
     }
 
     /// Enter a PLOOP that splits the current group into `num_groups`.
-    pub fn ploop_enter(&mut self, num_groups: RE) {
+    /// `line` is the source line of the PLOOP; it only labels the stats.
+    pub fn ploop_enter(&mut self, num_groups: RE, line: u32) {
         self.ploop_groups.push(num_groups as i32);
+        if let Some(stats) = self.stats.as_mut() {
+            stats.enter(line);
+        }
     }
 
     pub fn ploop_exit(&mut self) {
         self.ploop_groups.pop();
+        if let Some(stats) = self.stats.as_mut() {
+            stats.exit();
+        }
+    }
+
+    /// The PLOOP body is done and its gather is about to start. With stats
+    /// on, a barrier first separates "waiting for the slowest rank" from
+    /// the cost of the exchange itself.
+    fn stats_gather_begin(&mut self) {
+        if self.stats.as_ref().is_some_and(|s| s.needs_body_end()) {
+            let t = std::time::Instant::now();
+            self.world.barrier();
+            if let Some(stats) = self.stats.as_mut() {
+                stats.body_end(t);
+            }
+        }
+    }
+
+    fn stats_add(&mut self, f: impl FnOnce(&mut stats::Frame)) {
+        if let Some(frame) = self.stats.as_mut().and_then(|s| s.top()) {
+            f(frame);
+        }
     }
 
     /// COSY `PROOT`: 1 on the root of the current group, 0 elsewhere.
@@ -85,6 +117,7 @@ impl RosyMPIContext {
                 // - Process 3 sends/recieves from processes 1 and 5
                 // - Process 4 sends/recieves from processes 0 and 2
                 // - Process 5 sends/recieves from processes 1 and 3
+                self.stats_gather_begin();
                 let group_num = self
                     .get_group_num(num_groups)
                     .context("Failed to get group number")?;
@@ -106,15 +139,25 @@ impl RosyMPIContext {
 
                 // Get the value we're going to be sending,
                 //  which is the group_num'th element of the array
+                let t_encode = std::time::Instant::now();
                 let binary_value: Vec<u8> =
                     bincode::encode_to_vec(&value[group_num as usize], self.bincode_config)
                         .context("Failed to serialize value for communication")?;
+                let encode = t_encode.elapsed().as_secs_f64();
+                let sent = binary_value.len() as u64;
+                self.stats_add(|f| {
+                    f.encode += encode;
+                    f.bytes_out += sent;
+                });
 
                 // `PLOOP I 1 NP` with a 1-D output (PHAD's BARRIER, status and
                 // timer arrays): every rank is its own group, so one allgather
                 // replaces P-1 sends and P-1 wildcard receives per rank.
                 if processes_per_group == 1 {
+                    let t_wire = std::time::Instant::now();
                     let (recv, counts, displs) = self.allgather_bytes(&binary_value)?;
+                    let wire = t_wire.elapsed().as_secs_f64();
+                    let t_decode = std::time::Instant::now();
                     for r in 0..self.size as usize {
                         if r == self.rank as usize {
                             continue;
@@ -126,6 +169,13 @@ impl RosyMPIContext {
                                 .context("Failed to deserialize received value")?;
                         value[r] = decoded;
                     }
+                    let decode = t_decode.elapsed().as_secs_f64();
+                    let received = recv.len() as u64;
+                    self.stats_add(|f| {
+                        f.wire += wire;
+                        f.decode += decode;
+                        f.bytes_in += received;
+                    });
                     return Ok(());
                 }
 
@@ -179,6 +229,7 @@ impl RosyMPIContext {
             "Unsupported communication standard: {}",
             communication_standard
         );
+        self.stats_gather_begin();
         let n = self.sync_extent(rows.len())?;
         rows.resize_with(n, Vec::new);
         let local_max = rows.iter().map(|r| r.len()).max().unwrap_or(0);
@@ -208,6 +259,7 @@ impl RosyMPIContext {
     where
         T: Encode + Decode<()> + std::fmt::Debug + Default + Clone,
     {
+        self.stats_gather_begin();
         let n0 = self.sync_extent(grid.len())?;
         grid.resize_with(n0, Vec::new);
         let n1_local = grid.iter().map(|plane| plane.len()).max().unwrap_or(0);
@@ -265,7 +317,10 @@ impl RosyMPIContext {
         T: Encode + Decode<()> + std::fmt::Debug + Clone,
     {
         let size = self.size as usize;
+        let t_wire = std::time::Instant::now();
         let (recv, counts, displs) = self.allgather_bytes(payload)?;
+        let wire = t_wire.elapsed().as_secs_f64();
+        let t_decode = std::time::Instant::now();
         for r in 0..size {
             if r == self.rank as usize {
                 continue;
@@ -285,6 +340,13 @@ impl RosyMPIContext {
                 row[r] = value;
             }
         }
+        let decode = t_decode.elapsed().as_secs_f64();
+        let received = recv.len() as u64;
+        self.stats_add(|f| {
+            f.wire += wire;
+            f.decode += decode;
+            f.bytes_in += received;
+        });
         Ok(())
     }
 
@@ -299,12 +361,19 @@ impl RosyMPIContext {
         T: Encode + Decode<()> + std::fmt::Debug + Clone,
     {
         let tag = self.next_tag();
+        let t_encode = std::time::Instant::now();
         let owned: Vec<T> = rows
             .iter()
             .map(|row| row[group_num as usize].clone())
             .collect();
         let payload = bincode::encode_to_vec(&owned, self.bincode_config)
             .context("Failed to serialize gather")?;
+        let encode = t_encode.elapsed().as_secs_f64();
+        let sent = payload.len() as u64;
+        self.stats_add(|f| {
+            f.encode += encode;
+            f.bytes_out += sent;
+        });
         let processes_per_group = self.size / num_groups;
         // `PLOOP I 1 NP`: every rank is its own group, so this is one
         // allgather over the world, as in COSY. The pairwise loop below was
@@ -390,6 +459,334 @@ impl RosyMPIContext {
         let root_rank = self.rank - (self.rank % processes_per_group);
 
         Ok(root_rank as RE)
+    }
+}
+
+impl Drop for RosyMPIContext {
+    /// Print the `ROSY_MPI_STATS` report. This runs before the fields drop,
+    /// so MPI is still up for the one gather the report needs.
+    fn drop(&mut self) {
+        let Some(stats) = self.stats.take() else {
+            return;
+        };
+        if std::thread::panicking() {
+            return;
+        }
+        let payload = stats.encode();
+        let bytes: Vec<u8> = payload.iter().flat_map(|v| v.to_le_bytes()).collect();
+        let Ok((recv, counts, displs)) = self.allgather_bytes(&bytes) else {
+            return;
+        };
+        if self.rank != 0 {
+            return;
+        }
+        let per_rank: Vec<Vec<f64>> = (0..self.size as usize)
+            .map(|r| {
+                let start = displs[r] as usize;
+                let end = start + counts[r] as usize;
+                recv[start..end]
+                    .chunks_exact(8)
+                    .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+                    .collect()
+            })
+            .collect();
+        let report = stats::report(&per_rank);
+        match stats.sink.as_deref() {
+            Some(path) => {
+                if let Err(e) = std::fs::write(path, &report) {
+                    eprintln!("ROSY_MPI_STATS: cannot write {path}: {e}");
+                    eprint!("{report}");
+                }
+            }
+            None => eprint!("{report}"),
+        }
+    }
+}
+
+/// Opt-in timing of every PLOOP, for finding work that does not shrink as
+/// ranks are added.
+///
+/// Set `ROSY_MPI_STATS=1` to print the report to stderr at exit, or to a
+/// path to write it there. Each PLOOP site (keyed by source line) reports
+/// its body time, the wait for the slowest rank, and the gather split into
+/// encode, wire and decode. Serial code between two top-level PLOOPs is
+/// reported per `previous line -> next line` pair. A body whose time stays
+/// flat when the rank count doubles is replicated work, not parallel work.
+mod stats {
+    use std::collections::BTreeMap;
+    use std::time::Instant;
+
+    /// One PLOOP in progress.
+    pub struct Frame {
+        line: u32,
+        enter: Instant,
+        body_end: Option<Instant>,
+        gather_start: Option<Instant>,
+        pub encode: f64,
+        pub wire: f64,
+        pub decode: f64,
+        pub bytes_out: u64,
+        pub bytes_in: u64,
+    }
+
+    #[derive(Default, Clone, Copy)]
+    struct Site {
+        calls: f64,
+        body: f64,
+        wait: f64,
+        gather: f64,
+        encode: f64,
+        wire: f64,
+        decode: f64,
+        bytes_out: f64,
+        bytes_in: f64,
+    }
+    const SITE_FIELDS: usize = 9;
+
+    pub struct Stats {
+        start: Instant,
+        sites: BTreeMap<u32, Site>,
+        /// Serial time between top-level PLOOPs: `(previous, next)` lines.
+        gaps: BTreeMap<(u32, u32), (f64, f64)>,
+        stack: Vec<Frame>,
+        last_exit: (u32, Instant),
+        /// Report path. `None` prints to stderr.
+        pub sink: Option<String>,
+    }
+
+    impl Stats {
+        pub fn from_env() -> Option<Box<Stats>> {
+            let value = std::env::var("ROSY_MPI_STATS").ok()?;
+            let value = value.trim();
+            if value.is_empty() || value == "0" {
+                return None;
+            }
+            let sink = match value {
+                "1" | "true" | "stderr" => None,
+                path => Some(path.to_string()),
+            };
+            let now = Instant::now();
+            Some(Box::new(Stats {
+                start: now,
+                sites: BTreeMap::new(),
+                gaps: BTreeMap::new(),
+                stack: Vec::new(),
+                last_exit: (0, now),
+                sink,
+            }))
+        }
+
+        pub fn enter(&mut self, line: u32) {
+            let now = Instant::now();
+            if self.stack.is_empty() {
+                let (prev, at) = self.last_exit;
+                let gap = self.gaps.entry((prev, line)).or_default();
+                gap.0 += 1.0;
+                gap.1 += now.duration_since(at).as_secs_f64();
+            }
+            self.stack.push(Frame {
+                line,
+                enter: now,
+                body_end: None,
+                gather_start: None,
+                encode: 0.0,
+                wire: 0.0,
+                decode: 0.0,
+                bytes_out: 0,
+                bytes_in: 0,
+            });
+        }
+
+        pub fn top(&mut self) -> Option<&mut Frame> {
+            self.stack.last_mut()
+        }
+
+        /// True until the innermost PLOOP's first gather call.
+        pub fn needs_body_end(&self) -> bool {
+            self.stack.last().is_some_and(|f| f.body_end.is_none())
+        }
+
+        /// `at` is when the body finished. Now is when every rank has.
+        pub fn body_end(&mut self, at: Instant) {
+            if let Some(frame) = self.stack.last_mut() {
+                frame.body_end = Some(at);
+                frame.gather_start = Some(Instant::now());
+            }
+        }
+
+        pub fn exit(&mut self) {
+            let now = Instant::now();
+            let Some(frame) = self.stack.pop() else {
+                return;
+            };
+            let body_end = frame.body_end.unwrap_or(now);
+            let gather_start = frame.gather_start.unwrap_or(now);
+            let site = self.sites.entry(frame.line).or_default();
+            site.calls += 1.0;
+            site.body += body_end.duration_since(frame.enter).as_secs_f64();
+            site.wait += gather_start.duration_since(body_end).as_secs_f64();
+            site.gather += now.duration_since(gather_start).as_secs_f64();
+            site.encode += frame.encode;
+            site.wire += frame.wire;
+            site.decode += frame.decode;
+            site.bytes_out += frame.bytes_out as f64;
+            site.bytes_in += frame.bytes_in as f64;
+            if self.stack.is_empty() {
+                self.last_exit = (frame.line, now);
+            }
+        }
+
+        /// Flat form for the report gather: wall, sites, then gaps.
+        pub fn encode(&self) -> Vec<f64> {
+            let mut out = vec![
+                self.start.elapsed().as_secs_f64(),
+                self.sites.len() as f64,
+                self.gaps.len() as f64,
+            ];
+            for (line, s) in &self.sites {
+                out.extend([
+                    *line as f64,
+                    s.calls,
+                    s.body,
+                    s.wait,
+                    s.gather,
+                    s.encode,
+                    s.wire,
+                    s.decode,
+                    s.bytes_out,
+                    s.bytes_in,
+                ]);
+            }
+            for ((prev, next), (count, secs)) in &self.gaps {
+                out.extend([*prev as f64, *next as f64, *count, *secs]);
+            }
+            out
+        }
+    }
+
+    /// Mean, min and max of one quantity across ranks.
+    #[derive(Default, Clone, Copy)]
+    struct Spread {
+        sum: f64,
+        min: f64,
+        max: f64,
+        n: f64,
+    }
+    impl Spread {
+        fn add(&mut self, v: f64) {
+            if self.n == 0.0 {
+                self.min = v;
+                self.max = v;
+            } else {
+                self.min = self.min.min(v);
+                self.max = self.max.max(v);
+            }
+            self.sum += v;
+            self.n += 1.0;
+        }
+        fn mean(&self) -> f64 {
+            if self.n == 0.0 { 0.0 } else { self.sum / self.n }
+        }
+    }
+
+    pub fn report(per_rank: &[Vec<f64>]) -> String {
+        use std::fmt::Write;
+        let ranks = per_rank.len();
+        let mut wall = Spread::default();
+        let mut sites: BTreeMap<u32, [Spread; SITE_FIELDS]> = BTreeMap::new();
+        let mut gaps: BTreeMap<(u32, u32), [Spread; 2]> = BTreeMap::new();
+        for data in per_rank {
+            if data.len() < 3 {
+                continue;
+            }
+            wall.add(data[0]);
+            let (n_sites, n_gaps) = (data[1] as usize, data[2] as usize);
+            let mut at = 3;
+            for _ in 0..n_sites {
+                let Some(row) = data.get(at..at + 1 + SITE_FIELDS) else {
+                    break;
+                };
+                let entry = sites.entry(row[0] as u32).or_default();
+                for (spread, v) in entry.iter_mut().zip(&row[1..]) {
+                    spread.add(*v);
+                }
+                at += 1 + SITE_FIELDS;
+            }
+            for _ in 0..n_gaps {
+                let Some(row) = data.get(at..at + 4) else {
+                    break;
+                };
+                let entry = gaps.entry((row[0] as u32, row[1] as u32)).or_default();
+                entry[0].add(row[2]);
+                entry[1].add(row[3]);
+                at += 4;
+            }
+        }
+        let mut out = String::new();
+        let _ = writeln!(
+            out,
+            "[rosy mpi stats] ranks={ranks} wall={:.2}s (seconds are per-rank means; max over ranks in brackets)",
+            wall.mean()
+        );
+        let _ = writeln!(
+            out,
+            "{:>6} {:>7} {:>10} {:>10} {:>9} {:>9} {:>8} {:>8} {:>8} {:>12} {:>12}",
+            "line", "calls", "body", "[max]", "wait", "gather", "encode", "wire", "decode", "sent/call", "recv/call"
+        );
+        let (mut body, mut wait, mut gather) = (0.0, 0.0, 0.0);
+        for (line, s) in &sites {
+            let calls = s[0].mean().max(1.0);
+            let _ = writeln!(
+                out,
+                "{:>6} {:>7} {:>10.3} {:>10.3} {:>9.3} {:>9.3} {:>8.3} {:>8.3} {:>8.3} {:>12} {:>12}",
+                line,
+                s[0].mean() as u64,
+                s[1].mean(),
+                s[1].max,
+                s[2].mean(),
+                s[3].mean(),
+                s[4].mean(),
+                s[5].mean(),
+                s[6].mean(),
+                bytes(s[7].mean() / calls),
+                bytes(s[8].mean() / calls),
+            );
+            body += s[1].mean();
+            wait += s[2].mean();
+            gather += s[3].mean();
+        }
+        let _ = writeln!(out, "serial code between top-level PLOOPs (previous line -> next line):");
+        let _ = writeln!(out, "{:>6} {:>6} {:>7} {:>10} {:>10}", "from", "to", "count", "seconds", "[max]");
+        let mut serial = 0.0;
+        for ((prev, next), s) in &gaps {
+            let _ = writeln!(
+                out,
+                "{:>6} {:>6} {:>7} {:>10.3} {:>10.3}",
+                prev,
+                next,
+                s[0].mean() as u64,
+                s[1].mean(),
+                s[1].max
+            );
+            serial += s[1].mean();
+        }
+        let _ = writeln!(
+            out,
+            "totals: ploop bodies {body:.2}s, waiting on slowest rank {wait:.2}s, gathers {gather:.2}s, between ploops {serial:.2}s"
+        );
+        out
+    }
+
+    fn bytes(v: f64) -> String {
+        if v >= 1e9 {
+            format!("{:.2} GB", v / 1e9)
+        } else if v >= 1e6 {
+            format!("{:.2} MB", v / 1e6)
+        } else if v >= 1e3 {
+            format!("{:.1} KB", v / 1e3)
+        } else {
+            format!("{v:.0} B")
+        }
     }
 }
 

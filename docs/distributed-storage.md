@@ -1,0 +1,247 @@
+# Distributed particle storage for PHAD
+
+Status: build steps 1 to 6 are done (`rosy-lib/src/fmmtree.rs`, `rosy-lib/src/pstore.rs`) and a port of PHAD runs on them. Parallel input and output remain.
+
+## Goal
+
+Run PHAD at 10^9 particles on Metis (32 nodes, 128 cores and 1.3 TB each).
+No rank may hold or loop over anything of size N. Every per-rank cost must be
+O(N/P) plus a thin boundary layer, so adding nodes adds both capacity and speed.
+
+## What breaks today
+
+Measured on the 50k, 10-step deck (pinned cores, shared nodes):
+
+| | 128 ranks | 256 ranks |
+|---|---|---|
+| Inside parallel loops, per rank | 147 s | 70 s |
+| Serial code between loops, per rank | 123 s | 174 s |
+| Wall | 376 s | 423 s |
+
+The parallel work halves. The replicated work grows, and the run gets slower.
+The causes, from `phad.fox` and fmmcpp:
+
+- Every rank holds all eight particle arrays, every multipole and local
+  expansion, and gather arrays of shape `q x leaves x NP`.
+- Every rank runs its own fmmcpp, which reads all positions and builds the
+  whole tree. The tree reaches PHAD through files at 48 bytes per number.
+- fmmcpp deals boxes to ranks by sorted cost, so one rank's boxes are
+  scattered through space and it needs data from everywhere.
+- After each gather, every rank runs the same O(N) loop to copy results into
+  its own global arrays. The costliest is the stitching of previous-neighbour
+  lists after `phad.fox:1002`: 85 s at 128 ranks, 128 s at 256.
+
+## The design in one paragraph
+
+Each particle gets a 60-bit Morton key from its scaled position, the same key
+fmmcpp computes. Each rank owns one contiguous key range and keeps its
+particles sorted by key. A leaf box is then a contiguous slice of a rank's
+arrays, the tree is implied by key prefixes, and "who owns this box" is a
+binary search over P-1 splitter keys. Ranks exchange only a boundary layer.
+
+## 1. Particle record
+
+Struct of arrays, one entry per owned particle, sorted by key:
+
+| Field | Size | Notes |
+|---|---|---|
+| `id` | 8 B | Original particle number. Never changes. |
+| `key` | 8 B | 3 x 20 bits, x then y then z, as in fmmcpp's `giveBoxNumber`. |
+| `x y z px py pz f n` | 64 B | PHAD's `source_*` arrays. |
+| `prev_leaf` | 8 B | Leaf (level, number) the particle was in last step. |
+
+88 bytes per particle. Slots are ordered by `(key, id)`, so any box at any
+level is a contiguous range. Source lists handed to PHAD are sorted by `id`
+per box, so sums run in the same order as today.
+
+## 2. Ownership
+
+- P-1 splitter keys `s_1 < ... < s_{P-1}`. Rank r owns keys in `[s_r, s_{r+1})`.
+- Splitters come from a weighted sample of keys, where the weight is the
+  estimated cost of the particle's leaf. This replaces fmmcpp's sorted-cost
+  deal with a partition that is balanced and spatially compact.
+- After leaves are known, each splitter is moved to the start of the leaf it
+  falls in, so no leaf straddles two ranks.
+- Splitters are rebalanced every few steps, not every step.
+
+Every rank knows all splitters (P-1 numbers), so finding the owner of any key
+or box needs no directory and no communication.
+
+## 3. Tree
+
+A linear octree: no pointers, no global box numbering.
+
+- A box is `(level, number)` where `number = key >> 3*(20 - level)`.
+- fmmcpp's refinement rule is kept exactly: a box holding targets is a leaf
+  when the 27 same-level boxes around it hold at most `q` sources; otherwise
+  it and its neighbours divide.
+- The rule needs only per-box particle counts. Each rank histograms its own
+  keys per level and asks neighbouring ranks for counts of boxes just outside
+  its range. One round per level, about 7 to 10 rounds in total.
+- Leaves are stored as `(level, number, first, count)`: 24 bytes per leaf.
+- Parents, children, neighbours and interaction lists are computed from the
+  box number on demand, in fmmcpp's order, and never stored globally.
+
+## 4. Boundary layer (halo)
+
+For each leaf near the edge of its range, a rank works out the 26 neighbour
+boxes, finds their owners from the splitters, and requests their particles.
+Halo particles are appended after the owned ones in the same arrays.
+
+This is what lets PHAD's loops survive nearly unchanged: `source_x(INDEX)`
+still works, but `INDEX` is now a local position and the `snumbs` / `nnumbs`
+lists hold local positions. The gathers after the near-field and long-range
+loops, and the scatter loops that follow them, are deleted: results are
+written straight into the owned slice.
+
+## 5. Expansions
+
+- A box's multipole and local expansion live on the rank that owns the box's
+  first key. Storage is a per-rank table keyed by `(level, number)`.
+- Coefficients are stored dense: 84 doubles, 672 bytes, no index list.
+- Upward pass: a box whose children sit on another rank receives their
+  contributions by message. Only boxes spanning a splitter are affected.
+- Downward pass: a rank fetches the multipoles of interaction-list boxes it
+  does not own. With compact ranges this is a surface layer about three boxes
+  deep per level.
+- Local expansions are kept only for the level in progress and its parent
+  level, then for leaves.
+
+## 6. Previous neighbourhoods
+
+The long-range integrator compares each particle's neighbourhood with the one
+it had last step. Today that is a global list on every rank.
+
+New form: each rank keeps, for each leaf it owned last step, the list of
+particle ids in that leaf's neighbourhood (at most `q` ids). A particle carries
+`prev_leaf`. The rank that owns the particle now fetches that list from last
+step's owner, found with last step's splitters. Then it fetches positions for
+the ids that are no longer in its halo.
+
+## 7. One step
+
+1. Near-field integration over owned leaves, using owned plus halo particles.
+2. Global bounding box by reduction; recompute keys (z is scaled by `relg`).
+3. Local sort, then send particles whose key left the range to the new owner.
+4. Refinement rounds; snap splitters; build leaf table.
+5. Halo exchange.
+6. Upward pass, multipole fetch, downward pass level by level.
+7. Long-range kick over owned leaves.
+8. Global sums (`relg`) by an order-independent exact reduction.
+
+## 8. Memory at 10^9 particles
+
+About 0.7 leaves and 2 boxes per particle, from the 50k deck.
+
+| Item | Per particle | Total |
+|---|---|---|
+| Particle record | 88 B | 0.09 TB |
+| Halo copies (estimate) | 30 B | 0.03 TB |
+| Leaf table | 17 B | 0.02 TB |
+| Multipoles | 730 B | 0.73 TB |
+| Local expansions (leaf level plus one working level) | 600 B | 0.60 TB |
+| Previous-neighbourhood lists | 340 B | 0.34 TB |
+| **Total** | **about 1.8 KB** | **about 1.8 TB** |
+
+Today's projection is 326 TB at 35 ranks. At 4096 ranks the new layout is
+about 0.45 GB per rank on top of the fixed 0.37 GB a rank uses at start.
+
+## 9. Agreement with current results
+
+- Same keys, same refinement rule, same leaf set as fmmcpp. This is testable
+  box for box against fmmcpp's files.
+- Same summation order inside each leaf and each interaction list.
+- `relg` and other global sums change in the last bits, because a sum over a
+  distributed array cannot follow index order. COSY already differs at 1e-15
+  between builds, so the target is agreement to that level.
+
+## 10. Build order
+
+1. Done. Keys, refinement and leaf table in plain Rust on one process. The
+   leaf set, box centres, source lists and neighbour lists match fmmcpp
+   exactly at 5k (3,502 leaves) and 50k (33,183 leaves).
+2. Done. Splitters, distributed sort and migration.
+3. Done. Count exchange and halo exchange. `examples/pstore_check.rs` checks
+   leaves, their particles and their neighbour lists against the
+   single-process tree at any rank count.
+4. PHAD's near-field loop on the new storage, checked against the current run.
+5. Expansion tables and the upward and downward passes.
+   - Done on one process: `LeafTable::plan`, `interaction_list` and
+     `multipole_recipe` reproduce fmmcpp's D-tree, interaction lists (in
+     order) and upward-pass structure exactly at 5k and 50k.
+   - Done across ranks: `ParticleStore::build_plan` gives each box to the
+     rank that holds its first key, and `examples/pstore_check.rs` checks
+     every interaction list and multipole recipe against the one-process
+     plan at any rank count.
+   - Done: per-level work lists (`PSUP`, `PSDOWN`) and exchange of
+     expansions between ranks (`PSMSYNC`, `PSLSYNC`).
+     `examples/pstore_fmm.fox` runs both passes with PHAD's own expansion
+     procedures. Its potentials are the same at 1, 2, 4 and 7 ranks, and
+     within 6e-5 of the direct sum at order 6.
+6. Done. Previous-neighbourhood lists (`PSPREV`, `PSPOS`), halo refresh
+   (`PSHALO`), global sums (`PSSUM`) and gathered output (`PSALL`). A port
+   of `phad.fox` onto the store gives output files byte-identical to the
+   file-based version at 5k (32 ranks) and 50k (32, 64 and 72 ranks), with
+   `ROSY_PS_ORDERED_SUM` set.
+7. To do: parallel input and output. The first rank still reads the input
+   files and writes the output files.
+
+## Lessons from the port
+
+- **Sums.** `PSSUM` returns the correctly rounded total, which does not
+  depend on rank count but is not what a one-process loop gives. Runs then
+  differ from the file-based version at about 1e-15. `ROSY_PS_ORDERED_SUM`
+  adds in particle-number order for exact comparisons; it gathers
+  everything and is not for production.
+- **Empty ranks.** PHAD sets its series cutoff (`DAEPS`) only inside the
+  near-field integrator. A rank that owns no leaves in a step never runs
+  it and would do the next pass with the default cutoff. The port sets the
+  cutoff after the near-field loop on every rank.
+- **Sampling.** Range boundaries come from samples in proportion to the
+  weight each rank holds. A fixed number per rank left half the ranks
+  empty when all particles started on one rank.
+- **Balance.** Ranks are balanced by estimated work per particle
+  (neighbourhood size squared over leaf size, plus a constant for the
+  passes), carried with the particle from its last leaf.
+- **Neighbour order.** `PSLISTS` returns neighbours box by box, as fmmcpp
+  wrote them; the port sorts each leaf's list with PHAD's own `QSORT`.
+
+## Decisions
+
+- **Where the tree code lives.** Built into `rosy-lib` as intrinsics.
+- **fmmcpp's exact tree is kept**, so results stay comparable box for box.
+- **Output order.** Sort by `id` on output steps, so output files keep
+  today's format and order.
+
+## Language surface (decided: keep PHAD's array style)
+
+Intrinsics fill ordinary local arrays, so loop bodies stay as written.
+These are implemented (`examples/pstore.fox` exercises them). Every argument
+is a variable, and every rank makes the same call:
+
+| Intrinsic | Purpose |
+|---|---|
+| `PSLOAD x y z px py pz f n count` | Hand this rank's input particles to the store. Particle numbers continue from the last load, lower ranks first. |
+| `PSBUILD q zscale` | Recompute keys, migrate, rebuild leaves, exchange the halo. |
+| `PSGET x y z px py pz f n ids nown` | Fill local arrays: owned particles first, then halo copies. `ids` are particle numbers from 1. |
+| `PSLISTS snumbs start_snumbs nnumbs start_nnumbs cx cy cz nleaves` | The per-leaf source and neighbour lists that `FMMDIRECT` reads from `file_4` today, as local positions. |
+| `PSPUT x y z px py pz` | Write owned results back to the store. |
+| `PSSCALED sx sy sz` | Positions in the unit cube the tree was built in. |
+| `PSSIZES nmult nloc depth` | Multipoles and local expansions this rank holds, copies included, and the level count. |
+| `PSLEAFLOC index` | Position of each leaf's local expansion, in `PSLISTS` order. |
+| `PSUP level list count` | Upward-pass work list for one level. |
+| `PSDOWN level list count` | Downward-pass work list for one level. |
+| `PSMSYNC cells level` / `PSLSYNC cells level` | Exchange one level's multipoles or local expansions between ranks. |
+| `PSHALO` | Refresh halo copies after `PSPUT`. |
+| `PSBOUNDS xmin ymin zmin dzero` | The cube of the last `PSBUILD`. |
+| `PSPREV ids start` | For each owned particle, the particle numbers around it before the last `PSBUILD`. |
+| `PSPOS ids positions` | Local position of each particle number, 0 if not held here. |
+| `PSSUM values count total` | Sum over all ranks, correctly rounded. |
+| `PSALL x y z px py pz f n count` | Every particle in number order on the first rank, for output. |
+
+## Open decisions
+
+
+- **Language surface.** How `phad.fox` declares distributed particles and
+  loops over owned leaves. The halo design keeps loop bodies as they are, but
+  the declarations and the `PLOOP`/gather pairs must change.

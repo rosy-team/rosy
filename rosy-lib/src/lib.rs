@@ -30,6 +30,7 @@
 //! | [`optimizer`] | FIT loop optimization algorithms |
 
 pub mod core;
+pub mod fmmtree;
 pub mod intrinsics;
 #[cfg(feature = "mpi")]
 pub mod mpi;
@@ -37,6 +38,8 @@ pub mod mpi;
 mod mpi_serial;
 pub mod operators;
 pub mod optimizer;
+#[cfg(feature = "mpi")]
+pub mod pstore;
 pub mod registry;
 pub mod taylor;
 pub mod value;
@@ -47,6 +50,8 @@ pub use intrinsics::*;
 pub use mpi::*;
 #[cfg(not(feature = "mpi"))]
 pub use mpi_serial::*;
+#[cfg(feature = "mpi")]
+pub use pstore::PsCell;
 pub use operators::*;
 pub use registry::{
     BinaryOp, INTRINSICS, Intrinsic, IntrinsicTyping, UnaryOp, binary_return_type,

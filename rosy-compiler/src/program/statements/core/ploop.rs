@@ -69,6 +69,8 @@ pub struct PLoopStatement {
     pub commutivityfrom_rule: Option<u8>,
     /// Names gathered after the loop. Empty means each rank keeps its own writes.
     pub outputs: Vec<VariableIdentifier>,
+    /// Source line of the `PLOOP`. It labels this loop in `ROSY_MPI_STATS`.
+    pub line: u32,
 }
 
 impl FromRule for PLoopStatement {
@@ -79,6 +81,7 @@ impl FromRule for PLoopStatement {
             pair.as_rule()
         );
 
+        let line = pair.line_col().0 as u32;
         let mut inner = pair.into_inner();
         let (iterator, start, end) = {
             let mut start_loop_inner = inner
@@ -161,6 +164,7 @@ impl FromRule for PLoopStatement {
             commutivityfrom_rule,
             body,
             outputs,
+            line,
         }))
     }
 }
@@ -402,9 +406,10 @@ impl Transpile for PLoopStatement {
             };
             // `ploop_enter` records the nesting that PROOT reads.
             format!(
-                "let mut __ploop_end: f64 = {};\n\t{}\n\trosy_mpi_context.ploop_enter(__ploop_end);",
+                "let mut __ploop_end: f64 = {};\n\t{}\n\trosy_mpi_context.ploop_enter(__ploop_end, {}u32);",
                 end_output.as_re(&end_type),
                 set,
+                self.line,
             )
         };
         // Each listed name is gathered on its own. An empty list is a bare
