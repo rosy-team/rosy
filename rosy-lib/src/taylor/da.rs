@@ -615,6 +615,23 @@ impl<T: DACoefficient> Add<&DA<T>> for &DA<T> {
         let orders = &rt.monomial_orders;
 
         let _scratch = account_result_temp(n);
+        // Same term list on both sides (full series meeting full series, as in
+        // PHAD's Simo loop): the general path's result is exactly these terms
+        // in this order, so skip the bitsets and the merge.
+        if self.nonzero == rhs.nonzero && self.coeffs.len() == n && rhs.coeffs.len() == n {
+            let (mut coeffs, mut nonzero) = T::pool_alloc_da(n, self.nonzero.len());
+            for &i in &self.nonzero {
+                let iu = i as usize;
+                if orders[iu] <= max_order {
+                    let c = self.coeffs[iu] + rhs.coeffs[iu];
+                    if c.abs() > epsilon {
+                        coeffs[iu] = c;
+                        nonzero.push(i);
+                    }
+                }
+            }
+            return Ok(DA { coeffs, nonzero });
+        }
         let words = (n + 63) / 64;
         let mut self_set = bitset_pool_alloc(words);
 
@@ -683,6 +700,24 @@ impl<T: DACoefficient> DA<T> {
         let epsilon = rt.config.epsilon;
         let max_order = rt.config.max_order as u8;
         let orders = &rt.monomial_orders;
+        // Same term list on both sides: update those terms in place, keeping
+        // their order and dropping the ones that fall to the cutoff.
+        if self.nonzero == rhs.nonzero {
+            let coeffs = &mut self.coeffs;
+            self.nonzero.retain(|&i| {
+                let iu = i as usize;
+                if orders[iu] <= max_order {
+                    let c = coeffs[iu] + rhs.coeffs[iu];
+                    if c.abs() > epsilon {
+                        coeffs[iu] = c;
+                        return true;
+                    }
+                }
+                coeffs[iu] = T::zero();
+                false
+            });
+            return Ok(());
+        }
         let words = n.div_ceil(64);
 
         let mut self_set = bitset_pool_alloc(words);
@@ -811,6 +846,23 @@ impl<T: DACoefficient> Sub<&DA<T>> for &DA<T> {
         let orders = &rt.monomial_orders;
 
         let _scratch = account_result_temp(n);
+        // Same term list on both sides (full series meeting full series, as in
+        // PHAD's Simo loop): the general path's result is exactly these terms
+        // in this order, so skip the bitsets and the merge.
+        if self.nonzero == rhs.nonzero && self.coeffs.len() == n && rhs.coeffs.len() == n {
+            let (mut coeffs, mut nonzero) = T::pool_alloc_da(n, self.nonzero.len());
+            for &i in &self.nonzero {
+                let iu = i as usize;
+                if orders[iu] <= max_order {
+                    let c = self.coeffs[iu] - rhs.coeffs[iu];
+                    if c.abs() > epsilon {
+                        coeffs[iu] = c;
+                        nonzero.push(i);
+                    }
+                }
+            }
+            return Ok(DA { coeffs, nonzero });
+        }
         let words = (n + 63) / 64;
         let mut self_set = bitset_pool_alloc(words);
 
