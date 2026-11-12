@@ -472,6 +472,27 @@ impl Drop for RosyMPIContext {
         if std::thread::panicking() {
             return;
         }
+        // Time inside each particle-store intrinsic, mean and max over ranks.
+        let mut store_report = String::new();
+        if !self.pstore.call_seconds.is_empty() {
+            let mine = self.pstore.call_seconds.clone();
+            let mut total = vec![0.0f64; mine.len()];
+            let mut most = vec![0.0f64; mine.len()];
+            self.world.all_reduce_into(&mine[..], &mut total[..], mpi::collective::SystemOperation::sum());
+            self.world.all_reduce_into(&mine[..], &mut most[..], mpi::collective::SystemOperation::max());
+            store_report.push_str("seconds inside each particle-store call (mean over ranks, [max]):\n");
+            let names = crate::pstore::PS_INTRINSICS.iter().map(|(n, _)| *n).chain(crate::pstore::BUILD_PARTS.iter().copied());
+            for (at, name) in names.enumerate() {
+                if most[at] > 0.0005 {
+                    store_report.push_str(&format!("  {name:<28} {:>10.3} {:>10.3}\n", total[at] / self.size as f64, most[at]));
+                }
+            }
+        }
+        let calls = crate::core::coulsum::COULSUM_CALLS.load(std::sync::atomic::Ordering::Relaxed);
+        if calls > 0 {
+            let slow = crate::core::coulsum::COULSUM_BY_OPERATORS.load(std::sync::atomic::Ordering::Relaxed);
+            store_report.push_str(&format!("COULSUM on the first rank: {calls} calls, {slow} answered by the series operators\n"));
+        }
         let payload = stats.encode();
         let bytes: Vec<u8> = payload.iter().flat_map(|v| v.to_le_bytes()).collect();
         let Ok((recv, counts, displs)) = self.allgather_bytes(&bytes) else {
@@ -490,7 +511,8 @@ impl Drop for RosyMPIContext {
                     .collect()
             })
             .collect();
-        let report = stats::report(&per_rank);
+        let mut report = stats::report(&per_rank);
+        report.push_str(&store_report);
         match stats.sink.as_deref() {
             Some(path) => {
                 if let Err(e) = std::fs::write(path, &report) {

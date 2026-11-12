@@ -52,6 +52,9 @@ pub struct ParticleStore {
     /// that follows it.
     pub pass_seconds: f64,
     pass_mark: Option<std::time::Instant>,
+    /// Seconds spent inside each intrinsic, in [`PS_INTRINSICS`] order, then
+    /// the parts of `PSBUILD` in [`BUILD_PARTS`] order. For the stats report.
+    pub call_seconds: Vec<f64>,
     /// Weights are measured costs, on every rank.
     measured: bool,
     /// Leaves owned by this rank, in key order. `first` is a local slot.
@@ -1281,6 +1284,9 @@ pub const PS_INTRINSICS: &[(&str, usize)] = &[
     ("PSALL", 9),
 ];
 
+/// The parts of `PSBUILD` timed separately in the stats report.
+pub const BUILD_PARTS: &[&str] = &["  build: sort and refine", "  build: pass plan", "  build: halo", "  build: earlier neighbours"];
+
 impl crate::mpi::RosyMPIContext {
     /// Run one `PS*` intrinsic. Every rank must make the same call.
     ///
@@ -1330,6 +1336,19 @@ impl crate::mpi::RosyMPIContext {
     /// - `PSALL x y z px py pz f n count`: every particle in number order
     ///   on the first rank, nothing elsewhere. For output only.
     pub fn ps_call(&mut self, name: &str, args: &mut [&mut dyn PsCell]) -> Result<()> {
+        let started = std::time::Instant::now();
+        let result = self.ps_call_timed(name, args);
+        let slots = PS_INTRINSICS.len() + BUILD_PARTS.len();
+        if self.pstore.call_seconds.len() != slots {
+            self.pstore.call_seconds.resize(slots, 0.0);
+        }
+        if let Some(at) = PS_INTRINSICS.iter().position(|(n, _)| *n == name) {
+            self.pstore.call_seconds[at] += started.elapsed().as_secs_f64();
+        }
+        result
+    }
+
+    fn ps_call_timed(&mut self, name: &str, args: &mut [&mut dyn PsCell]) -> Result<()> {
         let expected = PS_INTRINSICS.iter().find(|(n, _)| *n == name).map(|(_, c)| *c);
         ensure!(expected == Some(args.len()), "{name}: wrong number of arguments");
         let store = &mut self.pstore;
@@ -1363,12 +1382,26 @@ impl crate::mpi::RosyMPIContext {
                 // by count. Build once to get them, then again to use them.
                 let passes = if store.leaves.is_empty() { 2 } else { 1 };
                 store.apply_costs(world)?;
+                let mut parts = [0.0f64; 4];
+                let mut mark = std::time::Instant::now();
+                let mut lap = |part: usize| {
+                    parts[part] += mark.elapsed().as_secs_f64();
+                    mark = std::time::Instant::now();
+                };
                 for _ in 0..passes {
                     store.rebuild(world, q, z_scale)?;
+                    lap(0);
                     store.build_plan(world)?;
+                    lap(1);
                     store.exchange_halo(world)?;
+                    lap(2);
                 }
                 store.fetch_previous(world)?;
+                lap(3);
+                store.call_seconds.resize(PS_INTRINSICS.len() + BUILD_PARTS.len(), 0.0);
+                for (slot, part) in store.call_seconds[PS_INTRINSICS.len()..].iter_mut().zip(parts) {
+                    *slot += part;
+                }
                 store.leaf_cost = vec![0.0; store.leaves.len()];
             }
             "PSCOST" => {

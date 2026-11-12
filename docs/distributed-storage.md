@@ -200,11 +200,46 @@ about 0.45 GB per rank on top of the fixed 0.37 GB a rank uses at start.
 - **Sampling.** Range boundaries come from samples in proportion to the
   weight each rank holds. A fixed number per rank left half the ranks
   empty when all particles started on one rank.
-- **Balance.** Ranks are balanced by estimated work per particle
-  (neighbourhood size squared over leaf size, plus a constant for the
-  passes), carried with the particle from its last leaf.
+- **Balance.** The first build has only an estimate (neighbourhood size
+  squared over leaf size, plus a constant for the passes). After that the
+  program reports what each leaf cost (`PSCOST`) and the store times its
+  own passes; the next build balances by each particle's share of a
+  step's work, averaged with earlier steps. Shares, not seconds, because
+  PHAD has steps that cost twenty times more than the rest and have a
+  different shape. In ordinary steps the slowest rank is within 10 to 30%
+  of the average; in those heavy steps it is still about twice the
+  average, since nothing predicts them.
+- **One partition, several phases.** The passes and the near field are
+  separated by barriers, so each would need its own balance. One set of
+  ranges can only balance their sum.
 - **Neighbour order.** `PSLISTS` returns neighbours box by box, as fmmcpp
   wrote them; the port sorts each leaf's list with PHAD's own `QSORT`.
+
+## The near-field kernel
+
+`COULSUM y mq i n relg want phi radii` replaces the pair loop of PHAD's
+near-field integrator with one call. It adds up
+`n_k (r_i - r_k) / |r_i - r_k|^3` over the other particles, each
+coordinate a series in time, on plain coefficient arrays. It is not a
+store call and needs no MPI.
+
+- **Same bits.** Every coefficient comes from the same operations in the
+  same order as the series operators use, cutoff included. PHAD's output
+  files are unchanged.
+- **Each coefficient once.** A Picard pass raises the order by one, and
+  coefficient `c` depends only on coefficients up to `c` of the two
+  particles. The kernel keeps what earlier passes worked out and checks
+  its inputs bit for bit on every call, so nothing stale is reused.
+- **One exception.** The operators add a product's terms in the order of
+  the left operand's term list. A series with a nonzero coefficient right
+  after a zero one gets its list out of order, and the rounding can then
+  differ. The kernel detects this and runs the operators for that call.
+- **Layout.** Particle `p` has its six series at `6(p-1)+1 ..= 6(p-1)+6`
+  (positions, then momenta) and its charge factor at `mq(2p)`. The sums
+  go to `phi(6(i-1)+4 ..= 6(i-1)+6)`. With `want` nonzero, `radii` gets
+  one convergence-radius estimate per pair.
+
+PHAD's time stepping, error control and external fields stay in PHAD.
 
 ## Decisions
 
