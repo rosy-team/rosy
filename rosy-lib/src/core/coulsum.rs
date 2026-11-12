@@ -125,9 +125,31 @@ thread_local! {
     static MEMO: std::cell::RefCell<Memo> = std::cell::RefCell::new(Memo::default());
 }
 
-/// A term list in ascending order.
-fn listed_in_order(series: &DA) -> bool {
-    series.nonzero.windows(2).all(|w| w[0] < w[1])
+/// Whether the operators' term list for `mine - theirs`, cut down to the
+/// coefficients in `kept`, is in ascending order. The list is `mine`'s
+/// terms in their order, then the terms only `theirs` has, in its order.
+fn difference_in_order(mine: &DA, theirs: &DA, kept: u64, len: usize) -> bool {
+    let mut own = 0u64;
+    let mut last = None;
+    let mut rising = true;
+    let mut visit = |index: u32, own: u64| {
+        if (index as usize) < len && kept >> index & 1 == 1 && own >> index & 1 == 0 {
+            rising &= last.is_none_or(|l| l < index);
+            last = Some(index);
+        }
+    };
+    for &index in &mine.nonzero {
+        visit(index, 0);
+    }
+    for &index in &mine.nonzero {
+        if (index as usize) < 64 {
+            own |= 1 << index;
+        }
+    }
+    for &index in &theirs.nonzero {
+        visit(index, own);
+    }
+    rising
 }
 
 /// Sum the Coulomb terms on particle `i` from the other `n - 1` particles
@@ -199,7 +221,7 @@ pub fn coulsum(
 
     let coefficient = |series: &DA, c: usize| series.coeffs.get(c).copied().unwrap_or(0.0);
     COULSUM_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    if len > 64 || !(0..n).all(|p| y[6 * p..6 * p + 3].iter().all(listed_in_order)) {
+    if len > 64 {
         COULSUM_BY_OPERATORS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         return coulsum_by_operators(y, mq, i, n, relg, order, want_radii, phi, radii);
     }
@@ -242,12 +264,7 @@ pub fn coulsum(
             (1u64 << len) - 1
         };
         let mut sum_set = [0u64; 3];
-        let mut mine_set = [0u64; 3];
-        for (axis, set) in mine_set.iter_mut().enumerate() {
-            for c in 0..len {
-                *set |= u64::from(coefficient(&y[6 * (i - 1) + axis], c) != 0.0) << c;
-            }
-        }
+
         if want_radii {
             radii.clear();
         }
@@ -379,8 +396,7 @@ pub fn coulsum(
             // then what each later one adds.
             let count = |mask: u64| (mask & window).count_ones();
             for axis in 0..3 {
-                let (a, b) = (mine_set[axis], masks[M_THEIRS + axis] & !mine_set[axis]);
-                let listed = |mask: u64| ascending(&[a & mask & window, b & mask & window]);
+                let listed = |mask: u64| difference_in_order(&y[6 * me + axis], &y[6 * (k - 1) + axis], mask, len);
                 let d = masks[M_D + axis];
                 if axis < 2 {
                     in_order &= !by_list(count(d), count(d)) || listed(d);
@@ -722,6 +738,22 @@ mod tests {
             0,
             "a cold start must not need the operators"
         );
+        // An integrator adds the constant last, so a series it is still
+        // building lists the constant last. Those are full length, and
+        // full-length products do not go by list order; the shorter series
+        // of particles already done come from POLVAL in ascending order.
+        let mut rotated = y.clone();
+        for series in &mut rotated {
+            if series.nonzero.first() == Some(&0) && series.nonzero.len() == full + 1 {
+                series.nonzero.rotate_left(1);
+            }
+        }
+        for order in 0..=full {
+            for i in 1..=n {
+                check(&rotated, &mq, n, order, i);
+            }
+        }
+        assert_eq!(FALLBACKS.with(|f| f.get()), 0, "a constant listed last must not need the operators");
         // First with changes that keep every term list as it is, so the
         // kept values are what answers.
         assert_eq!(
