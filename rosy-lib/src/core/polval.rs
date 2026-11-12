@@ -871,6 +871,7 @@ fn dot_poly_da(poly: &DA, values: &DaMonomialValues) -> Result<DA> {
         present[k as usize] = true;
     }
     let mut dropped = false;
+    let full_order = rt.config.max_order >= rt.init_order;
     for &idx in &poly.nonzero {
         if idx == 0 {
             continue;
@@ -881,6 +882,30 @@ fn dot_poly_da(poly: &DA, values: &DaMonomialValues) -> Result<DA> {
         }
         let node = values.compact[idx as usize] as usize;
         let term = &values.values[node];
+        // Every coefficient already present and nothing truncated (the
+        // usual case after the first term): the update needs no
+        // bookkeeping, so run it over the plain arrays. A term coefficient
+        // of zero adds zero, and a sum that falls to the cutoff is dropped
+        // after the term, exactly as the loop below does it.
+        let n = result.coeffs.len();
+        if full_order && result.nonzero.len() == n && term.coeffs.len() == n {
+            let mut gone = false;
+            for (r, &v) in result.coeffs.iter_mut().zip(&term.coeffs) {
+                let t = v * c;
+                let t = if t.abs() > eps { t } else { 0.0 };
+                let sum = *r + t;
+                let kept = sum.abs() > eps;
+                *r = if kept { sum } else { 0.0 };
+                gone |= !kept;
+            }
+            if gone {
+                for (k, flag) in present.iter_mut().enumerate() {
+                    *flag = result.coeffs[k] != 0.0;
+                }
+                result.nonzero.retain(|&k| present[k as usize]);
+            }
+            continue;
+        }
         for &k in &term.nonzero {
             let ku = k as usize;
             let t = term.coeffs[ku] * c;

@@ -21,10 +21,12 @@ use crate::fmmtree::{
 pub const FIELDS: usize = 8;
 /// Keys offered per rank, on average, when the ranges are chosen. A rank
 /// offers in proportion to the particles it holds.
-const SAMPLES_PER_RANK: usize = 16;
+const SAMPLES_PER_RANK: usize = 128;
 /// Per-particle weight of the upward and downward passes, on the scale
 /// where a leaf's near-field work is its neighbourhood size squared.
 const PASS_WEIGHT: u64 = 400;
+/// Measured weights over all ranks add up to about this.
+const WEIGHT_SCALE: f64 = 1e15;
 /// Levels at or above this many boxes are counted by query, not by a
 /// dense histogram: 8^6 boxes is 2 MB per rank.
 const DENSE_COUNT_LEVELS: u32 = 6;
@@ -38,9 +40,20 @@ pub struct ParticleStore {
     pub data: Vec<[f64; FIELDS]>,
     /// Level of the leaf each particle sits in.
     pub leaf_level: Vec<u8>,
-    /// Estimated work each particle costs per step, from its last leaf.
+    /// Work each particle costs per step, from its last leaf: measured
+    /// nanoseconds once the program reports costs, a model before that.
     /// Ranks are balanced by this, not by particle count.
     pub weight: Vec<u64>,
+    /// Seconds the program has charged to each owned leaf since the last
+    /// rebuild (`PSCOST`).
+    pub leaf_cost: Vec<f64>,
+    /// Seconds this rank spent computing expansions since the last
+    /// rebuild: the time between each `PSUP` or `PSDOWN` and the sync
+    /// that follows it.
+    pub pass_seconds: f64,
+    pass_mark: Option<std::time::Instant>,
+    /// Weights are measured costs, on every rank.
+    measured: bool,
     /// Leaves owned by this rank, in key order. `first` is a local slot.
     pub leaves: Vec<Leaf>,
     /// `splitters[r]..splitters[r + 1]` is the key range of rank `r`.
@@ -213,6 +226,54 @@ impl ParticleStore {
         Ok(())
     }
 
+    /// Turn the costs measured since the last rebuild into particle
+    /// weights. A leaf's cost is shared by its particles; the rank's pass
+    /// time is shared by all of its particles. Does nothing until some
+    /// rank has reported a cost.
+    pub fn apply_costs(&mut self, world: &SimpleCommunicator) -> Result<()> {
+        let near: f64 = self.leaf_cost.iter().sum();
+        let heaviest = self.leaf_cost.iter().copied().fold(0.0, f64::max);
+        let mine = [near, self.pass_seconds, near + self.pass_seconds];
+        let mut total = [0.0f64; 3];
+        let mut most = [0.0f64; 3];
+        world.all_reduce_into(&mine[..], &mut total[..], SystemOperation::sum());
+        world.all_reduce_into(&mine[..], &mut most[..], SystemOperation::max());
+        let mut heaviest_leaf = 0.0f64;
+        world.all_reduce_into(&heaviest, &mut heaviest_leaf, SystemOperation::max());
+        if total[0] > 0.0 && self.leaf_cost.len() == self.leaves.len() {
+            // A weight is the particle's share of a whole step's work, so a
+            // step that costs twenty times more (a beam-line element, a
+            // burst of close encounters) counts no more than a quiet one.
+            // Shares are averaged with the earlier ones, because the costly
+            // steps have a different shape and come back.
+            let held: u64 = self.weight.iter().sum();
+            let mut all_held = 0u64;
+            world.all_reduce_into(&held, &mut all_held, SystemOperation::sum());
+            let earlier = if self.measured && all_held > 0 { WEIGHT_SCALE / all_held as f64 } else { 0.0 };
+            let now = WEIGHT_SCALE / total[2];
+            let blend = if earlier > 0.0 { 0.5 } else { 1.0 };
+            let shared = self.pass_seconds / self.len().max(1) as f64;
+            for (leaf, &cost) in self.leaves.iter().zip(&self.leaf_cost) {
+                let share = (cost / leaf.count as f64 + shared) * now;
+                for w in &mut self.weight[leaf.first..leaf.first + leaf.count] {
+                    *w = ((blend * share + (1.0 - blend) * *w as f64 * earlier) as u64).max(1);
+                }
+            }
+            self.measured = true;
+            if world.rank() == 0 && std::env::var_os("ROSY_MPI_STATS").is_some() {
+                let ranks = world.size() as f64;
+                eprintln!(
+                    "[pstore] step cost per rank, mean [max]: near {:.3} [{:.3}]  passes {:.3} [{:.3}]  both {:.3} [{:.3}]  heaviest leaf {:.3}",
+                    total[0] / ranks, most[0], total[1] / ranks, most[1], total[2] / ranks, most[2], heaviest_leaf
+                );
+            }
+        }
+        self.leaf_cost.clear();
+        self.pass_seconds = 0.0;
+        self.pass_mark = None;
+        Ok(())
+    }
+
     /// Rank that keeps the directory entry of particle `id`.
     fn directory_rank(&self, id: u64, ranks: usize) -> usize {
         let total = self.loaded.max(1) as u128;
@@ -348,6 +409,9 @@ impl ParticleStore {
         // is shared by the leaf's particles; the passes cost about the
         // same for every particle. The constant is the measured ratio of
         // the two in PHAD.
+        if self.measured {
+            return Ok(());
+        }
         for leaf in &self.leaves {
             let around = (leaf.count + self.neighbour_positions(leaf).len()) as u64;
             let weight = around * around / leaf.count as u64 + PASS_WEIGHT;
@@ -1209,6 +1273,7 @@ pub const PS_INTRINSICS: &[(&str, usize)] = &[
     ("PSMSYNC", 2),
     ("PSLSYNC", 2),
     ("PSHALO", 0),
+    ("PSCOST", 2),
     ("PSBOUNDS", 4),
     ("PSPREV", 2),
     ("PSPOS", 2),
@@ -1245,6 +1310,12 @@ impl crate::mpi::RosyMPIContext {
     /// - `PSMSYNC cells level` and `PSLSYNC cells level`: exchange this
     ///   level's multipoles or local expansions between ranks.
     /// - `PSHALO`: refresh the halo copies after `PSPUT`.
+    /// - `PSCOST leaf seconds`: charge `seconds` of work to owned leaf
+    ///   `leaf` (its position in `PSLISTS` order, from 1). The next
+    ///   `PSBUILD` balances the ranks by these costs plus the time each
+    ///   rank spent between `PSUP`/`PSDOWN` and the following sync. A
+    ///   program that never calls it is balanced by an estimate. It is
+    ///   local: ranks need not call it the same number of times.
     /// - `PSBOUNDS xmin ymin zmin dzero`: the cube of the last `PSBUILD`.
     /// - `PSPREV ids start`: for each owned particle, the particle numbers
     ///   (from 1) around it before the last `PSBUILD`, with offsets.
@@ -1291,12 +1362,24 @@ impl crate::mpi::RosyMPIContext {
                 // The first build has no work estimates yet, so it balances
                 // by count. Build once to get them, then again to use them.
                 let passes = if store.leaves.is_empty() { 2 } else { 1 };
+                store.apply_costs(world)?;
                 for _ in 0..passes {
                     store.rebuild(world, q, z_scale)?;
                     store.build_plan(world)?;
                     store.exchange_halo(world)?;
                 }
                 store.fetch_previous(world)?;
+                store.leaf_cost = vec![0.0; store.leaves.len()];
+            }
+            "PSCOST" => {
+                let leaf = args[0].ps_scalar()?;
+                let seconds = args[1].ps_scalar()?;
+                ensure!(
+                    leaf >= 1.0 && leaf as usize <= store.leaf_cost.len(),
+                    "PSCOST: leaf {leaf} is not one of this rank's {} leaves",
+                    store.leaf_cost.len()
+                );
+                store.leaf_cost[leaf as usize - 1] += seconds.max(0.0);
             }
             "PSGET" => {
                 let all = || store.data.iter().chain(&store.halo_data).chain(&store.far_data);
@@ -1373,13 +1456,20 @@ impl crate::mpi::RosyMPIContext {
                 };
                 args[1].ps_set_values(list)?;
                 args[2].ps_set_scalar(count as f64)?;
+                store.pass_mark = Some(std::time::Instant::now());
             }
             "PSMSYNC" => {
+                if let Some(mark) = store.pass_mark.take() {
+                    store.pass_seconds += mark.elapsed().as_secs_f64();
+                }
                 let level = args[1].ps_scalar()? as u32;
                 let plan = &store.plan;
                 store.sync_cells(world, args[0].ps_cells()?, level, &plan.multipole_users, &plan.ghost_multipoles, &plan.multipole_index)?;
             }
             "PSLSYNC" => {
+                if let Some(mark) = store.pass_mark.take() {
+                    store.pass_seconds += mark.elapsed().as_secs_f64();
+                }
                 let level = args[1].ps_scalar()? as u32;
                 let plan = &store.plan;
                 store.sync_cells(world, args[0].ps_cells()?, level, &plan.local_users, &plan.ghost_locals, &plan.local_index)?;

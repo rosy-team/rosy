@@ -1,3 +1,4 @@
+pub mod coulsum;
 pub mod da_ops;
 pub mod dapew;
 pub mod daprv;
@@ -17,6 +18,7 @@ pub mod rkco;
 pub mod rng;
 pub mod time;
 
+pub use coulsum::coulsum;
 pub use da_ops::*;
 pub use dapew::*;
 pub use daprv::*;

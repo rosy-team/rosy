@@ -20,6 +20,7 @@
 //! PSMSYNC cells level;
 //! PSLSYNC cells level;
 //! PSHALO;
+//! PSCOST leaf seconds;
 //! PSBOUNDS xmin ymin zmin dzero;
 //! PSPREV  ids start;
 //! PSPOS   ids positions;
@@ -59,11 +60,14 @@ const INTRINSICS: &[(&str, &str)] = &[
     ("PSMSYNC", "ci"),
     ("PSLSYNC", "ci"),
     ("PSHALO", ""),
+    ("PSCOST", "ii"),
     ("PSBOUNDS", "ssss"),
     ("PSPREV", "vv"),
     ("PSPOS", "iv"),
     ("PSSUM", "iis"),
     ("PSALL", "vvvvvvvvs"),
+    // Not a store call: the Coulomb sum over Taylor series, in rosy-lib.
+    ("COULSUM", "iiiiiicv"),
 ];
 
 #[derive(Debug)]
@@ -112,7 +116,10 @@ impl Transpile for PstoreStatement {
         context: &mut TranspilationInputContext,
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let mut requested_variables = BTreeSet::new();
-        requested_variables.insert("rosy_mpi_context".to_string());
+        let coulsum = self.name == "COULSUM";
+        if !coulsum {
+            requested_variables.insert("rosy_mpi_context".to_string());
+        }
         let mut cells = Vec::new();
         for arg in &self.args {
             let output = arg.transpile(context).map_err(|e| {
@@ -132,7 +139,24 @@ impl Transpile for PstoreStatement {
                     format!("&mut *{}", output.serialization)
                 }
             };
-            cells.push(format!("{place} as &mut dyn PsCell"));
+            if coulsum {
+                cells.push(place);
+            } else {
+                cells.push(format!("{place} as &mut dyn PsCell"));
+            }
+        }
+        if coulsum {
+            // Reals are read first, so no borrow of them is alive in the call.
+            let real = |k: usize| format!("rosy_lib::rosy_as_f64(&*({}))", cells[k]);
+            let serialization = format!(
+                "{{ let (__i, __n, __relg, __want) = ({}, {}, {}, {}); rosy_lib::coulsum(&*({}), &*({}), __i, __n, __relg, __want, {}, {}).context(\"...in COULSUM\")?; }}",
+                real(2), real(3), real(4), real(5), cells[0], cells[1], cells[6], cells[7],
+            );
+            return Ok(TranspilationOutput {
+                serialization,
+                requested_variables,
+                ..Default::default()
+            });
         }
         let serialization = format!(
             "rosy_mpi_context.ps_call(\"{}\", &mut [{}]).context(\"...in {}\")?;",

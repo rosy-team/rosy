@@ -233,6 +233,7 @@ is a variable, and every rank makes the same call:
 | `PSDOWN level list count` | Downward-pass work list for one level. |
 | `PSMSYNC cells level` / `PSLSYNC cells level` | Exchange one level's multipoles or local expansions between ranks. |
 | `PSHALO` | Refresh halo copies after `PSPUT`. |
+| `PSCOST leaf seconds` | Charge measured work to an owned leaf. The next `PSBUILD` balances ranks by these costs plus each rank's own pass time. |
 | `PSBOUNDS xmin ymin zmin dzero` | The cube of the last `PSBUILD`. |
 | `PSPREV ids start` | For each owned particle, the particle numbers around it before the last `PSBUILD`. |
 | `PSPOS ids positions` | Local position of each particle number, 0 if not held here. |
