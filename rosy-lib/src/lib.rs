@@ -51,7 +51,7 @@ pub use mpi::*;
 #[cfg(not(feature = "mpi"))]
 pub use mpi_serial::*;
 #[cfg(feature = "mpi")]
-pub use pstore::PsCell;
+pub use pstore::{KernelFn, PsCell, kernel_call};
 pub use operators::*;
 pub use registry::{
     BinaryOp, INTRINSICS, Intrinsic, IntrinsicTyping, UnaryOp, binary_return_type,

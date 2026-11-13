@@ -1261,6 +1261,47 @@ impl PsCell for Vec<crate::RosyValue> {
     }
 }
 
+/// A C function a program supplies: how many arrays, the arrays, their lengths.
+pub type KernelFn = unsafe extern "C" fn(i64, *mut *mut f64, *const i64);
+
+/// Call a program's C kernel. Every cell goes over as an array of doubles
+/// (a real is an array of one); what the kernel changed is written back.
+/// The kernel must stay inside the lengths it is given.
+pub fn kernel_call(kernel: KernelFn, cells: &mut [&mut dyn PsCell]) -> Result<()> {
+    let mut scalar = Vec::with_capacity(cells.len());
+    let mut before = Vec::with_capacity(cells.len());
+    for (at, cell) in cells.iter().enumerate() {
+        match cell.ps_scalar() {
+            Ok(v) => {
+                scalar.push(true);
+                before.push(vec![v]);
+            }
+            Err(_) => {
+                scalar.push(false);
+                before.push(cell.ps_values().map_err(|e| e.context(format!("kernel argument {}", at + 1)))?);
+            }
+        }
+    }
+    let mut after = before.clone();
+    let lengths: Vec<i64> = after.iter().map(|v| v.len() as i64).collect();
+    let mut pointers: Vec<*mut f64> = after.iter_mut().map(|v| v.as_mut_ptr()).collect();
+    // SAFETY: each pointer covers the length passed with it, and all of
+    // them outlive the call.
+    unsafe { kernel(pointers.len() as i64, pointers.as_mut_ptr(), lengths.as_ptr()) };
+    for (at, cell) in cells.iter_mut().enumerate() {
+        let same = before[at].iter().zip(&after[at]).all(|(a, b)| a.to_bits() == b.to_bits());
+        if same {
+            continue;
+        }
+        if scalar[at] {
+            cell.ps_set_scalar(after[at][0])?;
+        } else {
+            cell.ps_set_values(std::mem::take(&mut after[at]))?;
+        }
+    }
+    Ok(())
+}
+
 /// Argument count of each `PS*` intrinsic. The compiler checks against it.
 pub const PS_INTRINSICS: &[(&str, usize)] = &[
     ("PSLOAD", 9),

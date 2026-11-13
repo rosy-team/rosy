@@ -49,7 +49,8 @@ fn local_rosy_lib() -> Option<PathBuf> {
 }
 
 /// Generates a Cargo.toml for the output project
-fn generate_cargo_toml(optimized: bool, rosy_lib_dep: &str) -> String {
+fn generate_cargo_toml(optimized: bool, rosy_lib_dep: &str, kernels: bool) -> String {
+    let build_deps = if kernels { "\n[build-dependencies]\ncc = \"1\"\n" } else { "" };
     let profile_section = if optimized {
         "\n[profile.release]\nopt-level = 3\nlto = \"fat\"\ncodegen-units = 1\npanic = \"abort\"\n"
     } else {
@@ -59,7 +60,7 @@ fn generate_cargo_toml(optimized: bool, rosy_lib_dep: &str) -> String {
     };
 
     format!(
-        "[workspace]\n\n[package]\nname = \"rosy-output\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nanyhow = \"1.0\"\n{rosy_lib_dep}\nnum-complex = \"0.4\"\n{profile_section}"
+        "[workspace]\n\n[package]\nname = \"rosy-output\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nanyhow = \"1.0\"\n{rosy_lib_dep}\nnum-complex = \"0.4\"\n{build_deps}{profile_section}"
     )
 }
 
@@ -71,6 +72,7 @@ pub fn create_output_project(
     output_dir: &Path,
     uses_mpi: bool,
     optimized: bool,
+    kernels: &[PathBuf],
 ) -> Result<Option<PathBuf>> {
     // Create the directory structure
     std::fs::create_dir_all(output_dir.join("src"))
@@ -103,9 +105,39 @@ pub fn create_output_project(
     // Write Cargo.toml
     write_if_changed(
         output_dir.join("Cargo.toml"),
-        generate_cargo_toml(optimized, &rosy_lib_dep),
+        generate_cargo_toml(optimized, &rosy_lib_dep, !kernels.is_empty()),
     )
     .context("Failed to write Cargo.toml template")?;
+
+    // C kernels the program supplies (`KERNEL`) are compiled by a build script.
+    // ROSY_KERNEL_CFLAGS and ROSY_KERNEL_LIBS, read when the program is
+    // built, add compiler flags and libraries to link.
+    let build_rs = output_dir.join("build.rs");
+    if kernels.is_empty() {
+        if build_rs.exists() {
+            std::fs::remove_file(&build_rs).context("Failed to remove a stale build.rs")?;
+        }
+    } else {
+        let mut script = String::from("fn main() {\n    let mut build = cc::Build::new();\n    build.opt_level(3);\n");
+        for kernel in kernels {
+            let path = kernel.to_string_lossy().replace('\\', "/");
+            script.push_str(&format!("    build.file({path:?});\n    println!(\"cargo:rerun-if-changed={{}}\", {path:?});\n"));
+            // Headers beside the kernel may change too.
+            if let Some(dir) = kernel.parent() {
+                let dir = dir.to_string_lossy().replace('\\', "/");
+                script.push_str(&format!("    println!(\"cargo:rerun-if-changed={{}}\", {dir:?});\n"));
+            }
+        }
+        script.push_str(concat!(
+            "    println!(\"cargo:rerun-if-env-changed=ROSY_KERNEL_CFLAGS\");\n",
+            "    println!(\"cargo:rerun-if-env-changed=ROSY_KERNEL_LIBS\");\n",
+            "    for flag in std::env::var(\"ROSY_KERNEL_CFLAGS\").unwrap_or_default().split_whitespace() {\n        build.flag(flag);\n    }\n",
+            "    build.compile(\"rosy_kernels\");\n",
+            "    for lib in std::env::var(\"ROSY_KERNEL_LIBS\").unwrap_or_default().split_whitespace() {\n        println!(\"cargo:rustc-link-lib={lib}\");\n    }\n",
+            "}\n",
+        ));
+        write_if_changed(&build_rs, script).context("Failed to write build.rs")?;
+    }
 
     // Write main.rs template
     std::fs::write(output_dir.join("src").join("main.rs"), MAIN_RS_TEMPLATE)

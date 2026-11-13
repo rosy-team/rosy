@@ -166,9 +166,24 @@ pub(crate) fn compile_source(
     let uses_mpi =
         serialization.contains("get_group_num")
             || serialization.contains(".coordinate(")
-            || serialization.contains(".ps_call(");
+            || serialization.contains(".ps_call(")
+            || serialization.contains("rosy_lib::kernel_call(");
 
-    let local_lib = embedded::create_output_project(&rosy_output_path, uses_mpi, optimized)
+    // C files named by KERNEL statements, relative to the script.
+    let mut kernels = Vec::<std::path::PathBuf>::new();
+    for piece in serialization.split("/* rosy-kernel-source \"").skip(1) {
+        let Some(name) = piece.split("\" */").next() else { continue };
+        let base = script_path.and_then(|p| p.parent()).unwrap_or(Path::new("."));
+        let path = base.join(name);
+        let path = path
+            .canonicalize()
+            .with_context(|| format!("KERNEL source {} not found", path.display()))?;
+        if !kernels.contains(&path) {
+            kernels.push(path);
+        }
+    }
+
+    let local_lib = embedded::create_output_project(&rosy_output_path, uses_mpi, optimized, &kernels)
         .context("Failed to create output project structure")?;
     if let Some(ref local) = local_lib {
         if !quiet {

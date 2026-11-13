@@ -241,6 +241,32 @@ store call and needs no MPI.
 
 PHAD's time stepping, error control and external fields stay in PHAD.
 
+## Kernels a program supplies
+
+`KERNEL 'file.c' 'function' a b c ...;` calls a C function that the program
+ships with. This is how PHAD's near-field integrator and lattice run as
+native code without that physics living in Rosy.
+
+- The file is compiled and linked into the program. Its path is relative to
+  the script; headers beside it are picked up.
+- Each variable goes over as an array of doubles. A real is an array of one.
+  Whatever the function changes is written back to the variable.
+- The function has one fixed shape and must stay inside the lengths it is
+  given:
+
+  ```c
+  void function(long long count, double **values, const long long *lengths);
+  ```
+
+- `ROSY_KERNEL_CFLAGS` and `ROSY_KERNEL_LIBS`, read when the program is
+  built, add compiler flags and libraries to link.
+- Arguments are copied in and out, so call it once for a whole batch (every
+  leaf a process owns), not once per particle.
+- It needs the `mpi` build for now, because the argument conversion lives
+  with the store.
+
+`examples/kernel.fox` is a small check.
+
 ## Decisions
 
 - **Where the tree code lives.** Built into `rosy-lib` as intrinsics.

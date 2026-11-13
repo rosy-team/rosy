@@ -26,6 +26,16 @@
 //! PSPOS   ids positions;
 //! PSSUM   values count total;
 //! PSALL   x y z px py pz f n count;
+//! KERNEL  'file.c' 'function' a b c ...;
+//! ```
+//!
+//! `KERNEL` calls a C function the program supplies. The file is compiled
+//! and linked into the program; its path is relative to the script. Each
+//! variable goes over as an array of doubles (a real is an array of one),
+//! and whatever the function changes is written back:
+//!
+//! ```c
+//! void function(long long count, double **values, const long long *lengths);
 //! ```
 //!
 //! Every argument is a variable. Every rank must make the same call.
@@ -74,6 +84,8 @@ const INTRINSICS: &[(&str, &str)] = &[
 pub struct PstoreStatement {
     pub name: String,
     pub args: Vec<VariableIdentifier>,
+    /// `KERNEL` only: the C file and the function in it.
+    pub strings: Vec<String>,
 }
 
 impl FromRule for PstoreStatement {
@@ -85,8 +97,13 @@ impl FromRule for PstoreStatement {
         );
         let mut name = String::new();
         let mut args = Vec::new();
+        let mut strings = Vec::new();
         for inner in pair.into_inner() {
             match inner.as_rule() {
+                Rule::string => {
+                    let raw = inner.as_str();
+                    strings.push(raw[1..raw.len() - 1].to_string());
+                }
                 Rule::pstore_name => name = inner.as_str().to_ascii_uppercase(),
                 Rule::variable_identifier => args.push(
                     VariableIdentifier::from_rule(inner)
@@ -96,6 +113,25 @@ impl FromRule for PstoreStatement {
                 _ => {}
             }
         }
+        if name == "KERNEL" {
+            ensure!(
+                strings.len() == 2,
+                "KERNEL takes a C file and a function name, both quoted, then variables"
+            );
+            let ident = |s: &str| {
+                !s.is_empty()
+                    && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    && !s.starts_with(|c: char| c.is_ascii_digit())
+            };
+            ensure!(ident(&strings[1]), "'{}' is not a C function name", strings[1]);
+            ensure!(
+                !strings[0].contains("*/") && !strings[0].contains('"'),
+                "'{}' is not a usable file name",
+                strings[0]
+            );
+            return Ok(Some(PstoreStatement { name, args, strings }));
+        }
+        ensure!(strings.is_empty(), "{name} takes variables only");
         let expected = INTRINSICS
             .iter()
             .find(|(n, _)| *n == name)
@@ -106,7 +142,7 @@ impl FromRule for PstoreStatement {
             "{name} takes {expected} variables, found {}",
             args.len()
         );
-        Ok(Some(PstoreStatement { name, args }))
+        Ok(Some(PstoreStatement { name, args, strings }))
     }
 }
 
@@ -117,7 +153,7 @@ impl Transpile for PstoreStatement {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let mut requested_variables = BTreeSet::new();
         let coulsum = self.name == "COULSUM";
-        if !coulsum {
+        if !coulsum && self.name != "KERNEL" {
             requested_variables.insert("rosy_mpi_context".to_string());
         }
         let mut cells = Vec::new();
@@ -151,6 +187,19 @@ impl Transpile for PstoreStatement {
             let serialization = format!(
                 "{{ let (__i, __n, __relg, __want) = ({}, {}, {}, {}); rosy_lib::coulsum(&*({}), &*({}), __i, __n, __relg, __want, {}, {}).context(\"...in COULSUM\")?; }}",
                 real(2), real(3), real(4), real(5), cells[0], cells[1], cells[6], cells[7],
+            );
+            return Ok(TranspilationOutput {
+                serialization,
+                requested_variables,
+                ..Default::default()
+            });
+        }
+        if self.name == "KERNEL" {
+            // The CLI finds the file through the comment and compiles it in.
+            let (file, function) = (&self.strings[0], &self.strings[1]);
+            let serialization = format!(
+                "{{ /* rosy-kernel-source \"{file}\" */ unsafe extern \"C\" {{ fn {function}(count: i64, values: *mut *mut f64, lengths: *const i64); }} rosy_lib::kernel_call({function}, &mut [{}]).context(\"...in KERNEL {function}\")?; }}",
+                cells.join(", "),
             );
             return Ok(TranspilationOutput {
                 serialization,
