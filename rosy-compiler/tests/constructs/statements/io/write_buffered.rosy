@@ -1,0 +1,31 @@
+{File writes are buffered; every way of looking at the file still sees them.}
+BEGIN;
+    VARIABLE (ST) LINE;
+    VARIABLE (RE) I;
+    {1. read back on the same unit after a rewind}
+    OPENF 31 'test_write_buffered_a.txt' 'replace';
+    LOOP I 1 3; WRITE 31 'a line '&ST(I); ENDLOOP;
+    CLOSEF 31;
+    OPENF 31 'test_write_buffered_a.txt' 'unknown';
+    WRITE 31 'first, overwritten';
+    REWF 31;
+    READS 31 LINE;
+    WRITE 6 LINE;
+    CLOSEF 31;
+    {2. read on another unit while the writer is still open}
+    OPENF 32 'test_write_buffered_b.txt' 'replace';
+    WRITE 32 'still open';
+    OPENF 33 'test_write_buffered_b.txt' 'old';
+    READS 33 LINE;
+    WRITE 6 LINE;
+    CLOSEF 33;
+    {3. another program reads it while the writer is still open}
+    WRITE 32 'seen by the shell';
+    OS 'tail -n 1 test_write_buffered_b.txt';
+    CLOSEF 32;
+END;
+
+======= expect
+first, overwritten
+still open
+seen by the shell

@@ -44,6 +44,8 @@ impl RosyMPIContext {
     /// Enter a PLOOP that splits the current group into `num_groups`.
     /// `line` is the source line of the PLOOP; it only labels the stats.
     pub fn ploop_enter(&mut self, num_groups: RE, line: u32) {
+        // Another rank may read what this one wrote before the PLOOP.
+        let _ = crate::core::file_io::rosy_flush_all_files();
         self.ploop_groups.push(num_groups as i32);
         if let Some(stats) = self.stats.as_mut() {
             stats.enter(line);
@@ -51,6 +53,7 @@ impl RosyMPIContext {
     }
 
     pub fn ploop_exit(&mut self) {
+        let _ = crate::core::file_io::rosy_flush_all_files();
         self.ploop_groups.pop();
         if let Some(stats) = self.stats.as_mut() {
             stats.exit();

@@ -27,6 +27,28 @@ const SAMPLES_PER_RANK: usize = 128;
 const PASS_WEIGHT: u64 = 400;
 /// Measured weights over all ranks add up to about this.
 const WEIGHT_SCALE: f64 = 1e15;
+/// Deterministic balancing: nominal seconds per expansion translation
+/// (M2M, M2L, L2L, or one particle summed into a multipole), so counted
+/// pass work and the program's counted near-field work share a scale.
+/// `ROSY_PS_TRANSLATION_SECONDS` overrides it.
+const TRANSLATION_SECONDS: f64 = 2e-6;
+
+/// Whether ranks are balanced by counted work only (`ROSY_PS_DETERMINISTIC`
+/// set), so the same inputs on the same number of ranks give the same
+/// particle split, and the same results, every run. Otherwise measured
+/// times are used, which follow the machine more closely but differ from
+/// run to run.
+pub fn deterministic() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("ROSY_PS_DETERMINISTIC").is_some())
+}
+
+fn translation_seconds() -> f64 {
+    static V: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
+    *V.get_or_init(|| {
+        std::env::var("ROSY_PS_TRANSLATION_SECONDS").ok().and_then(|v| v.parse().ok()).unwrap_or(TRANSLATION_SECONDS)
+    })
+}
 /// Levels at or above this many boxes are counted by query, not by a
 /// dense histogram: 8^6 boxes is 2 MB per rank.
 const DENSE_COUNT_LEVELS: u32 = 6;
@@ -234,6 +256,16 @@ impl ParticleStore {
     /// time is shared by all of its particles. Does nothing until some
     /// rank has reported a cost.
     pub fn apply_costs(&mut self, world: &SimpleCommunicator) -> Result<()> {
+        // Counted pass work per owned particle, in seconds at the nominal
+        // rate, replaces the measured pass time when balancing is
+        // deterministic.
+        let counted = if deterministic() && self.leaf_cost.len() == self.leaves.len() {
+            let work = self.pass_work();
+            self.pass_seconds = work.iter().sum();
+            Some(work)
+        } else {
+            None
+        };
         let near: f64 = self.leaf_cost.iter().sum();
         let heaviest = self.leaf_cost.iter().copied().fold(0.0, f64::max);
         let mine = [near, self.pass_seconds, near + self.pass_seconds];
@@ -257,8 +289,11 @@ impl ParticleStore {
             let blend = if earlier > 0.0 { 0.5 } else { 1.0 };
             let shared = self.pass_seconds / self.len().max(1) as f64;
             for (leaf, &cost) in self.leaves.iter().zip(&self.leaf_cost) {
-                let share = (cost / leaf.count as f64 + shared) * now;
-                for w in &mut self.weight[leaf.first..leaf.first + leaf.count] {
+                let near_share = cost / leaf.count as f64;
+                for slot in leaf.first..leaf.first + leaf.count {
+                    let pass = counted.as_ref().map_or(shared, |work| work[slot]);
+                    let share = (near_share + pass) * now;
+                    let w = &mut self.weight[slot];
                     *w = ((blend * share + (1.0 - blend) * *w as f64 * earlier) as u64).max(1);
                 }
             }
@@ -275,6 +310,58 @@ impl ParticleStore {
         self.pass_seconds = 0.0;
         self.pass_mark = None;
         Ok(())
+    }
+
+    /// The passes' work, counted from the plan, as seconds at the nominal
+    /// rate per owned particle slot: each owned box's translations go to
+    /// the particles this rank holds in it (to all of its particles when
+    /// it holds none there).
+    fn pass_work(&self) -> Vec<f64> {
+        let unit = translation_seconds();
+        let mut work = vec![0.0f64; self.len()];
+        let mut spread = 0.0f64;
+        let mut charge = |work: &mut Vec<f64>, level: u32, number: u64, translations: usize| {
+            if translations == 0 {
+                return;
+            }
+            let (lo, hi) = key_range(level, number);
+            let (first, end) = self.slots(lo, hi);
+            let seconds = translations as f64 * unit;
+            if end > first {
+                let each = seconds / (end - first) as f64;
+                for w in &mut work[first..end] {
+                    *w += each;
+                }
+            } else {
+                spread += seconds;
+            }
+        };
+        for (level, boxes) in self.plan.targets.iter().enumerate() {
+            let level = level as u32;
+            for &number in boxes {
+                let translations = self.interaction_list(level, number).len() + usize::from(level > 2);
+                charge(&mut work, level, number, translations);
+            }
+        }
+        for (level, boxes) in self.plan.multipoles.iter().enumerate() {
+            let level = level as u32;
+            for &number in boxes {
+                let translations = match self.multipole_recipe(level, number) {
+                    BoxRecipe::Particles => self.box_positions(level, number).len(),
+                    BoxRecipe::Children { children, direct } => {
+                        children.len() + direct.iter().map(|&c| self.box_positions(level + 1, c).len()).sum::<usize>()
+                    }
+                };
+                charge(&mut work, level, number, translations);
+            }
+        }
+        if spread > 0.0 && !work.is_empty() {
+            let each = spread / work.len() as f64;
+            for w in &mut work {
+                *w += each;
+            }
+        }
+        work
     }
 
     /// Rank that keeps the directory entry of particle `id`.
@@ -842,9 +929,21 @@ impl ParticleStore {
         users: &[(u32, u64, usize)],
         ghosts: &BTreeSet<(u32, u64)>,
         index: &HashMap<(u32, u64), usize>,
-    ) -> Result<()> {
+    ) -> Result<[f64; 4]> {
         let ranks = world.size() as usize;
         ensure!(cells.len() >= index.len(), "expansion array holds {} cells but {} are needed", cells.len(), index.len());
+        // With stats on, a barrier first separates waiting for the slowest
+        // rank from the exchange itself.
+        let mut parts = [0.0f64; 4];
+        let mut mark = std::time::Instant::now();
+        let mut lap = |part: usize| {
+            parts[part] += mark.elapsed().as_secs_f64();
+            mark = std::time::Instant::now();
+        };
+        if stats_on() {
+            world.barrier();
+        }
+        lap(0);
         let config = bincode::config::standard();
         let mut outgoing: Vec<Vec<u64>> = vec![Vec::new(); ranks];
         for &(l, number, rank) in users {
@@ -859,7 +958,9 @@ impl ParticleStore {
                 numbers.iter().map(|&n| &cells[index[&(level, n)]]).collect();
             bytes.push(bincode::encode_to_vec(&values, config)?);
         }
+        lap(1);
         let received = exchange(world, &bytes)?;
+        lap(2);
         let mut expected: Vec<Vec<u64>> = vec![Vec::new(); ranks];
         for &(_, number) in ghosts.range((level, 0)..(level + 1, 0)) {
             expected[self.box_owner(level, number)].push(number);
@@ -871,7 +972,16 @@ impl ParticleStore {
                 cells[index[&(level, number)]] = value;
             }
         }
-        Ok(())
+        lap(3);
+        Ok(parts)
+    }
+
+    fn add_sync_parts(&mut self, parts: [f64; 4]) {
+        let first = PS_INTRINSICS.len() + 4;
+        self.call_seconds.resize(PS_INTRINSICS.len() + BUILD_PARTS.len(), 0.0);
+        for (slot, part) in self.call_seconds[first..first + 4].iter_mut().zip(parts) {
+            *slot += part;
+        }
     }
 
     /// Rank that owns `key` under the current splitters.
@@ -1135,12 +1245,18 @@ where
     world.all_to_all_into(&send_counts[..], &mut recv_counts[..]);
     let send_displs = displacements(&send_counts)?;
     let recv_displs = displacements(&recv_counts)?;
-    let send: Vec<T> = per_rank.iter().flatten().cloned().collect();
+    // Buffers are never left empty: an empty Vec's pointer is its type's
+    // alignment, and for bytes that is 1, which Open MPI reads as
+    // MPI_IN_PLACE and rejects. One spare element keeps both on the heap.
+    let mut send: Vec<T> = Vec::with_capacity(per_rank.iter().map(|v| v.len()).sum::<usize>() + 1);
+    send.extend(per_rank.iter().flatten().cloned());
+    let sent = send.len();
+    send.push(T::default());
     let total: usize = recv_counts.iter().map(|&c| c as usize).sum();
-    let mut recv = vec![T::default(); total];
+    let mut recv = vec![T::default(); total + 1];
     {
-        let out = Partition::new(&send[..], &send_counts[..], &send_displs[..]);
-        let mut into = PartitionMut::new(&mut recv[..], &recv_counts[..], &recv_displs[..]);
+        let out = Partition::new(&send[..sent], &send_counts[..], &send_displs[..]);
+        let mut into = PartitionMut::new(&mut recv[..total], &recv_counts[..], &recv_displs[..]);
         world.all_to_all_varcount_into(&out, &mut into);
     }
     let mut result = Vec::with_capacity(ranks);
@@ -1164,11 +1280,16 @@ where
     world.all_gather_into(&count, &mut counts[..]);
     let displs = displacements(&counts)?;
     let total: usize = counts.iter().map(|&c| c as usize).sum();
-    let mut all = vec![T::default(); total];
+    // A spare element keeps the buffers off dangling pointers (see exchange).
+    let mut all = vec![T::default(); total + 1];
+    let mut own: Vec<T> = Vec::with_capacity(mine.len() + 1);
+    own.extend_from_slice(mine);
+    own.push(T::default());
     {
-        let mut into = PartitionMut::new(&mut all[..], &counts[..], &displs[..]);
-        world.all_gather_varcount_into(mine, &mut into);
+        let mut into = PartitionMut::new(&mut all[..total], &counts[..], &displs[..]);
+        world.all_gather_varcount_into(&own[..mine.len()], &mut into);
     }
+    all.truncate(total);
     Ok(all)
 }
 
@@ -1182,6 +1303,30 @@ pub trait PsCell {
     /// An array of untyped cells, such as one that holds expansions.
     fn ps_cells(&mut self) -> Result<&mut Vec<crate::RosyValue>> {
         bail!("expected an array of untyped cells")
+    }
+    /// The first `count` entries of an array of strings (typed, or untyped
+    /// cells holding strings); entries past them may hold anything.
+    fn ps_strings(&self, _count: usize) -> Result<Vec<String>> {
+        bail!("expected an array of strings")
+    }
+}
+
+impl PsCell for Vec<String> {
+    fn ps_scalar(&self) -> Result<f64> {
+        bail!("expected a real, found an array of strings")
+    }
+    fn ps_set_scalar(&mut self, _value: f64) -> Result<()> {
+        bail!("expected a real, found an array of strings")
+    }
+    fn ps_values(&self) -> Result<Vec<f64>> {
+        bail!("expected an array of reals, found an array of strings")
+    }
+    fn ps_set_values(&mut self, _values: Vec<f64>) -> Result<()> {
+        bail!("expected an array of reals, found an array of strings")
+    }
+    fn ps_strings(&self, count: usize) -> Result<Vec<String>> {
+        ensure!(self.len() >= count, "{} strings given, {count} needed", self.len());
+        Ok(self[..count].to_vec())
     }
 }
 
@@ -1259,27 +1404,85 @@ impl PsCell for Vec<crate::RosyValue> {
     fn ps_cells(&mut self) -> Result<&mut Vec<crate::RosyValue>> {
         Ok(self)
     }
+    fn ps_strings(&self, count: usize) -> Result<Vec<String>> {
+        ensure!(self.len() >= count, "{} cells given, {count} needed", self.len());
+        self[..count]
+            .iter()
+            .map(|c| match c {
+                crate::RosyValue::ST(s) => Ok(s.clone()),
+                other => bail!("expected a string, found {}", other.kind_name()),
+            })
+            .collect()
+    }
 }
 
 /// A C function a program supplies: how many arrays, the arrays, their lengths.
 pub type KernelFn = unsafe extern "C" fn(i64, *mut *mut f64, *const i64);
 
-/// Call a program's C kernel. Every cell goes over as an array of doubles
-/// (a real is an array of one); what the kernel changed is written back.
-/// The kernel must stay inside the lengths it is given.
-pub fn kernel_call(kernel: KernelFn, cells: &mut [&mut dyn PsCell]) -> Result<()> {
+/// The DA monomials in the order kernels see them: by total degree, then
+/// by exponents, higher powers of earlier variables first (for three
+/// variables at degree 2: x1², x1x2, x1x3, x2², x2x3, x3²). Entry k is the
+/// runtime's flat index of the k-th monomial.
+fn kernel_da_order() -> Result<Vec<usize>> {
+    let rt = crate::taylor::get_runtime()?;
+    let nv = rt.config.num_vars;
+    let mut order: Vec<usize> = (0..rt.num_monomials).collect();
+    order.sort_by(|&a, &b| {
+        let (ma, mb) = (&rt.monomial_list[a], &rt.monomial_list[b]);
+        ma.total_order.cmp(&mb.total_order).then_with(|| mb.exponents[..nv].cmp(&ma.exponents[..nv]))
+    });
+    Ok(order)
+}
+
+/// Call a program's C kernel. `kinds` has one letter per argument (missing
+/// letters mean `r`):
+/// - `r`: the cell goes over as an array of doubles (a real is an array of
+///   one).
+/// - `d`: an array of untyped cells holding DA values. Each cell goes over
+///   as a block of 1 + M doubles, M the number of DA monomials: a flag (1
+///   if the cell holds a DA, else 0), then its coefficients in
+///   [`kernel_da_order`]. A block the kernel leaves with flag 1 becomes a
+///   DA (coefficients at or below the DA epsilon are dropped); a block left
+///   with flag 0 leaves its cell as it was.
+///
+/// What the kernel changed is written back. The kernel must stay inside the
+/// lengths it is given.
+pub fn kernel_call(kernel: KernelFn, kinds: &str, cells: &mut [&mut dyn PsCell]) -> Result<()> {
+    let kinds: Vec<u8> = kinds.bytes().collect();
+    let kind = |at: usize| kinds.get(at).copied().unwrap_or(b'r');
+    let da_order = if kinds.contains(&b'd') { Some(kernel_da_order()?) } else { None };
+    let block = da_order.as_ref().map_or(0, |o| o.len() + 1);
     let mut scalar = Vec::with_capacity(cells.len());
     let mut before = Vec::with_capacity(cells.len());
-    for (at, cell) in cells.iter().enumerate() {
-        match cell.ps_scalar() {
-            Ok(v) => {
-                scalar.push(true);
-                before.push(vec![v]);
-            }
-            Err(_) => {
+    for (at, cell) in cells.iter_mut().enumerate() {
+        match kind(at) {
+            b'd' => {
+                let order = da_order.as_ref().expect("DA order built when a d argument is present");
+                let list = cell.ps_cells().map_err(|e| e.context(format!("kernel argument {} (kind d)", at + 1)))?;
+                let mut flat = vec![0.0; list.len() * block];
+                for (c, value) in list.iter().enumerate() {
+                    if let crate::RosyValue::DA(da) = value {
+                        let out = &mut flat[c * block..(c + 1) * block];
+                        out[0] = 1.0;
+                        for (k, &flat_index) in order.iter().enumerate() {
+                            out[1 + k] = da.coeffs[flat_index];
+                        }
+                    }
+                }
                 scalar.push(false);
-                before.push(cell.ps_values().map_err(|e| e.context(format!("kernel argument {}", at + 1)))?);
+                before.push(flat);
             }
+            b'r' => match cell.ps_scalar() {
+                Ok(v) => {
+                    scalar.push(true);
+                    before.push(vec![v]);
+                }
+                Err(_) => {
+                    scalar.push(false);
+                    before.push(cell.ps_values().map_err(|e| e.context(format!("kernel argument {}", at + 1)))?);
+                }
+            },
+            other => bail!("kernel argument {}: unknown kind '{}' (expected r or d)", at + 1, other as char),
         }
     }
     let mut after = before.clone();
@@ -1293,7 +1496,26 @@ pub fn kernel_call(kernel: KernelFn, cells: &mut [&mut dyn PsCell]) -> Result<()
         if same {
             continue;
         }
-        if scalar[at] {
+        if kind(at) == b'd' {
+            let order = da_order.as_ref().expect("DA order built when a d argument is present");
+            let epsilon = crate::taylor::get_runtime()?.config.epsilon;
+            let list = cell.ps_cells()?;
+            for (c, value) in list.iter_mut().enumerate() {
+                let (old, new) = (&before[at][c * block..(c + 1) * block], &after[at][c * block..(c + 1) * block]);
+                if new[0] != 1.0 || old.iter().zip(new).all(|(a, b)| a.to_bits() == b.to_bits()) {
+                    continue;
+                }
+                let mut da = crate::DA::zero();
+                for (k, &flat_index) in order.iter().enumerate() {
+                    let v = new[1 + k];
+                    if v.abs() > epsilon {
+                        da.coeffs[flat_index] = v;
+                        da.nonzero.push(flat_index as u32);
+                    }
+                }
+                *value = crate::RosyValue::DA(da);
+            }
+        } else if scalar[at] {
             cell.ps_set_scalar(after[at][0])?;
         } else {
             cell.ps_set_values(std::mem::take(&mut after[at]))?;
@@ -1323,10 +1545,29 @@ pub const PS_INTRINSICS: &[(&str, usize)] = &[
     ("PSPOS", 2),
     ("PSSUM", 3),
     ("PSALL", 9),
+    ("PSSLICE", 10),
+    ("PSWRITE", 3),
 ];
 
 /// The parts of `PSBUILD` timed separately in the stats report.
-pub const BUILD_PARTS: &[&str] = &["  build: sort and refine", "  build: pass plan", "  build: halo", "  build: earlier neighbours"];
+/// After them, the parts of `PSMSYNC` and `PSLSYNC` together (the wait is
+/// measured only when `ROSY_MPI_STATS` is set).
+pub const BUILD_PARTS: &[&str] = &[
+    "  build: sort and refine",
+    "  build: pass plan",
+    "  build: halo",
+    "  build: earlier neighbours",
+    "  sync: waiting for slowest",
+    "  sync: encode",
+    "  sync: exchange",
+    "  sync: decode",
+];
+
+/// Whether `ROSY_MPI_STATS` is set (read once).
+fn stats_on() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("ROSY_MPI_STATS").is_some())
+}
 
 impl crate::mpi::RosyMPIContext {
     /// Run one `PS*` intrinsic. Every rank must make the same call.
@@ -1376,6 +1617,16 @@ impl crate::mpi::RosyMPIContext {
     ///   comparisons only.
     /// - `PSALL x y z px py pz f n count`: every particle in number order
     ///   on the first rank, nothing elsewhere. For output only.
+    /// - `PSSLICE x y z px py pz f n first count`: this rank's share of the
+    ///   particles in number order: particle numbers `first ..
+    ///   first+count-1`, with rank r getting the r-th of `ranks` equal runs
+    ///   of the numbers loaded. Lets every rank format and write its own
+    ///   part of an output file.
+    /// - `PSWRITE unit lines count`: the first `count` strings of every
+    ///   rank's `lines`, lower ranks first, written as lines to file `unit`
+    ///   by the first rank (only it needs the file open), in one write.
+    ///   With `PSSLICE`, every rank formats its own run of particles and
+    ///   the file comes out in particle order.
     pub fn ps_call(&mut self, name: &str, args: &mut [&mut dyn PsCell]) -> Result<()> {
         let started = std::time::Instant::now();
         let result = self.ps_call_timed(name, args);
@@ -1538,7 +1789,8 @@ impl crate::mpi::RosyMPIContext {
                 }
                 let level = args[1].ps_scalar()? as u32;
                 let plan = &store.plan;
-                store.sync_cells(world, args[0].ps_cells()?, level, &plan.multipole_users, &plan.ghost_multipoles, &plan.multipole_index)?;
+                let parts = store.sync_cells(world, args[0].ps_cells()?, level, &plan.multipole_users, &plan.ghost_multipoles, &plan.multipole_index)?;
+                store.add_sync_parts(parts);
             }
             "PSLSYNC" => {
                 if let Some(mark) = store.pass_mark.take() {
@@ -1546,7 +1798,8 @@ impl crate::mpi::RosyMPIContext {
                 }
                 let level = args[1].ps_scalar()? as u32;
                 let plan = &store.plan;
-                store.sync_cells(world, args[0].ps_cells()?, level, &plan.local_users, &plan.ghost_locals, &plan.local_index)?;
+                let parts = store.sync_cells(world, args[0].ps_cells()?, level, &plan.local_users, &plan.ghost_locals, &plan.local_index)?;
+                store.add_sync_parts(parts);
             }
             "PSHALO" => store.exchange_halo(world)?,
             "PSBOUNDS" => {
@@ -1607,6 +1860,54 @@ impl crate::mpi::RosyMPIContext {
                     arg.ps_set_values(order.iter().map(|&i| values[FIELDS * i + field]).collect())?;
                 }
                 args[8].ps_set_scalar(ids.len() as f64)?;
+            }
+            "PSSLICE" => {
+                let ranks = world.size() as usize;
+                let total = store.loaded;
+                let start = |r: usize| (total as u128 * r as u128 / ranks as u128) as u64;
+                let starts: Vec<u64> = (0..=ranks).map(start).collect();
+                let mut ids: Vec<Vec<u64>> = vec![Vec::new(); ranks];
+                let mut values: Vec<Vec<f64>> = vec![Vec::new(); ranks];
+                for (&id, d) in store.id.iter().zip(&store.data) {
+                    let to = starts.partition_point(|&s| s <= id) - 1;
+                    ids[to].push(id);
+                    values[to].extend_from_slice(d);
+                }
+                let ids: Vec<u64> = exchange(world, &ids)?.into_iter().flatten().collect();
+                let values: Vec<f64> = exchange(world, &values)?.into_iter().flatten().collect();
+                let mut order: Vec<usize> = (0..ids.len()).collect();
+                order.sort_unstable_by_key(|&i| ids[i]);
+                let me = world.rank() as usize;
+                // Particles are never dropped, so the run is complete.
+                ensure!(
+                    ids.len() as u64 == starts[me + 1] - starts[me],
+                    "PSSLICE: {} particles arrived for a run of {}",
+                    ids.len(),
+                    starts[me + 1] - starts[me]
+                );
+                for (field, arg) in args[..8].iter_mut().enumerate() {
+                    arg.ps_set_values(order.iter().map(|&i| values[FIELDS * i + field]).collect())?;
+                }
+                args[8].ps_set_scalar((starts[me] + 1) as f64)?;
+                args[9].ps_set_scalar(ids.len() as f64)?;
+            }
+            "PSWRITE" => {
+                let unit = args[0].ps_scalar()?;
+                let count = args[2].ps_scalar()? as usize;
+                let lines = args[1].ps_strings(count)?;
+                let mut bytes = Vec::with_capacity(lines.iter().map(|l| l.len() + 1).sum());
+                for line in &lines {
+                    bytes.extend_from_slice(line.as_bytes());
+                    bytes.push(b'\n');
+                }
+                let ranks = world.size() as usize;
+                let mut outgoing: Vec<Vec<u8>> = vec![Vec::new(); ranks];
+                outgoing[0] = bytes;
+                let received = exchange(world, &outgoing)?;
+                if world.rank() == 0 {
+                    let all: Vec<u8> = received.into_iter().flatten().collect();
+                    crate::core::file_io::rosy_write_bytes_to_unit(unit as u64, &all)?;
+                }
             }
             other => bail!("unknown particle-store intrinsic {other}"),
         }

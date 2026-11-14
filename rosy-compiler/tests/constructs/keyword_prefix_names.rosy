@@ -1,0 +1,28 @@
+{A procedure whose name starts with a keyword is a call, not that statement.}
+BEGIN;
+    VARIABLE (RE) N;
+    PROCEDURE WRITE_PART K;
+        WRITE 6 'part' K;
+    ENDPROCEDURE;
+    PROCEDURE READ_ALL K;
+        WRITE 6 'all' K;
+    ENDPROCEDURE;
+    PROCEDURE LOOPBACK K;
+        WRITE 6 'back' K;
+    ENDPROCEDURE;
+    N := 3;
+    WRITE_PART N;
+    READ_ALL N+1;
+    LOOPBACK N+2;
+    WRITE 6 'plain write' N;
+END;
+
+======= expect
+part
+ 3.000000000000000
+all
+ 4.000000000000000
+back
+ 5.000000000000000
+plain write
+ 3.000000000000000

@@ -9,7 +9,13 @@ program = { SOI ~ include_stmt* ~ begin ~ statement* ~ end ~ EOI }
 // INCLUDE targets and `.fox` mains (BEGIN/END may live in different files).
 fragment = { SOI ~ include_stmt* ~ begin? ~ statement* ~ end? ~ EOI }
 statement   = _{ 
-  var_decl
+  // A call comes before the keyword statements, so a procedure named
+  // WRITE_PART is not read as WRITE with argument _PART. Keywords are not
+  // procedure names (see procedure_name), except CPOLVAL, which is tried
+  // first.
+  cpolval
+  | procedure_call
+  | var_decl
   | daini
   | daprv
   | darev
@@ -33,8 +39,6 @@ statement   = _{
   | procedure
   | ranseed
   | intpol
-  | cpolval
-  | procedure_call
   | if_statement
   | break_statement
   | fit_statement
@@ -150,7 +154,7 @@ memory_size = { expr }
 
 /// Keywords - define all reserved words (must be followed by a non-identifier character)
 keyword = @{ keyword_raw ~ !(ASCII_ALPHANUMERIC | "_") }
-keyword_raw = { ^"KERNEL" | ^"PSLEAFLOC" | ^"PSSCALED" | ^"PSBOUNDS" | ^"PSLISTS" | ^"PSBUILD" | ^"PSMSYNC" | ^"PSLSYNC" | ^"PSSIZES" | ^"PSDOWN" | ^"PSLOAD" | ^"PSHALO" | ^"PSCOST" | ^"COULSUM" | ^"PSPREV" | ^"PSGET" | ^"PSPUT" | ^"PSPOS" | ^"PSSUM" | ^"PSALL" | ^"PSUP" | ^"ENDPROCEDURE" | ^"ENDFUNCTION" | ^"ENDWHILE" | ^"ENDLOOP" | ^"ENDPLOOP" | ^"ENDFIT" | ^"ENDIF" | ^"ELSEIF" | ^"ELSE" | ^"BEGIN" | ^"END" | ^"WRITEB" | ^"WRITE" | ^"READS" | ^"READB" | ^"READ" | ^"VARIABLE" | ^"PROCEDURE" | ^"EXP" | ^"TAN" | ^"IF" | ^"WHILE" | ^"DAINI" | ^"DAPRV" | ^"DAREV" | ^"DANOTW" | ^"DANOT" | ^"DAEPSM" | ^"DAEPS" | ^"DATRN" | ^"DASCL" | ^"DASGN" | ^"DADER" | ^"DAINT" | ^"DANORO" | ^"DANORS" | ^"DAREA" | ^"DAPEW" | ^"DAPEE" | ^"DAPEA" | ^"DAPEP" | ^"DAEST" | ^"DAPLU" | ^"DADIU" | ^"DADMU" | ^"DACLIW" | ^"DACQLC" | ^"EPSMIN" | ^"DAFSET" | ^"DAFILT" | ^"DAFLO" | ^"CDFLO" | ^"DAGMD" | ^"DANOW" | ^"CDF2" | ^"CDNFDS" | ^"CDNFDA" | ^"CDNF" | ^"DARAN" | ^"DACODE" | ^"LENGTH" | ^"SINH" | ^"SIN" | ^"COSH" | ^"COS" | ^"ASIN" | ^"ACOS" | ^"ATAN" | ^"TANH" | ^"SQRT" | ^"SQR" | ^"VMAX" | ^"VMIN" | ^"ABS" | ^"NORM" | ^"CONS" | ^"INTPOL" | ^"INT" | ^"NINT" | ^"TYPE" | ^"REAL" | ^"IMAG" | ^"TRIM" | ^"LTRIM" | ^"ISRT3" | ^"ISRT" | ^"CMPLX" | ^"CONJ" | ^"LST" | ^"LCM" | ^"LCD" | ^"LRE" | ^"LLO" | ^"LVE" | ^"LDA" | ^"LOG" | ^"BREAK" | ^"QUIT" | ^"SCRLEN" | ^"CPUSEC" | ^"OS" | ^"LINV" | ^"LDET" | ^"SUBSTR" | ^"VELSET" | ^"VELGET" | ^"INTPOL" | ^"CPOLVAL" | ^"POLVAL" | ^"VEDOT" | ^"VEUNIT" | ^"VEZERO" | ^"STCRE" | ^"RECST" | ^"RERAN" | ^"PWTIME" | ^"PNPRO" | ^"PROOT" | ^"IMUNIT" | ^"LEV" | ^"MBLOCK" | ^"MTREE" | ^"LSLINE" | ^"RKCO" | ^"WRITEM" | ^"READM" | ^"ERF" | ^"WERF" | ^"FIT" | ^"OPENFB" | ^"OPENF" | ^"CLOSEF" | ^"REWF" | ^"BACKF" | ^"FUNCTION" | ^"LOOP" | ^"PLOOP" | ^"VARMEM" | ^"VARPOI" | ^"SLEEPM" | ^"ARGGET" | ^"MEMDPV" | ^"MEMFRE" | ^"MEMALL" | ^"MEMWRT" | ^"LTRUE" | ^"LFALSE" | "rosy_universe" | "rosy_world" | "rosy_size" | "rosy_rank" | ^"AND" | ^"OR" | ^"POSITION" | ^"INCLUDE" | ^"SAVE" | ^"MODULE" }
+keyword_raw = { ^"KERNEL" | ^"PSWRITE" | ^"RANSEED" | ^"PSSLICE" | ^"PSLEAFLOC" | ^"PSSCALED" | ^"PSBOUNDS" | ^"PSLISTS" | ^"PSBUILD" | ^"PSMSYNC" | ^"PSLSYNC" | ^"PSSIZES" | ^"PSDOWN" | ^"PSLOAD" | ^"PSHALO" | ^"PSCOST" | ^"COULSUM" | ^"PSPREV" | ^"PSGET" | ^"PSPUT" | ^"PSPOS" | ^"PSSUM" | ^"PSALL" | ^"PSUP" | ^"ENDPROCEDURE" | ^"ENDFUNCTION" | ^"ENDWHILE" | ^"ENDLOOP" | ^"ENDPLOOP" | ^"ENDFIT" | ^"ENDIF" | ^"ELSEIF" | ^"ELSE" | ^"BEGIN" | ^"END" | ^"WRITEB" | ^"WRITE" | ^"READS" | ^"READB" | ^"READ" | ^"VARIABLE" | ^"PROCEDURE" | ^"EXP" | ^"TAN" | ^"IF" | ^"WHILE" | ^"DAINI" | ^"DAPRV" | ^"DAREV" | ^"DANOTW" | ^"DANOT" | ^"DAEPSM" | ^"DAEPS" | ^"DATRN" | ^"DASCL" | ^"DASGN" | ^"DADER" | ^"DAINT" | ^"DANORO" | ^"DANORS" | ^"DAREA" | ^"DAPEW" | ^"DAPEE" | ^"DAPEA" | ^"DAPEP" | ^"DAEST" | ^"DAPLU" | ^"DADIU" | ^"DADMU" | ^"DACLIW" | ^"DACQLC" | ^"EPSMIN" | ^"DAFSET" | ^"DAFILT" | ^"DAFLO" | ^"CDFLO" | ^"DAGMD" | ^"DANOW" | ^"CDF2" | ^"CDNFDS" | ^"CDNFDA" | ^"CDNF" | ^"DARAN" | ^"DACODE" | ^"LENGTH" | ^"SINH" | ^"SIN" | ^"COSH" | ^"COS" | ^"ASIN" | ^"ACOS" | ^"ATAN" | ^"TANH" | ^"SQRT" | ^"SQR" | ^"VMAX" | ^"VMIN" | ^"ABS" | ^"NORM" | ^"CONS" | ^"INTPOL" | ^"INT" | ^"NINT" | ^"TYPE" | ^"REAL" | ^"IMAG" | ^"TRIM" | ^"LTRIM" | ^"ISRT3" | ^"ISRT" | ^"CMPLX" | ^"CONJ" | ^"LST" | ^"LCM" | ^"LCD" | ^"LRE" | ^"LLO" | ^"LVE" | ^"LDA" | ^"LOG" | ^"BREAK" | ^"QUIT" | ^"SCRLEN" | ^"CPUSEC" | ^"OS" | ^"LINV" | ^"LDET" | ^"SUBSTR" | ^"VELSET" | ^"VELGET" | ^"INTPOL" | ^"CPOLVAL" | ^"POLVAL" | ^"VEDOT" | ^"VEUNIT" | ^"VEZERO" | ^"STCRE" | ^"RECST" | ^"RERAN" | ^"PWTIME" | ^"PNPRO" | ^"PROOT" | ^"IMUNIT" | ^"LEV" | ^"MBLOCK" | ^"MTREE" | ^"LSLINE" | ^"RKCO" | ^"WRITEM" | ^"READM" | ^"ERF" | ^"WERF" | ^"FIT" | ^"OPENFB" | ^"OPENF" | ^"CLOSEF" | ^"REWF" | ^"BACKF" | ^"FUNCTION" | ^"LOOP" | ^"PLOOP" | ^"VARMEM" | ^"VARPOI" | ^"SLEEPM" | ^"ARGGET" | ^"MEMDPV" | ^"MEMFRE" | ^"MEMALL" | ^"MEMWRT" | ^"LTRUE" | ^"LFALSE" | "rosy_universe" | "rosy_world" | "rosy_size" | "rosy_rank" | ^"AND" | ^"OR" | ^"POSITION" | ^"INCLUDE" | ^"SAVE" | ^"MODULE" }
 
 /// [ IF / ELSEIF / ELSE / ENDIF ]
 if_statement = { if_clause ~ elseif_clause* ~ else_clause? ~ endif }
@@ -279,7 +283,7 @@ endif = { ^"ENDIF" ~ semicolon }
   pwtime = { ^"PWTIME" ~ variable_identifier ~ semicolon }
   pnpro = { ^"PNPRO" ~ variable_identifier ~ semicolon }
   pstore = { pstore_name ~ string* ~ variable_identifier* ~ semicolon }
-  pstore_name = @{ (^"KERNEL" | ^"PSLEAFLOC" | ^"PSSCALED" | ^"PSBOUNDS" | ^"PSLISTS" | ^"PSBUILD" | ^"PSMSYNC" | ^"PSLSYNC" | ^"PSSIZES" | ^"PSDOWN" | ^"PSLOAD" | ^"PSHALO" | ^"PSCOST" | ^"COULSUM" | ^"PSPREV" | ^"PSGET" | ^"PSPUT" | ^"PSPOS" | ^"PSSUM" | ^"PSALL" | ^"PSUP") ~ !(ASCII_ALPHANUMERIC | "_") }
+  pstore_name = @{ (^"KERNEL" | ^"PSWRITE" | ^"PSSLICE" | ^"PSLEAFLOC" | ^"PSSCALED" | ^"PSBOUNDS" | ^"PSLISTS" | ^"PSBUILD" | ^"PSMSYNC" | ^"PSLSYNC" | ^"PSSIZES" | ^"PSDOWN" | ^"PSLOAD" | ^"PSHALO" | ^"PSCOST" | ^"COULSUM" | ^"PSPREV" | ^"PSGET" | ^"PSPUT" | ^"PSPOS" | ^"PSSUM" | ^"PSALL" | ^"PSUP") ~ !(ASCII_ALPHANUMERIC | "_") }
   proot = { ^"PROOT" ~ variable_identifier ~ semicolon }
   imunit = { ^"IMUNIT" ~ variable_identifier ~ semicolon }
   /// [ MATH ]

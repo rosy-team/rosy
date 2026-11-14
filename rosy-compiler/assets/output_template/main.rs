@@ -51,7 +51,10 @@ fn main_wrapper() -> Result<()> {
     Ok(())
 }
 fn main() -> Result<()> {
-	if let Err(err) = main_wrapper() {
+	let result = main_wrapper();
+	// Files are written through buffers; whatever is left goes out now.
+	let flushed = rosy_lib::core::file_io::rosy_flush_all_files();
+	if let Err(err) = result.and(flushed) {
 		let mut err_str = format!("{}", err.root_cause());
 
         for (ind, ctx) in err.chain().rev().enumerate().skip(1) {

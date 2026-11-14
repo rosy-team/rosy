@@ -209,6 +209,26 @@ about 0.45 GB per rank on top of the fixed 0.37 GB a rank uses at start.
   different shape. In ordinary steps the slowest rank is within 10 to 30%
   of the average; in those heavy steps it is still about twice the
   average, since nothing predicts them.
+- **Deterministic balance.** Measured times differ from run to run, so
+  the particle split does too. Where results depend on the split (PHAD's
+  integrate-once near field steps all of a rank's particles together),
+  that makes runs differ at rounding level, more where PHAD is sensitive.
+  With `ROSY_PS_DETERMINISTIC` set, the store balances by counted work
+  only: the program reports counted near-field work through `PSCOST`, and
+  the store counts each owned box's translations (M2M, M2L, L2L, and
+  particles summed into multipoles) from its plan, at
+  `ROSY_PS_TRANSLATION_SECONDS` each (default 2e-6), charged to the
+  particles it holds in that box. The same inputs on the same number of
+  ranks then give the same split and the same output files, every run.
+- **Output.** Writing PHAD's output files on the first rank cost more
+  than the near field once the kernels were native: every `WRITE` was its
+  own system call, and the other ranks waited. Each rank now formats its
+  own run of particles (`PSSLICE`) and `PSWRITE` gathers the lines to the
+  first rank, which writes each file once. Taking turns to append was
+  slower still: PHAD's `BARRIER` is a whole `PLOOP` gather, and each turn
+  reopened the file. File writes are also buffered now (see
+  `rosy_lib::core::file_io`), flushed whenever another unit, process or
+  program could look at the file.
 - **One partition, several phases.** The passes and the near field are
   separated by barriers, so each would need its own balance. One set of
   ranges can only balance their sum.
@@ -265,7 +285,24 @@ native code without that physics living in Rosy.
 - It needs the `mpi` build for now, because the argument conversion lives
   with the store.
 
-`examples/kernel.fox` is a small check.
+An optional third string gives the kind of each argument, one letter per
+argument (missing letters mean `r`):
+
+- `r`: as above, an array of doubles.
+- `d`: an array of untyped cells holding DA values (expansions). Each cell
+  goes over as a block of `1 + M` doubles, `M` the number of DA monomials:
+  a flag (1 when the cell holds a DA), then the coefficients ordered by
+  total degree, then by exponents with higher powers of earlier variables
+  first (degree 2 in three variables: x1², x1x2, x1x3, x2², x2x3, x3²).
+  A block left with flag 1 becomes a DA, coefficients at or below the DA
+  epsilon dropped; a block left with flag 0 leaves its cell alone. The
+  order is fixed by this interface, not by how Rosy stores DA values.
+
+```
+KERNEL 'fmm_rosy.c' 'phad_fmm_down' 'rrdd' PAR W MULTEXP LOCEXP;
+```
+
+`examples/kernel.fox` and `examples/kernel_da.fox` are small checks.
 
 ## Decisions
 
@@ -300,6 +337,8 @@ is a variable, and every rank makes the same call:
 | `PSPOS ids positions` | Local position of each particle number, 0 if not held here. |
 | `PSSUM values count total` | Sum over all ranks, correctly rounded. |
 | `PSALL x y z px py pz f n count` | Every particle in number order on the first rank, for output. |
+| `PSSLICE x y z px py pz f n first count` | This rank's share of the particles in number order: numbers `first .. first+count-1`, rank r getting the r-th of equal runs. Each rank formats its own part of an output file. |
+| `PSWRITE unit lines count` | The first `count` strings of every rank's `lines`, lower ranks first, written as lines to file `unit` by the first rank in one go (only it needs the file open). With `PSSLICE`, output is formatted in parallel and comes out in particle order. |
 
 ## Open decisions
 

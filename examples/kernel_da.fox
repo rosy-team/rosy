@@ -1,0 +1,11 @@
+BEGIN;
+VARIABLE NM 1; VARIABLE E 100 2; VARIABLE N 1; VARIABLE W 1 10; VARIABLE I 1;
+DAINI 2 3 0 NM;
+E(1):=2*DA(1)+3*DA(2)*DA(3)+5*DA(3)*DA(3);
+E(2):=0;
+N:=2;
+LOOP I 1 10; W(I):=0; ENDLOOP;
+KERNEL 'kernel_da.c' 'da_demo' 'drr' E N W;
+WRITE 6 W(2) W(9) W(10);
+WRITE 6 E(2);
+END;

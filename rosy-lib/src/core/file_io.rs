@@ -12,6 +12,37 @@ use std::sync::Mutex;
 /// Global file handle registry, mapping unit numbers to open file handles.
 static FILE_REGISTRY: Mutex<Option<HashMap<u64, FileHandle>>> = Mutex::new(None);
 
+/// Bytes a file's writer holds before it writes them out.
+///
+/// Writes are buffered, as Fortran's are: one line is not one system call.
+/// A file's data reaches it when it is closed, before anything reads or
+/// repositions that unit, whenever any file is opened (another unit may read
+/// it), and at every point where another process or program could look at
+/// it: PLOOP entry and exit, OS, QUIT and program exit (see
+/// [`rosy_flush_all_files`]).
+const WRITE_BUFFER: usize = 1 << 16;
+
+/// Write out every open file's buffered data.
+pub fn rosy_flush_all_files() -> Result<()> {
+    let mut reg = FILE_REGISTRY.lock().unwrap();
+    if let Some(registry) = reg.as_mut() {
+        for (unit, handle) in registry.iter_mut() {
+            if let Some(writer) = handle.writer.as_mut() {
+                writer.flush().with_context(|| format!("Failed to flush file on unit {}", unit))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Write out one handle's buffered data before it is read or repositioned.
+fn flush_before_read(handle: &mut FileHandle, unit: u64) -> Result<()> {
+    if let Some(writer) = handle.writer.as_mut() {
+        writer.flush().with_context(|| format!("Failed to flush file on unit {} before reading it", unit))?;
+    }
+    Ok(())
+}
+
 /// Represents an open file with its mode information.
 struct FileHandle {
     reader: Option<BufReader<File>>,
@@ -37,6 +68,9 @@ fn ensure_registry() {
 ///   - `'old'`: open existing file for reading
 ///   - `'new'`: create new file for writing, error if it already exists
 ///   - `'replace'`: create or truncate, then open for writing
+///   - `'append'`: open for writing at the end, creating the file if needed
+///     (Fortran's `POSITION='APPEND'`; not in COSY). Lets ranks write the
+///     parts of one file in turn.
 pub fn rosy_openf(
     unit: impl crate::IntoF64,
     filename: impl crate::RecstFmt,
@@ -72,6 +106,13 @@ fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> R
     let mut reg = FILE_REGISTRY.lock().unwrap();
     let registry = reg.as_mut().unwrap();
 
+    // Another unit may be about to read what an open one has written.
+    for (unit, handle) in registry.iter_mut() {
+        if let Some(writer) = handle.writer.as_mut() {
+            writer.flush().with_context(|| format!("Failed to flush file on unit {}", unit))?;
+        }
+    }
+
     // Close any existing file on this unit
     if registry.contains_key(&unit_num) {
         registry.remove(&unit_num);
@@ -103,7 +144,29 @@ fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> R
                 unit_num,
                 FileHandle {
                     reader: Some(BufReader::new(read_handle)),
-                    writer: Some(BufWriter::new(file)),
+                    writer: Some(BufWriter::with_capacity(WRITE_BUFFER, file)),
+                    _path: filename.to_string(),
+                    _is_binary: is_binary,
+                },
+            );
+        }
+        "append" => {
+            let file = OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(filename)
+                .with_context(|| {
+                    format!(
+                        "Failed to open file '{}' for appending (unit {})",
+                        filename, unit_num
+                    )
+                })?;
+
+            registry.insert(
+                unit_num,
+                FileHandle {
+                    reader: None,
+                    writer: Some(BufWriter::with_capacity(WRITE_BUFFER, file)),
                     _path: filename.to_string(),
                     _is_binary: is_binary,
                 },
@@ -127,7 +190,7 @@ fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> R
                 unit_num,
                 FileHandle {
                     reader: None,
-                    writer: Some(BufWriter::new(file)),
+                    writer: Some(BufWriter::with_capacity(WRITE_BUFFER, file)),
                     _path: filename.to_string(),
                     _is_binary: is_binary,
                 },
@@ -168,14 +231,14 @@ fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> R
                 unit_num,
                 FileHandle {
                     reader: None,
-                    writer: Some(BufWriter::new(file)),
+                    writer: Some(BufWriter::with_capacity(WRITE_BUFFER, file)),
                     _path: filename.to_string(),
                     _is_binary: is_binary,
                 },
             );
         }
         _ => bail!(
-            "Unknown file status '{}' for OPENF/OPENFB. Expected 'unknown', 'old', 'new', or 'replace'.",
+            "Unknown file status '{}' for OPENF/OPENFB. Expected 'unknown', 'old', 'new', 'replace', or 'append'.",
             status
         ),
     }
@@ -192,6 +255,8 @@ pub fn rosy_rewf(unit: f64) -> Result<()> {
     let registry = reg.as_mut().unwrap();
 
     if let Some(handle) = registry.get_mut(&unit_num) {
+        // Buffered writes land where they were made, before the rewind.
+        flush_before_read(handle, unit_num)?;
         if let Some(ref mut reader) = handle.reader {
             reader
                 .seek(SeekFrom::Start(0))
@@ -226,6 +291,7 @@ pub fn rosy_backf(unit: impl crate::IntoF64) -> Result<()> {
     let registry = reg.as_mut().unwrap();
 
     if let Some(handle) = registry.get_mut(&unit_num) {
+        flush_before_read(handle, unit_num)?;
         if let Some(ref mut reader) = handle.reader {
             // stream_position() goes through BufReader and reflects the
             // logical read position (i.e. after any prior read_line calls).
@@ -330,10 +396,24 @@ fn rosy_write_to_unit_str(unit: u64, content: &str) -> Result<()> {
 
     writeln!(writer, "{}", content)
         .with_context(|| format!("Failed to write to file on unit {}", unit))?;
-    writer
-        .flush()
-        .with_context(|| format!("Failed to flush file on unit {}", unit))?;
 
+    Ok(())
+}
+
+/// Write bytes already laid out as lines to a file unit.
+/// For output gathered from many ranks (`PSWRITE`).
+pub fn rosy_write_bytes_to_unit(unit: u64, bytes: &[u8]) -> Result<()> {
+    ensure_registry();
+    let mut reg = FILE_REGISTRY.lock().unwrap();
+    let registry = reg.as_mut().unwrap();
+    let handle = registry
+        .get_mut(&unit)
+        .with_context(|| format!("No file open on unit {}. Use OPENF to open a file first.", unit))?;
+    let writer = handle
+        .writer
+        .as_mut()
+        .with_context(|| format!("File on unit {} is not open for writing (opened as 'old'?)", unit))?;
+    writer.write_all(bytes).with_context(|| format!("Failed to write to file on unit {}", unit))?;
     Ok(())
 }
 
@@ -354,6 +434,7 @@ pub fn rosy_read_from_unit(unit: u64) -> Result<String> {
         )
     })?;
 
+    flush_before_read(handle, unit)?;
     let reader = handle.reader.as_mut().with_context(|| {
         format!(
             "File on unit {} is not open for reading (opened as 'unknown'?)",
@@ -397,6 +478,7 @@ pub fn rosy_reads_string_from_unit(unit: u64) -> Result<String> {
         )
     })?;
 
+    flush_before_read(handle, unit)?;
     let reader = handle.reader.as_mut().with_context(|| {
         format!(
             "File on unit {} is not open for reading (opened as 'unknown'?)",
@@ -493,6 +575,7 @@ pub fn rosy_readb_from_unit(unit: u64) -> Result<Vec<u8>> {
         )
     })?;
 
+    flush_before_read(handle, unit)?;
     let reader = handle
         .reader
         .as_mut()

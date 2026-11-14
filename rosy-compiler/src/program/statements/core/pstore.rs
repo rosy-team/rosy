@@ -26,7 +26,9 @@
 //! PSPOS   ids positions;
 //! PSSUM   values count total;
 //! PSALL   x y z px py pz f n count;
-//! KERNEL  'file.c' 'function' a b c ...;
+//! PSSLICE x y z px py pz f n first count;
+//! PSWRITE unit lines count;
+//! KERNEL  'file.c' 'function' ['kinds'] a b c ...;
 //! ```
 //!
 //! `KERNEL` calls a C function the program supplies. The file is compiled
@@ -37,6 +39,11 @@
 //! ```c
 //! void function(long long count, double **values, const long long *lengths);
 //! ```
+//!
+//! An optional third string gives each argument's kind, one letter each:
+//! `r` (the default) as above, or `d` for an array of cells holding DA
+//! values, which go over as blocks of a flag and the coefficients (see
+//! `rosy_lib::kernel_call`).
 //!
 //! Every argument is a variable. Every rank must make the same call.
 //! See `rosy_lib::pstore` for what each one does.
@@ -76,6 +83,8 @@ const INTRINSICS: &[(&str, &str)] = &[
     ("PSPOS", "iv"),
     ("PSSUM", "iis"),
     ("PSALL", "vvvvvvvvs"),
+    ("PSSLICE", "vvvvvvvvss"),
+    ("PSWRITE", "iii"),
     // Not a store call: the Coulomb sum over Taylor series, in rosy-lib.
     ("COULSUM", "iiiiiicv"),
 ];
@@ -115,9 +124,21 @@ impl FromRule for PstoreStatement {
         }
         if name == "KERNEL" {
             ensure!(
-                strings.len() == 2,
-                "KERNEL takes a C file and a function name, both quoted, then variables"
+                strings.len() == 2 || strings.len() == 3,
+                "KERNEL takes a C file and a function name, both quoted, optionally the argument kinds, then variables"
             );
+            if let Some(kinds) = strings.get(2) {
+                ensure!(
+                    kinds.chars().all(|c| matches!(c, 'r' | 'R' | 'd' | 'D')),
+                    "KERNEL argument kinds '{kinds}' may hold only r (reals) and d (DA cells)"
+                );
+                ensure!(
+                    kinds.len() <= args.len(),
+                    "KERNEL argument kinds '{kinds}' name {} arguments but {} are given",
+                    kinds.len(),
+                    args.len()
+                );
+            }
             let ident = |s: &str| {
                 !s.is_empty()
                     && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
@@ -197,8 +218,9 @@ impl Transpile for PstoreStatement {
         if self.name == "KERNEL" {
             // The CLI finds the file through the comment and compiles it in.
             let (file, function) = (&self.strings[0], &self.strings[1]);
+            let kinds = self.strings.get(2).map_or(String::new(), |k| k.to_ascii_lowercase());
             let serialization = format!(
-                "{{ /* rosy-kernel-source \"{file}\" */ unsafe extern \"C\" {{ fn {function}(count: i64, values: *mut *mut f64, lengths: *const i64); }} rosy_lib::kernel_call({function}, &mut [{}]).context(\"...in KERNEL {function}\")?; }}",
+                "{{ /* rosy-kernel-source \"{file}\" */ unsafe extern \"C\" {{ fn {function}(count: i64, values: *mut *mut f64, lengths: *const i64); }} rosy_lib::kernel_call({function}, \"{kinds}\", &mut [{}]).context(\"...in KERNEL {function}\")?; }}",
                 cells.join(", "),
             );
             return Ok(TranspilationOutput {

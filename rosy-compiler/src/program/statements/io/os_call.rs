@@ -76,7 +76,7 @@ impl Transpile for OsCallStatement {
         };
 
         let serialization = format!(
-            "{{\n    let __os_cmd: String = {cmd_string};\n    if cfg!(windows) {{\n        std::process::Command::new(\"cmd\").args(&[\"/C\", &__os_cmd]).status().ok();\n    }} else {{\n        std::process::Command::new(\"sh\").args(&[\"-c\", &__os_cmd]).status().ok();\n    }}\n}}"
+            "{{\n    let __os_cmd: String = {cmd_string};\n    rosy_lib::core::file_io::rosy_flush_all_files()?;\n    if cfg!(windows) {{\n        std::process::Command::new(\"cmd\").args(&[\"/C\", &__os_cmd]).status().ok();\n    }} else {{\n        std::process::Command::new(\"sh\").args(&[\"-c\", &__os_cmd]).status().ok();\n    }}\n}}"
         );
 
         Ok(TranspilationOutput {
