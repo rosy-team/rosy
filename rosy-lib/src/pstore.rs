@@ -5,7 +5,11 @@
 //! is the one [`crate::fmmtree::LeafTable`] builds on a single process, for
 //! any rank count. See `docs/distributed-storage.md`.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::BTreeSet;
+// The store hashes box and particle numbers it computes itself, so the fast
+// non-randomised hasher is safe, and its fixed order keeps runs repeatable.
+type HashMap<K, V> = rustc_hash::FxHashMap<K, V>;
+type HashSet<K> = rustc_hash::FxHashSet<K>;
 
 use anyhow::{Result, bail, ensure};
 use mpi::collective::SystemOperation;
@@ -143,6 +147,9 @@ pub struct Plan {
     counts: HashMap<(u32, u64), u64>,
     /// Boxes owned elsewhere that are known to have divided.
     remote_divided: HashSet<(u32, u64)>,
+    /// Each target's interaction list, in `targets` order, worked out once
+    /// per build.
+    interactions: Vec<Vec<Vec<u64>>>,
 }
 
 /// How an owned multipole is put together. See
@@ -338,8 +345,8 @@ impl ParticleStore {
         };
         for (level, boxes) in self.plan.targets.iter().enumerate() {
             let level = level as u32;
-            for &number in boxes {
-                let translations = self.interaction_list(level, number).len() + usize::from(level > 2);
+            for (t, &number) in boxes.iter().enumerate() {
+                let translations = self.plan.interactions[level as usize][t].len() + usize::from(level > 2);
                 charge(&mut work, level, number, translations);
             }
         }
@@ -347,9 +354,9 @@ impl ParticleStore {
             let level = level as u32;
             for &number in boxes {
                 let translations = match self.multipole_recipe(level, number) {
-                    BoxRecipe::Particles => self.box_positions(level, number).len(),
+                    BoxRecipe::Particles => self.box_held(level, number),
                     BoxRecipe::Children { children, direct } => {
-                        children.len() + direct.iter().map(|&c| self.box_positions(level + 1, c).len()).sum::<usize>()
+                        children.len() + direct.iter().map(|&c| self.box_held(level + 1, c)).sum::<usize>()
                     }
                 };
                 charge(&mut work, level, number, translations);
@@ -532,6 +539,16 @@ impl ParticleStore {
         out
     }
 
+    /// How many particles of a box this rank holds, owned or halo: the
+    /// length of `box_positions` without building it.
+    fn box_held(&self, level: u32, number: u64) -> usize {
+        let (lo, hi) = key_range(level, number);
+        let (first, end) = self.slots(lo, hi);
+        let h0 = self.halo_key.partition_point(|&k| k < lo);
+        let h1 = self.halo_key.partition_point(|&k| k < hi);
+        (end - first) + (h1 - h0)
+    }
+
     /// Positions of the particles in the boxes around `leaf`, the leaf
     /// itself left out, in the order `fmmcpp` lists them.
     pub fn neighbour_positions(&self, leaf: &Leaf) -> Vec<usize> {
@@ -605,14 +622,28 @@ impl ParticleStore {
         self.plan.counts.get(&(level, number)).copied().unwrap_or(0)
     }
 
-    /// Children of the parent's neighbours that do not touch the box.
+    /// Children of the parent's neighbours that do not touch the box, in
+    /// the order of `neighbours(level - 1, parent)` and then child number.
+    /// Worked out on cell coordinates: child `c` of the box at cell `p` is
+    /// at `2p + ((c >> 2) & 1, (c >> 1) & 1, c & 1)`.
     fn interaction_candidates(level: u32, number: u64) -> Vec<u64> {
-        let touching = neighbours(level, number);
-        let mut out = Vec::new();
-        for near_parent in neighbours(level - 1, number >> 3) {
-            for child in near_parent * 8..near_parent * 8 + 8 {
-                if !touching.contains(&child) {
-                    out.push(child);
+        let cell = crate::fmmtree::box_cell(level, number);
+        let parent = [cell[0] >> 1, cell[1] >> 1, cell[2] >> 1];
+        let last = (1u64 << (level - 1)) - 1;
+        let span = |c: u64| -> (u64, u64) { (c.saturating_sub(1), if c == last { last } else { c + 1 }) };
+        let (sx, sy, sz) = (span(parent[0]), span(parent[1]), span(parent[2]));
+        let near = |a: u64, b: u64| a.abs_diff(b) <= 1;
+        let mut out = Vec::with_capacity(189);
+        for i in sx.0..=sx.1 {
+            for j in sy.0..=sy.1 {
+                for k in sz.0..=sz.1 {
+                    let near_parent = crate::fmmtree::interleave_cell([i, j, k], level - 1);
+                    for c in 0..8u64 {
+                        let child = [2 * i + ((c >> 2) & 1), 2 * j + ((c >> 1) & 1), 2 * k + (c & 1)];
+                        if !(near(child[0], cell[0]) && near(child[1], cell[1]) && near(child[2], cell[2])) {
+                            out.push(near_parent * 8 + c);
+                        }
+                    }
                 }
             }
         }
@@ -684,7 +715,7 @@ impl ParticleStore {
         let mut targets = vec![BTreeSet::new(); depth];
         let mut divided = vec![BTreeSet::new(); depth];
         let mut notices: Vec<Vec<u64>> = vec![Vec::new(); ranks];
-        let mut seen = HashSet::new();
+        let mut seen = HashSet::default();
         for leaf in &self.leaves {
             targets[leaf.level as usize].insert(leaf.number);
             let mut number = leaf.number;
@@ -715,7 +746,7 @@ impl ParticleStore {
         self.plan.divided = flat(divided);
 
         // Which boxes around each target hold particles.
-        let mut wanted = HashSet::new();
+        let mut wanted = HashSet::default();
         for (level, boxes) in self.plan.targets.iter().enumerate() {
             for &number in boxes {
                 for c in Self::interaction_candidates(level as u32, number) {
@@ -726,13 +757,23 @@ impl ParticleStore {
         let wanted: Vec<(u32, u64)> = wanted.into_iter().collect();
         self.count_boxes(world, &wanted)?;
 
+        // Every target's interaction list, kept for the passes.
+        let interactions: Vec<Vec<Vec<u64>>> = self
+            .plan
+            .targets
+            .iter()
+            .enumerate()
+            .map(|(level, boxes)| boxes.iter().map(|&number| self.interaction_list(level as u32, number)).collect())
+            .collect();
+        self.plan.interactions = interactions;
+
         // Multipoles: tell each owner which of its boxes are needed.
         let mut multipoles = vec![BTreeSet::new(); depth];
         let mut requests: Vec<Vec<u64>> = vec![Vec::new(); ranks];
         for (level, boxes) in self.plan.targets.iter().enumerate() {
             let level = level as u32;
-            for &number in boxes {
-                for c in self.interaction_list(level, number) {
+            for (t, &_number) in boxes.iter().enumerate() {
+                for &c in &self.plan.interactions[level as usize][t] {
                     let owner = self.box_owner(level, c);
                     if owner == me {
                         multipoles[level as usize].insert(c);
@@ -753,7 +794,7 @@ impl ParticleStore {
         // What each owned multipole is built from.
         // 1. Whether boxes next to it, owned elsewhere, divided.
         let mut asks: Vec<Vec<u64>> = vec![Vec::new(); ranks];
-        let mut asked = HashSet::new();
+        let mut asked = HashSet::default();
         for (level, boxes) in self.plan.multipoles.iter().enumerate() {
             let level = level as u32;
             if level < 2 {
@@ -900,7 +941,7 @@ impl ParticleStore {
     pub fn downward_list(&self, level: u32) -> (Vec<f64>, usize) {
         let mut out = Vec::new();
         let boxes = self.plan.targets.get(level as usize).map(|b| &b[..]).unwrap_or(&[]);
-        for &number in boxes {
+        for (t, &number) in boxes.iter().enumerate() {
             out.push((self.plan.local_index[&(level, number)] + 1) as f64);
             out.extend(box_centre(level, number));
             if level > 2 {
@@ -909,9 +950,9 @@ impl ParticleStore {
             } else {
                 out.extend([0.0; 4]);
             }
-            let list = self.interaction_list(level, number);
+            let list = &self.plan.interactions[level as usize][t];
             out.push(list.len() as f64);
-            for other in list {
+            for &other in list {
                 out.push((self.plan.multipole_index[&(level, other)] + 1) as f64);
                 out.extend(box_centre(level, other));
             }
@@ -1169,7 +1210,7 @@ impl ParticleStore {
         wanted.sort_unstable();
         wanted.dedup();
 
-        let mut counts = HashMap::with_capacity(wanted.len());
+        let mut counts = HashMap::with_capacity_and_hasher(wanted.len(), Default::default());
         let mut asks: Vec<Vec<u64>> = vec![Vec::new(); ranks];
         for &number in &wanted {
             let (lo, hi) = key_range(level, number);
@@ -1304,6 +1345,11 @@ pub trait PsCell {
     fn ps_cells(&mut self) -> Result<&mut Vec<crate::RosyValue>> {
         bail!("expected an array of untyped cells")
     }
+    /// The array itself, when the variable is a typed list of reals: kernels
+    /// then work on it in place instead of on a copy.
+    fn ps_vec_mut(&mut self) -> Option<&mut Vec<f64>> {
+        None
+    }
     /// The first `count` entries of an array of strings (typed, or untyped
     /// cells holding strings); entries past them may hold anything.
     fn ps_strings(&self, _count: usize) -> Result<Vec<String>> {
@@ -1347,6 +1393,9 @@ impl PsCell for f64 {
 }
 
 impl PsCell for Vec<f64> {
+    fn ps_vec_mut(&mut self) -> Option<&mut Vec<f64>> {
+        Some(self)
+    }
     fn ps_scalar(&self) -> Result<f64> {
         bail!("expected a real, found an array")
     }
@@ -1454,7 +1503,19 @@ pub fn kernel_call(kernel: KernelFn, kinds: &str, cells: &mut [&mut dyn PsCell])
     let block = da_order.as_ref().map_or(0, |o| o.len() + 1);
     let mut scalar = Vec::with_capacity(cells.len());
     let mut before = Vec::with_capacity(cells.len());
+    // Typed real arrays go over in place: no copy in, no comparison, no copy
+    // back. Everything else goes over as a copy and changes are written back.
+    let mut in_place: Vec<Option<(*mut f64, usize)>> = Vec::with_capacity(cells.len());
     for (at, cell) in cells.iter_mut().enumerate() {
+        if kind(at) == b'r' {
+            if let Some(v) = cell.ps_vec_mut() {
+                in_place.push(Some((v.as_mut_ptr(), v.len())));
+                scalar.push(false);
+                before.push(Vec::new());
+                continue;
+            }
+        }
+        in_place.push(None);
         match kind(at) {
             b'd' => {
                 let order = da_order.as_ref().expect("DA order built when a d argument is present");
@@ -1486,12 +1547,25 @@ pub fn kernel_call(kernel: KernelFn, kinds: &str, cells: &mut [&mut dyn PsCell])
         }
     }
     let mut after = before.clone();
-    let lengths: Vec<i64> = after.iter().map(|v| v.len() as i64).collect();
-    let mut pointers: Vec<*mut f64> = after.iter_mut().map(|v| v.as_mut_ptr()).collect();
-    // SAFETY: each pointer covers the length passed with it, and all of
-    // them outlive the call.
+    let lengths: Vec<i64> = after
+        .iter()
+        .zip(&in_place)
+        .map(|(v, place)| place.map_or(v.len(), |(_, len)| len) as i64)
+        .collect();
+    let mut pointers: Vec<*mut f64> = after
+        .iter_mut()
+        .zip(&in_place)
+        .map(|(v, place)| place.map_or(v.as_mut_ptr(), |(ptr, _)| ptr))
+        .collect();
+    // SAFETY: each pointer covers the length passed with it. Copies live in
+    // `after`; in-place pointers point into the variables' own vectors, which
+    // nothing touches until the call returns. A variable cannot be passed
+    // twice (each argument is a separate &mut).
     unsafe { kernel(pointers.len() as i64, pointers.as_mut_ptr(), lengths.as_ptr()) };
     for (at, cell) in cells.iter_mut().enumerate() {
+        if in_place[at].is_some() {
+            continue;
+        }
         let same = before[at].iter().zip(&after[at]).all(|(a, b)| a.to_bits() == b.to_bits());
         if same {
             continue;
@@ -1966,4 +2040,41 @@ fn round_partials(mut partials: Vec<f64>) -> f64 {
         }
     }
     hi
+}
+
+#[cfg(test)]
+mod candidate_tests {
+    use super::ParticleStore;
+    use crate::fmmtree::neighbours;
+
+    /// The plain definition, kept to check the coordinate version against.
+    fn by_definition(level: u32, number: u64) -> Vec<u64> {
+        let touching = neighbours(level, number);
+        let mut out = Vec::new();
+        for near_parent in neighbours(level - 1, number >> 3) {
+            for child in near_parent * 8..near_parent * 8 + 8 {
+                if !touching.contains(&child) {
+                    out.push(child);
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn candidates_match_the_definition_in_order() {
+        for level in 2..=7u32 {
+            let boxes = 1u64 << (3 * level);
+            let step = (boxes / 997).max(1);
+            let mut number = 0;
+            while number < boxes {
+                assert_eq!(ParticleStore::interaction_candidates(level, number), by_definition(level, number), "level {level} box {number}");
+                number += step;
+            }
+            // the corners and edges of the domain
+            for number in [0, boxes - 1, boxes / 2, (boxes / 8) * 3 + 5] {
+                assert_eq!(ParticleStore::interaction_candidates(level, number), by_definition(level, number), "level {level} box {number}");
+            }
+        }
+    }
 }

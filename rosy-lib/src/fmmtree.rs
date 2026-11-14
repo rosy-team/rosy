@@ -90,6 +90,11 @@ pub fn key_range(level: u32, number: u64) -> (u64, u64) {
     (number << shift, (number + 1) << shift)
 }
 
+/// Box number of the cell at `level` (the inverse of [`box_cell`]).
+pub fn interleave_cell(cell: [u64; 3], level: u32) -> u64 {
+    interleave(cell, level)
+}
+
 fn interleave(cell: [u64; 3], bits: u32) -> u64 {
     let mut out = 0u64;
     for i in (0..bits).rev() {
