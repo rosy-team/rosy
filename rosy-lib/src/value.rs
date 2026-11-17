@@ -772,6 +772,29 @@ impl ToRosy for Vec<f64> {
         range_ok(start, end, self.len()).then(|| RosyValue::VE(self[start - 1..end].to_vec()))
     }
 }
+/// `XP|K` on a typed series reads one coefficient. Boxing the series first
+/// copied every coefficient for each read (PHAD's BOUNDARY_AT_TIME does this
+/// inside a 60-step bisection). Same extraction as the typed `DA|RE` path.
+impl ToRosy for crate::DA {
+    fn to_rosy(&self) -> Cow<'_, RosyValue> {
+        Cow::Owned(RosyValue::DA(self.clone()))
+    }
+    fn index_re(&self, i: f64) -> Option<RosyValue> {
+        crate::operators::extract::RosyExtract::rosy_extract(self, &i)
+            .ok()
+            .map(RosyValue::RE)
+    }
+}
+impl ToRosy for crate::CD {
+    fn to_rosy(&self) -> Cow<'_, RosyValue> {
+        Cow::Owned(RosyValue::CD(self.clone()))
+    }
+    fn index_re(&self, i: f64) -> Option<RosyValue> {
+        crate::operators::extract::RosyExtract::rosy_extract(self, &i)
+            .ok()
+            .map(RosyValue::CM)
+    }
+}
 impl ToRosy for Vec<RosyValue> {
     fn to_rosy(&self) -> Cow<'_, RosyValue> {
         Cow::Owned(RosyValue::Arr(self.clone()))

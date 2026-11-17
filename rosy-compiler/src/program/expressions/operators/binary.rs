@@ -423,8 +423,13 @@ impl Transpile for BinaryExpr {
                 as_re(&right_type, &r, &rref)
             )
         } else if left_type.is_any() || right_type.is_any() || result_type.is_any() {
-            // Reading `LIST|J` off a VE must not box a copy of LIST first.
-            let left = if self.op == BinaryOp::Extract && left_type == RosyType::VE() {
+            // Reading `LIST|J` off a VE, or one coefficient `XP|K` off a typed
+            // series, must not box a copy of the whole operand first.
+            let left = if self.op == BinaryOp::Extract
+                && (left_type == RosyType::VE()
+                    || left_type == RosyType::DA()
+                    || left_type == RosyType::CD())
+            {
                 left_output.as_ref()
             } else {
                 emit_as_rosy_value_ref(&left_output, &left_type)
