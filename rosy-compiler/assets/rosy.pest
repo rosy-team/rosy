@@ -127,27 +127,55 @@ begin = { ^"BEGIN" ~ semicolon }
 end = { ^"END" ~ semicolon }
 
 /// WRITE
-writeb = { ^"WRITEB" ~ arg ~ arg+ ~ semicolon }
-write = { ^"WRITE" ~ arg ~ arg+ ~ semicolon }
-reads = { ^"READS" ~ arg ~ variable_identifier ~ semicolon }
-readb = { ^"READB" ~ arg ~ variable_identifier ~ semicolon }
-read = { ^"READ" ~ arg ~ variable_identifier ~ semicolon }
+writeb = { !longer_writeb ~ ^"WRITEB" ~ arg ~ arg+ ~ semicolon }
+write = { !longer_write ~ ^"WRITE" ~ arg ~ arg+ ~ semicolon }
+reads = { !longer_reads ~ ^"READS" ~ arg ~ variable_identifier ~ semicolon }
+readb = { !longer_readb ~ ^"READB" ~ arg ~ variable_identifier ~ semicolon }
+read = { !longer_read ~ ^"READ" ~ arg ~ variable_identifier ~ semicolon }
 
 /// FILE I/O
-openfb = { ^"OPENFB" ~ arg ~ arg ~ arg ~ semicolon }
-openf = { ^"OPENF" ~ arg ~ arg ~ arg ~ semicolon }
-closef = { ^"CLOSEF" ~ arg ~ semicolon }
-rewf = { ^"REWF" ~ arg ~ semicolon }
-backf = { ^"BACKF" ~ arg ~ semicolon }
+openfb = { !longer_openfb ~ ^"OPENFB" ~ arg ~ arg ~ arg ~ semicolon }
+openf = { !longer_openf ~ ^"OPENF" ~ arg ~ arg ~ arg ~ semicolon }
+closef = { !longer_closef ~ ^"CLOSEF" ~ arg ~ semicolon }
+rewf = { !longer_rewf ~ ^"REWF" ~ arg ~ semicolon }
+backf = { !longer_backf ~ ^"BACKF" ~ arg ~ semicolon }
 
 /// VARIABLE
 /// In Rosy mode (default): `VARIABLE (RE) name dim1 dim2 ;` — all trailing exprs are dimensions.
 /// In COSY mode (`.fox`): `VARIABLE name memsize dim1 ;` — first expr is required memory size (discarded).
 /// Validation of which mode applies is done in AST construction, not grammar.
-var_decl = { ^"VARIABLE" ~ type? ~ variable_name ~ memory_size* ~ semicolon }
+var_decl = { !longer_variable ~ ^"VARIABLE" ~ type? ~ variable_name ~ memory_size* ~ semicolon }
 memory_size = { expr }
 
 /// Keywords - define all reserved words (must be followed by a non-identifier character)
+// A statement keyword only counts as one when the word ends there: COSY allows names such as
+// WRITE_PHAD_MPI_FILE or LOOPCOUNT, which must reach procedure_call / assignment instead.
+// Used as negative lookaheads, so they add no pairs to the parse tree.
+longer_variable = @{ ^"VARIABLE" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_daini = @{ ^"DAINI" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_daprv = @{ ^"DAPRV" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_darev = @{ ^"DAREV" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_writeb = @{ ^"WRITEB" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_writem = @{ ^"WRITEM" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_write = @{ ^"WRITE" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_reads = @{ ^"READS" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_readb = @{ ^"READB" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_readm = @{ ^"READM" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_read = @{ ^"READ" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_openfb = @{ ^"OPENFB" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_openf = @{ ^"OPENF" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_closef = @{ ^"CLOSEF" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_rewf = @{ ^"REWF" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_backf = @{ ^"BACKF" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_ranseed = @{ ^"RANSEED" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_intpol = @{ ^"INTPOL" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_cpolval = @{ ^"CPOLVAL" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_procedure = @{ ^"PROCEDURE" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_function = @{ ^"FUNCTION" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_loop = @{ ^"LOOP" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_ploop = @{ ^"PLOOP" ~ (ASCII_ALPHANUMERIC | "_") }
+longer_while = @{ ^"WHILE" ~ (ASCII_ALPHANUMERIC | "_") }
+
 keyword = @{ keyword_raw ~ !(ASCII_ALPHANUMERIC | "_") }
 keyword_raw = { ^"ENDPROCEDURE" | ^"ENDFUNCTION" | ^"ENDWHILE" | ^"ENDLOOP" | ^"ENDPLOOP" | ^"ENDFIT" | ^"ENDIF" | ^"ELSEIF" | ^"ELSE" | ^"BEGIN" | ^"END" | ^"WRITEB" | ^"WRITE" | ^"READS" | ^"READB" | ^"READ" | ^"VARIABLE" | ^"PROCEDURE" | ^"EXP" | ^"TAN" | ^"IF" | ^"WHILE" | ^"DAINI" | ^"DAPRV" | ^"DAREV" | ^"DANOTW" | ^"DANOT" | ^"DAEPSM" | ^"DAEPS" | ^"DATRN" | ^"DASCL" | ^"DASGN" | ^"DADER" | ^"DAINT" | ^"DANORO" | ^"DANORS" | ^"DAREA" | ^"DAPEW" | ^"DAPEE" | ^"DAPEA" | ^"DAPEP" | ^"DAEST" | ^"DAPLU" | ^"DADIU" | ^"DADMU" | ^"DACLIW" | ^"DACQLC" | ^"EPSMIN" | ^"DAFSET" | ^"DAFILT" | ^"DAFLO" | ^"CDFLO" | ^"DAGMD" | ^"DANOW" | ^"CDF2" | ^"CDNFDS" | ^"CDNFDA" | ^"CDNF" | ^"DARAN" | ^"DACODE" | ^"LENGTH" | ^"SINH" | ^"SIN" | ^"COSH" | ^"COS" | ^"ASIN" | ^"ACOS" | ^"ATAN" | ^"TANH" | ^"SQRT" | ^"SQR" | ^"VMAX" | ^"VMIN" | ^"ABS" | ^"NORM" | ^"CONS" | ^"INTPOL" | ^"INT" | ^"NINT" | ^"TYPE" | ^"REAL" | ^"IMAG" | ^"TRIM" | ^"LTRIM" | ^"ISRT3" | ^"ISRT" | ^"CMPLX" | ^"CONJ" | ^"LST" | ^"LCM" | ^"LCD" | ^"LRE" | ^"LLO" | ^"LVE" | ^"LDA" | ^"LOG" | ^"BREAK" | ^"QUIT" | ^"SCRLEN" | ^"CPUSEC" | ^"OS" | ^"LINV" | ^"LDET" | ^"SUBSTR" | ^"VELSET" | ^"VELGET" | ^"INTPOL" | ^"CPOLVAL" | ^"POLVAL" | ^"VEDOT" | ^"VEUNIT" | ^"VEZERO" | ^"STCRE" | ^"RECST" | ^"RERAN" | ^"PWTIME" | ^"PNPRO" | ^"PROOT" | ^"IMUNIT" | ^"LEV" | ^"MBLOCK" | ^"MTREE" | ^"LSLINE" | ^"RKCO" | ^"WRITEM" | ^"READM" | ^"ERF" | ^"WERF" | ^"FIT" | ^"OPENFB" | ^"OPENF" | ^"CLOSEF" | ^"REWF" | ^"BACKF" | ^"FUNCTION" | ^"LOOP" | ^"PLOOP" | ^"VARMEM" | ^"VARPOI" | ^"SLEEPM" | ^"ARGGET" | ^"MEMDPV" | ^"MEMFRE" | ^"MEMALL" | ^"MEMWRT" | ^"LTRUE" | ^"LFALSE" | "rosy_universe" | "rosy_world" | "rosy_size" | "rosy_rank" | ^"AND" | ^"OR" | ^"POSITION" | ^"INCLUDE" | ^"SAVE" | ^"MODULE" }
 
@@ -166,7 +194,7 @@ endif = { ^"ENDIF" ~ semicolon }
   /// Calling - ensure the name is not a keyword
   procedure_call = { procedure_name ~ arg* ~ semicolon }
   /// PROCEDURE
-  start_procedure = { ^"PROCEDURE" ~ procedure_name ~ procedure_argument_name_and_type* ~ semicolon }
+  start_procedure = { !longer_procedure ~ ^"PROCEDURE" ~ procedure_name ~ procedure_argument_name_and_type* ~ semicolon }
   procedure_name = @{ !keyword ~ (ASCII_ALPHANUMERIC | "_")+ | ^"CPOLVAL" | ^"NORM" }
   procedure_argument_name_and_type = { procedure_argument_name ~ type? }
   procedure_argument_name = @{ (ASCII_ALPHANUMERIC | "_")+ }
@@ -179,7 +207,7 @@ endif = { ^"ENDIF" ~ semicolon }
   /// Calling - ensure the name is not a keyword
   function_call = { function_name ~ "(" ~ WHITESPACE* ~ expr ~ (WHITESPACE* ~ "," ~ WHITESPACE* ~ expr)* ~ WHITESPACE* ~ ")"  }
   /// FUNCTION
-  start_function = { ^"FUNCTION" ~ type? ~ function_name ~ function_argument_name_and_type+ ~ semicolon }
+  start_function = { !longer_function ~ ^"FUNCTION" ~ type? ~ function_name ~ function_argument_name_and_type+ ~ semicolon }
   function_name = @{ !keyword ~ (ASCII_ALPHANUMERIC | "_")+ }
   function_argument_name_and_type = _{ function_argument_name ~ type? }
   function_argument_name = @{ (ASCII_ALPHANUMERIC | "_")+ }
@@ -190,15 +218,15 @@ endif = { ^"ENDIF" ~ semicolon }
   ///
   /// [ LOOP ]
   loop = { start_loop ~ statement* ~ end_loop }
-  start_loop = { ^"LOOP" ~ variable_name ~ arg ~ arg ~ arg? ~ semicolon }
+  start_loop = { !longer_loop ~ ^"LOOP" ~ variable_name ~ arg ~ arg ~ arg? ~ semicolon }
   end_loop = { ^"ENDLOOP" ~ semicolon }
   /// [ PLOOP ]
   ploop = { start_ploop ~ statement+ ~ end_ploop }
-  start_ploop = { ^"PLOOP" ~ variable_name ~ arg ~ arg ~ semicolon }
+  start_ploop = { !longer_ploop ~ ^"PLOOP" ~ variable_name ~ arg ~ arg ~ semicolon }
   end_ploop = { ^"ENDPLOOP" ~ unit? ~ variable_identifier* ~ semicolon }
   /// [ WHILE ]
   while_loop = { start_while ~ statement* ~ end_while }
-  start_while = { ^"WHILE" ~ expr ~ semicolon }
+  start_while = { !longer_while ~ ^"WHILE" ~ expr ~ semicolon }
   end_while = { ^"ENDWHILE" ~ semicolon }
   /// [ FIT ]
   fit_statement = { start_fit ~ statement* ~ end_fit }
@@ -214,10 +242,10 @@ endif = { ^"ENDIF" ~ semicolon }
 
 /// [ INTRINSIC PROCEDURES ]
   /// [ DA ]
-  daini = { ^"DAINI" ~ arg ~ arg ~ (arg ~ (daini_nm_zero | arg))? ~ semicolon }
+  daini = { !longer_daini ~ ^"DAINI" ~ arg ~ arg ~ (arg ~ (daini_nm_zero | arg))? ~ semicolon }
   daini_nm_zero = @{ "0" ~ !(ASCII_ALPHANUMERIC | "_" | ".") }
-  daprv = { ^"DAPRV" ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
-  darev = { ^"DAREV" ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  daprv = { !longer_daprv ~ ^"DAPRV" ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  darev = { !longer_darev ~ ^"DAREV" ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
   danot = { ^"DANOT" ~ arg ~ semicolon }
   daeps = { ^"DAEPS" ~ arg ~ semicolon }
   datrn  = { ^"DATRN"  ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
@@ -273,7 +301,7 @@ endif = { ^"ENDIF" ~ semicolon }
   recst = { ^"RECST" ~ arg ~ arg ~ variable_identifier ~ semicolon }
   /// [ RANDOM ]
   reran = { ^"RERAN" ~ variable_identifier ~ semicolon }
-  ranseed = { ^"RANSEED" ~ arg ~ semicolon }
+  ranseed = { !longer_ranseed ~ ^"RANSEED" ~ arg ~ semicolon }
   /// [ SYSTEM / UTILITY ]
   pwtime = { ^"PWTIME" ~ variable_identifier ~ semicolon }
   pnpro = { ^"PNPRO" ~ variable_identifier ~ semicolon }
@@ -282,9 +310,9 @@ endif = { ^"ENDIF" ~ semicolon }
   /// [ MATH ]
   linv = { ^"LINV" ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
   ldet = { ^"LDET" ~ arg ~ arg ~ arg ~ arg ~ semicolon }
-  intpol = { ^"INTPOL" ~ variable_identifier ~ arg ~ semicolon }
+  intpol = { !longer_intpol ~ ^"INTPOL" ~ variable_identifier ~ arg ~ semicolon }
   polval = { ^"POLVAL" ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
-  cpolval = { ^"CPOLVAL" ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  cpolval = { !longer_cpolval ~ ^"CPOLVAL" ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
   /// [ LINEAR ALGEBRA ]
   lev = { ^"LEV" ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
   mblock = { ^"MBLOCK" ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
@@ -304,9 +332,9 @@ endif = { ^"ENDIF" ~ semicolon }
   rkco = { ^"RKCO" ~ variable_identifier ~ variable_identifier ~ variable_identifier ~ variable_identifier ~ variable_identifier ~ semicolon }
   /// [ MEMORY SERIALIZATION ]
   /// WRITEM( c v c v v v ) — serialize variable into arrays
-  writem = { ^"WRITEM" ~ arg ~ variable_identifier ~ arg ~ variable_identifier ~ variable_identifier ~ variable_identifier ~ semicolon }
+  writem = { !longer_writem ~ ^"WRITEM" ~ arg ~ variable_identifier ~ arg ~ variable_identifier ~ variable_identifier ~ variable_identifier ~ semicolon }
   /// READM( v c c c c c ) — deserialize variable from arrays
-  readm = { ^"READM" ~ variable_identifier ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
+  readm = { !longer_readm ~ ^"READM" ~ variable_identifier ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
 /// [ INTRINSIC TYPES ]
   type = { "(" ~ inner_type ~ expr* ~ ")"}
   inner_type = {
