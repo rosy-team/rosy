@@ -56,17 +56,17 @@ impl RosyTYPE for VE {
     }
 }
 
-/// TYPE for DA - code 6
+/// TYPE for DA - code 8 (COSY; 6 and 7 are types Rosy does not have)
 impl RosyTYPE for DA {
     fn rosy_type(&self) -> anyhow::Result<RE> {
-        Ok(6.0)
+        Ok(8.0)
     }
 }
 
-/// TYPE for complex DA - code 7
+/// TYPE for complex DA - code 9 (COSY)
 impl RosyTYPE for CD {
     fn rosy_type(&self) -> anyhow::Result<RE> {
-        Ok(7.0)
+        Ok(9.0)
     }
 }
 
@@ -77,7 +77,9 @@ mod tests {
 
     #[serial_test::serial]
     #[test]
-    fn type_codes_match_cosy_order_for_supported_types() -> anyhow::Result<()> {
+    /// Codes checked against Intel COSY 10.2 (TYPE of RE, ST, LO, CM, VE, DA,
+    /// CD gives 1, 2, 3, 4, 5, 8, 9).
+    fn type_codes_match_cosy_for_supported_types() -> anyhow::Result<()> {
         crate::taylor::cleanup_taylor();
         crate::taylor::init_taylor(1, 1)?;
 
@@ -94,8 +96,8 @@ mod tests {
         assert_eq!(lo.rosy_type()?, 3.0);
         assert_eq!(cm.rosy_type()?, 4.0);
         assert_eq!(ve.rosy_type()?, 5.0);
-        assert_eq!(da.rosy_type()?, 6.0);
-        assert_eq!(cd.rosy_type()?, 7.0);
+        assert_eq!(da.rosy_type()?, 8.0);
+        assert_eq!(cd.rosy_type()?, 9.0);
 
         crate::taylor::cleanup_taylor();
         Ok(())
