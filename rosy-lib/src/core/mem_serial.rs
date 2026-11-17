@@ -19,8 +19,11 @@
 //! - 3 = LO (bool)
 //! - 4 = CM (Complex64)
 //! - 5 = VE (Vec\<f64\>)
-//! - 6 = DA
-//! - 7 = CD
+//! - 8 = DA
+//! - 9 = CD
+//!
+//! These equal `TYPE` of the same value. Rosy before 1.15.6 wrote 6 for DA
+//! and 7 for CD; READM still accepts those.
 //!
 //! Version ID is always 1 for this format.
 
@@ -44,6 +47,14 @@ pub trait RosyWritem {
 pub trait RosyReadm: Sized {
     /// Expected type code for this type (used for validation).
     fn expected_type_code() -> f64;
+    /// A code older Rosy versions wrote for this type, still accepted.
+    fn legacy_type_code() -> Option<f64> {
+        None
+    }
+    fn accepts_type_code(code: f64) -> bool {
+        (code - Self::expected_type_code()).abs() <= 0.5
+            || Self::legacy_type_code().is_some_and(|l| (code - l).abs() <= 0.5)
+    }
 
     fn readm(
         var_info: &[f64],
@@ -86,7 +97,7 @@ impl RosyReadm for f64 {
         }
         // Fix #2: type code validation
         let type_code = var_info[0];
-        if (type_code - Self::expected_type_code()).abs() > 0.5 {
+        if !Self::accepts_type_code(type_code) {
             bail!(
                 "READM: type code mismatch — buffer contains type {type_code} but expected {} (RE)",
                 Self::expected_type_code()
@@ -130,7 +141,7 @@ impl RosyReadm for String {
             bail!("READM: var_info has fewer than 2 elements (too short to read type/length)");
         }
         let type_code = var_info[0];
-        if (type_code - Self::expected_type_code()).abs() > 0.5 {
+        if !Self::accepts_type_code(type_code) {
             bail!(
                 "READM: type code mismatch — buffer contains type {type_code} but expected {} (ST)",
                 Self::expected_type_code()
@@ -172,7 +183,7 @@ impl RosyReadm for bool {
             bail!("READM: var_info has fewer than 2 elements (too short to read type/length)");
         }
         let type_code = var_info[0];
-        if (type_code - Self::expected_type_code()).abs() > 0.5 {
+        if !Self::accepts_type_code(type_code) {
             bail!(
                 "READM: type code mismatch — buffer contains type {type_code} but expected {} (LO)",
                 Self::expected_type_code()
@@ -215,7 +226,7 @@ impl RosyReadm for num_complex::Complex64 {
             bail!("READM: var_info has fewer than 2 elements (too short to read type/length)");
         }
         let type_code = var_info[0];
-        if (type_code - Self::expected_type_code()).abs() > 0.5 {
+        if !Self::accepts_type_code(type_code) {
             bail!(
                 "READM: type code mismatch — buffer contains type {type_code} but expected {} (CM)",
                 Self::expected_type_code()
@@ -260,7 +271,7 @@ impl RosyReadm for Vec<f64> {
         }
         // Fix #2: type code validation
         let type_code = var_info[0];
-        if (type_code - Self::expected_type_code()).abs() > 0.5 {
+        if !Self::accepts_type_code(type_code) {
             bail!(
                 "READM: type code mismatch — buffer contains type {type_code} but expected {} (VE)",
                 Self::expected_type_code()
@@ -309,14 +320,17 @@ impl RosyWritem for crate::taylor::DA {
         }
 
         let da_params = vec![order, nv];
-        let var_info = vec![6.0, dp.len() as f64, WRITEM_VERSION];
+        let var_info = vec![8.0, dp.len() as f64, WRITEM_VERSION];
         (var_info, dp, int, da_params)
     }
 }
 
 impl RosyReadm for crate::taylor::DA {
     fn expected_type_code() -> f64 {
-        6.0
+        8.0
+    }
+    fn legacy_type_code() -> Option<f64> {
+        Some(6.0)
     }
 
     fn readm(
@@ -335,7 +349,7 @@ impl RosyReadm for crate::taylor::DA {
         }
         // Fix #2: type code validation
         let type_code = var_info[0];
-        if (type_code - Self::expected_type_code()).abs() > 0.5 {
+        if !Self::accepts_type_code(type_code) {
             bail!(
                 "READM: type code mismatch — buffer contains type {type_code} but expected {} (DA)",
                 Self::expected_type_code()
@@ -421,14 +435,17 @@ impl RosyWritem for crate::taylor::CD {
         // n_terms = dp.len() / 2  — store that as the payload length
         let n_terms = terms.len() as f64;
         let da_params = vec![order, nv];
-        let var_info = vec![7.0, n_terms, WRITEM_VERSION];
+        let var_info = vec![9.0, n_terms, WRITEM_VERSION];
         (var_info, dp, int, da_params)
     }
 }
 
 impl RosyReadm for crate::taylor::CD {
     fn expected_type_code() -> f64 {
-        7.0
+        9.0
+    }
+    fn legacy_type_code() -> Option<f64> {
+        Some(7.0)
     }
 
     fn readm(
@@ -448,7 +465,7 @@ impl RosyReadm for crate::taylor::CD {
         }
         // Fix #2: type code validation
         let type_code = var_info[0];
-        if (type_code - Self::expected_type_code()).abs() > 0.5 {
+        if !Self::accepts_type_code(type_code) {
             bail!(
                 "READM: type code mismatch — buffer contains type {type_code} but expected {} (CD)",
                 Self::expected_type_code()
