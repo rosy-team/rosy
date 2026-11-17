@@ -25,6 +25,7 @@
 //! PSPREV  ids start;
 //! PSPOS   ids positions;
 //! PSSUM   values count total;
+//! PSMAX   values count max;
 //! PSALL   x y z px py pz f n e count;
 //! PSSLICE x y z px py pz f n e first count;
 //! PSWRITE unit lines count;
@@ -82,6 +83,7 @@ const INTRINSICS: &[(&str, &str)] = &[
     ("PSPREV", "vv"),
     ("PSPOS", "iv"),
     ("PSSUM", "iis"),
+    ("PSMAX", "iis"),
     ("PSALL", "vvvvvvvvvs"),
     ("PSSLICE", "vvvvvvvvvss"),
     ("PSWRITE", "iii"),

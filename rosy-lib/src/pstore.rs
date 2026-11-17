@@ -1622,6 +1622,7 @@ pub const PS_INTRINSICS: &[(&str, usize)] = &[
     ("PSPREV", 2),
     ("PSPOS", 2),
     ("PSSUM", 3),
+    ("PSMAX", 3),
     ("PSALL", 10),
     ("PSSLICE", 11),
     ("PSWRITE", 3),
@@ -1693,6 +1694,9 @@ impl crate::mpi::RosyMPIContext {
     ///   value per owned particle in particle-number order, as a
     ///   one-process loop would; that gathers everything and is for
     ///   comparisons only.
+    /// - `PSMAX values count max`: the largest of the first `count` values
+    ///   over all ranks, on every rank. Exact, so it does not depend on
+    ///   the rank count. `count` must be at least 1 on every rank.
     /// - `PSALL x y z px py pz f n e count`: every particle in number order
     ///   on the first rank, nothing elsewhere. For output only.
     /// - `PSSLICE x y z px py pz f n e first count`: this rank's share of the
@@ -1923,6 +1927,16 @@ impl crate::mpi::RosyMPIContext {
                     round_partials(exact_partials(&partials))
                 };
                 args[2].ps_set_scalar(total)?;
+            }
+            "PSMAX" => {
+                let count = args[1].ps_scalar()? as usize;
+                let values = args[0].ps_values()?;
+                ensure!(count >= 1, "PSMAX: count must be at least 1");
+                ensure!(values.len() >= count, "PSMAX: array is shorter than the count");
+                let mine = values[..count].iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                let mut all = 0.0f64;
+                world.all_reduce_into(&mine, &mut all, SystemOperation::max());
+                args[2].ps_set_scalar(all)?;
             }
             "PSALL" => {
                 let ranks = world.size() as usize;

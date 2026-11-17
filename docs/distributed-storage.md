@@ -337,6 +337,7 @@ is a variable, and every rank makes the same call:
 | `PSPREV ids start` | For each owned particle, the particle numbers around it before the last `PSBUILD`. |
 | `PSPOS ids positions` | Local position of each particle number, 0 if not held here. |
 | `PSSUM values count total` | Sum over all ranks, correctly rounded. |
+| `PSMAX values count max` | The largest of the first `count` values over all ranks, on every rank. Exact, so independent of the rank count. |
 | `PSALL x y z px py pz f n e count` | Every particle in number order on the first rank, for output. |
 | `PSSLICE x y z px py pz f n e first count` | This rank's share of the particles in number order: numbers `first .. first+count-1`, rank r getting the r-th of equal runs. Each rank formats its own part of an output file. |
 | `PSWRITE unit lines count` | The first `count` strings of every rank's `lines`, lower ranks first, written as lines to file `unit` by the first rank in one go (only it needs the file open). With `PSSLICE`, output is formatted in parallel and comes out in particle order. |
