@@ -52,8 +52,11 @@ fn main_wrapper() -> Result<()> {
 }
 fn main() -> Result<()> {
 	let result = main_wrapper();
-	// Files are written through buffers; whatever is left goes out now.
+	// Files are written through buffers; whatever is left goes out now (with
+	// any error reported), then every unit is closed like at the end of a COSY
+	// program, ending each written file at its last record.
 	let flushed = rosy_lib::core::file_io::rosy_flush_all_files();
+	rosy_lib::core::file_io::rosy_close_all_files();
 	if let Err(err) = result.and(flushed) {
 		let mut err_str = format!("{}", err.root_cause());
 

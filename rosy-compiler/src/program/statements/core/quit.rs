@@ -67,6 +67,7 @@ impl Transpile for QuitStatement {
             r#"{{
     let __quit_code = {} as i32;
     rosy_lib::core::file_io::rosy_flush_all_files()?;
+    rosy_lib::core::file_io::rosy_close_all_files();
     if __quit_code == 1 {{
         panic!("QUIT with traceback requested");
     }} else {{
