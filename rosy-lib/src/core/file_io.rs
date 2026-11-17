@@ -18,6 +18,37 @@ struct FileHandle {
     writer: Option<BufWriter<File>>,
     _path: String,
     _is_binary: bool,
+    /// Something was written since the unit was opened.
+    wrote: bool,
+}
+
+impl Drop for FileHandle {
+    /// COSY (Fortran sequential files) ends a written file at the last record
+    /// written: rewriting an 'UNKNOWN' file with less data leaves no stale
+    /// tail.  Truncate at the write position when the unit is closed, reopened,
+    /// or dropped at exit.
+    fn drop(&mut self) {
+        if let Some(ref mut writer) = self.writer {
+            if writer.flush().is_ok() && self.wrote {
+                let f = writer.get_mut();
+                if let Ok(pos) = f.stream_position() {
+                    let _ = f.set_len(pos);
+                }
+            }
+        }
+    }
+}
+
+/// Close every open unit, as the end of a COSY program does: written files
+/// are flushed and end at the last record written (see `FileHandle`'s Drop).
+/// Called when the program finishes and before `QUIT`; the registry is a
+/// static, so without this its handles would never be dropped.
+pub fn rosy_close_all_files() {
+    if let Ok(mut reg) = FILE_REGISTRY.lock() {
+        if let Some(registry) = reg.as_mut() {
+            registry.clear();
+        }
+    }
 }
 
 fn ensure_registry() {
@@ -106,6 +137,7 @@ fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> R
                     writer: Some(BufWriter::new(file)),
                     _path: filename.to_string(),
                     _is_binary: is_binary,
+                    wrote: false,
                 },
             );
         }
@@ -130,6 +162,7 @@ fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> R
                     writer: Some(BufWriter::new(file)),
                     _path: filename.to_string(),
                     _is_binary: is_binary,
+                    wrote: false,
                 },
             );
         }
@@ -149,6 +182,7 @@ fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> R
                     writer: None,
                     _path: filename.to_string(),
                     _is_binary: is_binary,
+                    wrote: false,
                 },
             );
         }
@@ -171,6 +205,7 @@ fn open_file_impl(unit: f64, filename: &str, status: &str, is_binary: bool) -> R
                     writer: Some(BufWriter::new(file)),
                     _path: filename.to_string(),
                     _is_binary: is_binary,
+                    wrote: false,
                 },
             );
         }
@@ -330,6 +365,8 @@ fn rosy_write_to_unit_str(unit: u64, content: &str) -> Result<()> {
 
     writeln!(writer, "{}", content)
         .with_context(|| format!("Failed to write to file on unit {}", unit))?;
+    handle.wrote = true;
+    let writer = handle.writer.as_mut().unwrap();
     writer
         .flush()
         .with_context(|| format!("Failed to flush file on unit {}", unit))?;
@@ -474,6 +511,7 @@ pub fn rosy_writeb_to_unit(unit: u64, data: &[u8]) -> Result<()> {
     writer
         .write_all(data)
         .with_context(|| format!("Failed to write binary data to file on unit {}", unit))?;
+    handle.wrote = true;
 
     Ok(())
 }
@@ -679,6 +717,66 @@ impl RosyFromBinary for crate::taylor::DA {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn temp(name: &str) -> (std::path::PathBuf, String) {
+        let path = std::env::temp_dir().join(format!("rosy-{}-{name}", std::process::id()));
+        let s = path.to_str().unwrap().to_string();
+        let _ = std::fs::remove_file(&path);
+        (path, s)
+    }
+
+    #[test]
+    fn rewriting_a_file_shorter_leaves_no_stale_tail() {
+        // PHAD rewrites PHAD_TEMP.bin with fewer particles after a loss.
+        let (path, p) = temp("shorter.txt");
+        rosy_openf(191.0, &p, "unknown").unwrap();
+        for line in ["first line", "second line", "third line"] {
+            rosy_write_to_unit(191u64 as f64, line.to_string()).unwrap();
+        }
+        rosy_closef(191.0).unwrap();
+        rosy_openf(191.0, &p, "unknown").unwrap();
+        rosy_write_to_unit(191u64 as f64, "new".to_string()).unwrap();
+        rosy_closef(191.0).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new\n");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn binary_rewrite_shorter_is_truncated_too() {
+        let (path, p) = temp("shorter.bin");
+        rosy_openfb(192.0, &p, "unknown").unwrap();
+        for v in [1.0f64, 2.0, 3.0] {
+            rosy_writeb_to_unit(192, &v.to_binary()).unwrap();
+        }
+        rosy_closef(192.0).unwrap();
+        rosy_openfb(192.0, &p, "unknown").unwrap();
+        rosy_writeb_to_unit(192, &4.0f64.to_binary()).unwrap();
+        rosy_closef(192.0).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), 48, "one record left");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn reading_a_file_does_not_truncate_it() {
+        let (path, p) = temp("readonly.txt");
+        std::fs::write(&path, "a\nb\nc\n").unwrap();
+        rosy_openf(193.0, &p, "unknown").unwrap();
+        rosy_closef(193.0).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "a\nb\nc\n");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn closing_all_files_at_exit_truncates_open_ones() {
+        let (path, p) = temp("atexit.txt");
+        std::fs::write(&path, "old old old old\n").unwrap();
+        rosy_openf(194.0, &p, "unknown").unwrap();
+        rosy_write_to_unit(194u64 as f64, "x".to_string()).unwrap();
+        // Program ends (or QUITs) with the unit still open.
+        rosy_close_all_files();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "x\n");
+        let _ = std::fs::remove_file(&path);
+    }
 
     #[test]
     fn cosy_real_record_round_trip() {

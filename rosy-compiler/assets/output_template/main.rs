@@ -51,7 +51,11 @@ fn main_wrapper() -> Result<()> {
     Ok(())
 }
 fn main() -> Result<()> {
-	if let Err(err) = main_wrapper() {
+	let result = main_wrapper();
+	// Like the end of a COSY program: close open files (ending each written
+	// file at its last record).
+	rosy_lib::core::file_io::rosy_close_all_files();
+	if let Err(err) = result {
 		let mut err_str = format!("{}", err.root_cause());
 
         for (ind, ctx) in err.chain().rev().enumerate().skip(1) {
