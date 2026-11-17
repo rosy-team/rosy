@@ -297,6 +297,11 @@ pub struct GraphNode {
     /// Fox `VARIABLE name 1` with no further dimensions: one real cell.
     /// A bigger memory size can hold a DA, so those stay ANY when untyped.
     pub unit_cell: bool,
+    /// Typed ANY only because it is passed into an ANY procedure argument,
+    /// which in fox means it holds a series (`SC_D2 DX DY DZ D2SER`).
+    pub any_arg_cell: bool,
+    /// Read as `name|0` somewhere: a Taylor constant term, so a series.
+    pub coef_read: bool,
     /// Some assignment uses derive or a DA/CD value.
     pub saw_da: bool,
     /// Some assignment builds the cell with `&`.
@@ -433,6 +438,8 @@ pub struct TypeResolver {
     /// Procedure argument, and the slots named by the actual argument.
     /// `BFIELD Y(i)` records `Y` so a series argument types the formal as DA.
     pub call_arg_deps: Vec<(TypeSlot, Vec<TypeSlot>)>,
+    /// (formal, cell) for arguments that are a bare cell: `RAD(OUTPUT(1),L)`.
+    pub call_arg_cells: Vec<(TypeSlot, TypeSlot)>,
 }
 
 impl Default for TypeResolver {
@@ -446,6 +453,7 @@ impl TypeResolver {
         TypeResolver {
             nodes: HashMap::new(),
             call_arg_deps: Vec::new(),
+            call_arg_cells: Vec::new(),
         }
     }
 
@@ -537,6 +545,8 @@ impl TypeResolver {
                     assigned_at: None,
                     extra_dims: 0,
                     unit_cell: false,
+                    any_arg_cell: false,
+                    coef_read: false,
                     saw_da: false,
                     saw_vec: false,
                     seen_deps: HashSet::new(),
@@ -557,6 +567,8 @@ impl TypeResolver {
                 assigned_at: None,
                 extra_dims: 0,
                 unit_cell: false,
+                any_arg_cell: false,
+                coef_read: false,
                 saw_da: false,
                 saw_vec: false,
                 seen_deps: HashSet::new(),
@@ -609,6 +621,9 @@ impl TypeResolver {
         let Some(node) = self.nodes.get_mut(slot) else {
             return;
         };
+        // Recorded even on an explicit cell: a fox formal is explicit ANY, and
+        // its callers' cells still learn from it (series_from_coef_formals).
+        node.coef_read = true;
         if matches!(node.rule, ResolutionRule::Explicit(_)) {
             return;
         }
@@ -750,6 +765,9 @@ impl TypeResolver {
                     for used in &indexed {
                         self.note_indexed(used);
                     }
+                    if let ExprRecipe::Variable(cell) | ExprRecipe::IndexedVariable(cell, _) = &recipe {
+                        self.call_arg_cells.push((param_slot.clone(), cell.clone()));
+                    }
                     self.call_arg_deps
                         .push((param_slot.clone(), flow.into_iter().collect()));
                 }
@@ -809,6 +827,7 @@ impl TypeResolver {
                                     reason: "passed to ANY procedure argument".into(),
                                 };
                                 node.depends_on.clear();
+                                node.any_arg_cell = true;
                             }
                         }
                         Some(t) => {
@@ -1276,6 +1295,7 @@ impl TypeResolver {
     /// A direct `Y := PHI` follows that DA. The next copy does not,
     /// so the particle arrays stay f64.
     fn reopen_mixed_reals(&mut self) {
+        self.series_from_coef_formals();
         self.keep_mixed_cells_untyped();
         let structural_da: HashSet<TypeSlot> = self
             .nodes
@@ -1493,6 +1513,41 @@ impl TypeResolver {
         }
     }
 
+    /// `FUNCTION RAD SERIES; ... SERIES|0 ...` called as `RAD(OUTPUT(1),L)`:
+    /// the formal is read as a Taylor constant term, so the cell handed to it
+    /// holds a series. Inline, `OUTPUT(1)|0` already says so; moving that read
+    /// into a helper must not turn OUTPUT into a real.
+    fn series_from_coef_formals(&mut self) {
+        let cells: Vec<TypeSlot> = self
+            .call_arg_cells
+            .iter()
+            .filter(|(formal, _)| self.nodes.get(formal).is_some_and(|n| n.coef_read))
+            .map(|(_, cell)| cell.clone())
+            .collect();
+        for cell in cells {
+            if let Some(node) = self.nodes.get_mut(&cell)
+                && !matches!(node.rule, ResolutionRule::Explicit(_))
+                && !node.unit_cell
+                && !node.type_probed
+                && !scalar_index_blocks_da(node)
+            {
+                node.saw_da = true;
+            }
+        }
+    }
+
+    /// `OUTPUT(1) := SCX` after `SC_D2 DX DY DZ SCX`: SCX is ANY only because
+    /// it was handed to an ANY formal, and that formal fills it with a series.
+    /// Copying it out is no evidence that OUTPUT also holds a plain real.
+    fn reads_any_arg_cell(&self, recipe: &ExprRecipe) -> bool {
+        match recipe {
+            ExprRecipe::Variable(s) | ExprRecipe::IndexedVariable(s, _) => {
+                self.nodes.get(s).is_some_and(|n| n.any_arg_cell)
+            }
+            _ => false,
+        }
+    }
+
     /// A COSY cell can hold a real on one path and a series on another:
     /// `DELTI(1) := T-(TC|I)`, or `DELTI(1) := DA(1)+T-(TC|I)`.
     /// As a DA, the real path comes back as a series, and a later `TC|I` reads
@@ -1517,6 +1572,7 @@ impl TypeResolver {
                         r.open_kind() != OpenKind::Da
                             && !matches!(r, ExprRecipe::Literal(_))
                             && !series.iter().any(|dep| r.references_slot(dep))
+                            && !self.reads_any_arg_cell(r)
                             && self.evaluate_recipe(r).is_ok_and(|t| t.is_any())
                     })
             })
