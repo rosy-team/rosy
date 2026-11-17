@@ -1654,6 +1654,7 @@ pub const PS_INTRINSICS: &[(&str, usize)] = &[
     ("PSALL", 10),
     ("PSSLICE", 11),
     ("PSWRITE", 3),
+    ("PSREMOVE", 6),
 ];
 
 /// The parts of `PSBUILD` timed separately in the stats report.
@@ -1736,6 +1737,20 @@ impl crate::mpi::RosyMPIContext {
     ///   first+count-1`, with rank r getting the r-th of `ranks` equal runs
     ///   of the numbers loaded. Lets every rank format and write its own
     ///   part of an output file.
+    /// - `PSREMOVE keep info k removed nremoved ncool`: drop the owned
+    ///   particles whose `keep` flag (one per owned particle, in `PSGET`
+    ///   order) is 0. `info` holds `k` reals per owned particle, particle
+    ///   after particle (`k` may be 0). Every rank then holds `removed`: one
+    ///   row `old_number info(1..k)` per removed particle, all ranks' rows,
+    ///   sorted by old number, and `nremoved`, their count. Survivors are
+    ///   renumbered `1..` keeping their order, `old - (removed numbers below
+    ///   it)`, which is a one-process program's in-place compaction, and
+    ///   `ncool` (the trailing particles, cooling electrons in PHAD) drops by
+    ///   the removed numbers among the last `ncool`. No particle moves. When
+    ///   something was removed the store is as after `PSLOAD`: call
+    ///   `PSBUILD` before using the tree again (a first build: earlier
+    ///   neighbour lists start empty, as PHAD's restarted force cycle
+    ///   expects). When nothing was removed nothing changes.
     /// - `PSWRITE unit lines count`: the first `count` strings of every
     ///   rank's `lines`, lower ranks first, written as lines to file `unit`
     ///   by the first rank (only it needs the file open), in one write.
@@ -2018,6 +2033,65 @@ impl crate::mpi::RosyMPIContext {
                 args[FIELDS].ps_set_scalar((starts[me] + 1) as f64)?;
                 args[FIELDS + 1].ps_set_scalar(ids.len() as f64)?;
             }
+            "PSREMOVE" => {
+                let n = store.len();
+                let keep = args[0].ps_values()?;
+                ensure!(keep.len() >= n, "PSREMOVE: keep is shorter than the owned particles");
+                let k = args[2].ps_scalar()?;
+                ensure!(k >= 0.0 && k.fract() == 0.0, "PSREMOVE: k must be a whole number, not {k}");
+                let k = k as usize;
+                let info = if k > 0 { args[1].ps_values()? } else { Vec::new() };
+                ensure!(info.len() >= n * k, "PSREMOVE: info is shorter than k values per owned particle");
+                let ncool = args[5].ps_scalar()?;
+                let total = store.loaded;
+                // This rank's rows, then everyone's, by old number.
+                let mut mine = Vec::new();
+                for slot in 0..n {
+                    if keep[slot] == 0.0 {
+                        mine.push((store.id[slot] + 1) as f64);
+                        mine.extend_from_slice(&info[slot * k..slot * k + k]);
+                    }
+                }
+                let all = gather_all(world, &mine)?;
+                let mut rows: Vec<&[f64]> = all.chunks_exact(1 + k).collect();
+                rows.sort_unstable_by(|a, b| a[0].total_cmp(&b[0]));
+                let gone: Vec<u64> = rows.iter().map(|r| r[0] as u64 - 1).collect();
+                let cool_from = total.saturating_sub(ncool.max(0.0) as u64);
+                let cool_gone = gone.iter().filter(|&&id| id >= cool_from).count() as f64;
+                args[3].ps_set_values(rows.concat())?;
+                args[4].ps_set_scalar(gone.len() as f64)?;
+                args[5].ps_set_scalar(ncool - cool_gone)?;
+                if gone.is_empty() {
+                    return Ok(());
+                }
+                // Drop this rank's flagged particles, keeping the order.
+                let kept: Vec<bool> = keep[..n].iter().map(|&f| f != 0.0).collect();
+                store.id.retain_by(&kept);
+                store.key.retain_by(&kept);
+                store.data.retain_by(&kept);
+                store.leaf_level.retain_by(&kept);
+                store.weight.retain_by(&kept);
+                // Renumber as the serial compaction does.
+                for id in &mut store.id {
+                    *id -= gone.partition_point(|&g| g < *id) as u64;
+                }
+                store.loaded = total - gone.len() as u64;
+                // As after PSLOAD: the tree and everything built on it is gone.
+                store.prev = vec![Vec::new(); store.id.len()];
+                store.leaves.clear();
+                store.leaf_cost.clear();
+                store.pass_seconds = 0.0;
+                store.pass_mark = None;
+                store.plan = Plan::default();
+                store.bounds = None;
+                store.halo_id.clear();
+                store.halo_key.clear();
+                store.halo_data.clear();
+                store.far_id.clear();
+                store.far_data.clear();
+                store.position_of.clear();
+                store.directory.clear();
+            }
             "PSWRITE" => {
                 let unit = args[0].ps_scalar()?;
                 let count = args[2].ps_scalar()? as usize;
@@ -2039,6 +2113,21 @@ impl crate::mpi::RosyMPIContext {
             other => bail!("unknown particle-store intrinsic {other}"),
         }
         Ok(())
+    }
+}
+
+/// Keep the entries of a per-particle column whose flag is set.
+trait RetainBy {
+    fn retain_by(&mut self, kept: &[bool]);
+}
+
+impl<T> RetainBy for Vec<T> {
+    fn retain_by(&mut self, kept: &[bool]) {
+        let mut at = 0;
+        self.retain(|_| {
+            at += 1;
+            kept[at - 1]
+        });
     }
 }
 

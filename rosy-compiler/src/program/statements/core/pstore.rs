@@ -29,6 +29,7 @@
 //! PSALL   x y z px py pz f n e count;
 //! PSSLICE x y z px py pz f n e first count;
 //! PSWRITE unit lines count;
+//! PSREMOVE keep info k removed nremoved ncool;
 //! KERNEL  'file.c' 'function' ['kinds'] a b c ...;
 //! ```
 //!
@@ -87,6 +88,7 @@ const INTRINSICS: &[(&str, &str)] = &[
     ("PSALL", "vvvvvvvvvs"),
     ("PSSLICE", "vvvvvvvvvss"),
     ("PSWRITE", "iii"),
+    ("PSREMOVE", "iiivss"),
     // Not a store call: the Coulomb sum over Taylor series, in rosy-lib.
     ("COULSUM", "iiiiiiiicv"),
 ];

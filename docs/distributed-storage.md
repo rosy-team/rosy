@@ -274,6 +274,32 @@ scaling after the loop (`SC_G`) stays in the program.
 
 PHAD's time stepping, error control and external fields stay in PHAD.
 
+## Removing particles
+
+PHAD's Nov 2026 version removes particles that leave the aperture at the end
+of a step: it compacts its arrays in place, keeping the survivors' order,
+recounts the trailing cooling electrons, and restarts the force cycle with a
+fresh fast multipole pass (`INITIAL := 1`). `PSREMOVE` does the same to the
+store:
+
+- **No particle moves.** Each rank drops its own flagged particles.
+- **Same numbering as the one-process code.** The removed numbers (a short
+  sorted list) go to every rank, and a survivor's new number is its old one
+  minus the removed numbers below it. Output in number order (`PSALL`,
+  `PSSLICE`) stays row for row the same as the one-process run.
+- **Logging.** `removed` holds every removed particle's old number and
+  whatever `k` values the program attached, sorted by old number, so the
+  first rank can print PHAD's removal lines in PHAD's order.
+- **Then a fresh start.** After a call that removed something, the store is
+  as after `PSLOAD`: the next `PSBUILD` is a first build (balanced again,
+  earlier-neighbour lists empty), matching the restarted force cycle. A call
+  that removes nothing changes nothing, so a program can call it every step.
+- **Empty ranks** are allowed, and removing every particle leaves an empty
+  store (the program stops, as PHAD does).
+
+`examples/pstore/remove.fox` checks all of this against a one-process
+compaction at any rank count.
+
 ## Kernels a program supplies
 
 `KERNEL 'file.c' 'function' a b c ...;` calls a C function that the program
@@ -353,6 +379,7 @@ is a variable, and every rank makes the same call:
 | `PSALL x y z px py pz f n e count` | Every particle in number order on the first rank, for output. |
 | `PSSLICE x y z px py pz f n e first count` | This rank's share of the particles in number order: numbers `first .. first+count-1`, rank r getting the r-th of equal runs. Each rank formats its own part of an output file. |
 | `PSWRITE unit lines count` | The first `count` strings of every rank's `lines`, lower ranks first, written as lines to file `unit` by the first rank in one go (only it needs the file open). With `PSSLICE`, output is formatted in parallel and comes out in particle order. |
+| `PSREMOVE keep info k removed nremoved ncool` | Drop the owned particles whose `keep` flag (one per owned particle, in `PSGET` order) is 0. `info` holds `k` reals per owned particle, particle after particle. Every rank gets `removed`, one row `old_number info(1..k)` per removed particle sorted by old number, and `nremoved`; `ncool` drops by the removed numbers among the last `ncool`. Survivors are renumbered as a one-process in-place compaction would. See "Removing particles". |
 
 ## Open decisions
 

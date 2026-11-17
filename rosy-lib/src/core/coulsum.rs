@@ -127,7 +127,6 @@ struct Memo {
     mine_have: Vec<u32>,
     scalars: Vec<[u64; 4]>,
     sum: [Vec<f64>; 3],
-    ratios: Vec<f64>,
 }
 
 thread_local! {

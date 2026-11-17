@@ -1,0 +1,147 @@
+{ PSREMOVE against a one-process compaction, under MPI.
+  mpirun -np 4 ./remove   (any rank count; prints "PSREMOVE checks failed: 0")
+  Every particle's values are a function of its original number G, so each
+  rank can work out what a one-process program holds after compacting.
+  1. Remove about a fifth, with two logged values each: the removed rows,
+     their count, the cooling count and (after PSBUILD) every field of every
+     survivor, in order, must match.
+  2. A call that removes nothing changes nothing (checked without PSBUILD).
+  3. Remove every particle of the last rank, then PSBUILD with that rank
+     empty and run the pass lists and syncs over every level; the survivors
+     (and their e) must still match.
+  4. Remove everything left. }
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NP 1; VARIABLE IP 1; VARIABLE I 1; VARIABLE J 1; VARIABLE G 1; VARIABLE N 1; VARIABLE T 1;
+    VARIABLE Q 1; VARIABLE WX 1; VARIABLE WY 1; VARIABLE WZ 1; VARIABLE RG 1; VARIABLE K 1; VARIABLE ONE 1;
+    VARIABLE NOWN 1; VARIABLE CNT 1; VARIABLE NREM 1; VARIABLE NCOOL 1; VARIABLE WANT 1; VARIABLE NS 1;
+    VARIABLE BAD 1; VARIABLE TOTAL 1; VARIABLE OLD 1; VARIABLE LV 1; VARIABLE LCNT 1;
+    VARIABLE NMULT 1; VARIABLE NLOC 1; VARIABLE DEPTH 1; VARIABLE NLEAVES 1;
+    VARIABLE BADV 1 1; VARIABLE SV 1 1;
+    VARIABLE X 1 4000; VARIABLE Y 1 4000; VARIABLE Z 1 4000;
+    VARIABLE PX 1 4000; VARIABLE PY 1 4000; VARIABLE PZ 1 4000;
+    VARIABLE F 1 4000; VARIABLE NN 1 4000; VARIABLE E 1 4000; VARIABLE IDS 1 4000;
+    VARIABLE KEEP 1 4000; VARIABLE INFO 1 8000; VARIABLE REM 1 12000; VARIABLE SURV 1 4000;
+    VARIABLE A1 1 4000; VARIABLE A2 1 4000; VARIABLE A3 1 4000; VARIABLE A4 1 4000;
+    VARIABLE A5 1 4000; VARIABLE A6 1 4000; VARIABLE A7 1 4000; VARIABLE A8 1 4000;
+    VARIABLE LIST 1 40000; VARIABLE MC 100 40000; VARIABLE LC 100 40000;
+
+    FUNCTION GONE G;  { the particles removed in part 1 }
+        GONE := 0;
+        IF SIN(G*7.31)>0.8; GONE := 1; ENDIF;
+    ENDFUNCTION;
+
+    PROCEDURE CHECKALL;  { PSALL on the first rank against SURV(1..NS) }
+        PSALL X Y Z PX PY PZ F NN E CNT;
+        IF IP=1;
+            IF CNT#NS; BAD := BAD+1; WRITE 6 'survivor count '&ST(CNT)&' wanted '&ST(NS); ENDIF;
+            LOOP J 1 CNT;
+                G := SURV(J);
+                IF X(J)#0.002*SIN(G*1.3); BAD := BAD+1; ENDIF;
+                IF Y(J)#0.0015*COS(G*0.7); BAD := BAD+1; ENDIF;
+                IF Z(J)#0.01*SIN(G*0.11); BAD := BAD+1; ENDIF;
+                IF PX(J)#G*0.001; BAD := BAD+1; ENDIF;
+                IF PY(J)#(-G*0.002); BAD := BAD+1; ENDIF;
+                IF PZ(J)#G*0.003+1; BAD := BAD+1; ENDIF;
+                IF F(J)#1+G; BAD := BAD+1; ENDIF;
+                IF NN(J)#G; BAD := BAD+1; ENDIF;
+                IF E(J)#10*G+0.5; BAD := BAD+1; ENDIF;
+            ENDLOOP;
+        ENDIF;
+    ENDPROCEDURE;
+
+    PNPRO NP;
+    PLOOP I 1 NP; IP := I; ENDPLOOP;
+    N := 300; T := N*NP; BAD := 0; ONE := 1;
+    Q := 20; WX := 0.03; WY := -0.02; WZ := 1.8; RG := SQRT(1+WX*WX+WY*WY+WZ*WZ);
+    LOOP I 1 N;
+        G := (IP-1)*N+I;
+        X(I) := 0.002*SIN(G*1.3); Y(I) := 0.0015*COS(G*0.7); Z(I) := 0.01*SIN(G*0.11);
+        PX(I) := G*0.001; PY(I) := -G*0.002; PZ(I) := G*0.003+1; F(I) := 1+G; NN(I) := G;
+        E(I) := 10*G+0.5;
+    ENDLOOP;
+    PSLOAD X Y Z PX PY PZ F NN E N;
+    PSBUILD Q WX WY WZ RG;
+
+    { 1. Remove about a fifth, logging x and e. }
+    PSGET X Y Z PX PY PZ F NN E IDS NOWN;
+    LOOP I 1 NOWN;
+        KEEP(I) := 1-GONE(IDS(I));
+        INFO(2*I-1) := X(I); INFO(2*I) := E(I);
+    ENDLOOP;
+    NCOOL := 40; K := 2;
+    PSREMOVE KEEP INFO K REM NREM NCOOL;
+    WANT := 40; J := 0; NS := 0;
+    LOOP G 1 T;
+        IF GONE(G)=1;
+            J := J+1;
+            IF REM(3*J-2)#G; BAD := BAD+1; ENDIF;
+            IF REM(3*J-1)#0.002*SIN(G*1.3); BAD := BAD+1; ENDIF;
+            IF REM(3*J)#10*G+0.5; BAD := BAD+1; ENDIF;
+            IF G>T-40; WANT := WANT-1; ENDIF;
+        ELSEIF LO(1);
+            NS := NS+1; SURV(NS) := G;
+        ENDIF;
+    ENDLOOP;
+    IF NREM#J; BAD := BAD+1; WRITE 6 'removed '&ST(NREM)&' wanted '&ST(J); ENDIF;
+    IF NCOOL#WANT; BAD := BAD+1; WRITE 6 'cooling '&ST(NCOOL)&' wanted '&ST(WANT); ENDIF;
+    IF (J=0)+(J=T); BAD := BAD+1; WRITE 6 'part 1 removed none or all: no test'; ENDIF;
+    PSBUILD Q WX WY WZ RG;
+    CHECKALL;
+
+    { 2. Remove nothing: no PSBUILD needed, nothing changes. }
+    PSGET X Y Z PX PY PZ F NN E IDS NOWN;
+    LOOP I 1 NOWN; KEEP(I) := 1; ENDLOOP;
+    K := 0;
+    PSREMOVE KEEP INFO K REM NREM NCOOL;
+    IF NREM#0; BAD := BAD+1; ENDIF;
+    IF NCOOL#WANT; BAD := BAD+1; ENDIF;
+    CHECKALL;
+
+    { 3. Empty the last rank, rebuild around it, run the passes. }
+    PSGET X Y Z PX PY PZ F NN E IDS NOWN;
+    LOOP I 1 NOWN;
+        KEEP(I) := 1;
+        IF (IP=NP)*(NP>1); KEEP(I) := 0; ENDIF;
+    ENDLOOP;
+    PSREMOVE KEEP INFO K REM NREM NCOOL;
+    { REM holds old numbers (from 1): drop those entries of SURV. }
+    J := 0; OLD := 1;
+    LOOP I 1 NS;
+        IF OLD<=NREM;
+            IF REM(OLD)=I; OLD := OLD+1;
+            ELSEIF LO(1); J := J+1; SURV(J) := SURV(I); ENDIF;
+        ELSEIF LO(1);
+            J := J+1; SURV(J) := SURV(I);
+        ENDIF;
+    ENDLOOP;
+    NS := J;
+    PSBUILD Q WX WY WZ RG;
+    PSGET X Y Z PX PY PZ F NN E IDS NOWN;
+    PSLISTS A1 A2 A3 A4 A5 A6 A7 NLEAVES;
+    PSSIZES NMULT NLOC DEPTH;
+    { Expansion cells are left untyped, as PHAD's port leaves them. }
+    LOOP LV 0 DEPTH-1;
+        PSUP LV LIST LCNT;
+        PSMSYNC MC LV;
+    ENDLOOP;
+    LOOP LV 0 DEPTH-1;
+        PSDOWN LV LIST LCNT;
+        PSLSYNC LC LV;
+    ENDLOOP;
+    CHECKALL;
+
+    { 4. Remove everything. }
+    PSGET X Y Z PX PY PZ F NN E IDS NOWN;
+    LOOP I 1 NOWN; KEEP(I) := 0; ENDLOOP;
+    PSREMOVE KEEP INFO K REM NREM NCOOL;
+    IF NREM#NS; BAD := BAD+1; WRITE 6 'removed '&ST(NREM)&' of the last '&ST(NS); ENDIF;
+    NS := 0;
+    CHECKALL;
+
+    BADV(1) := BAD;
+    PSSUM BADV ONE TOTAL;
+    IF IP=1; WRITE 6 'PSREMOVE checks failed: '&ST(TOTAL); ENDIF;
+ENDPROCEDURE;
+RUN;
+END;
