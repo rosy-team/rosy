@@ -725,6 +725,9 @@ mod tests {
         (path, s)
     }
 
+    // The unit registry is shared by the whole process, and closing all
+    // files closes every test's units: these run one at a time.
+    #[serial_test::serial(file_units)]
     #[test]
     fn rewriting_a_file_shorter_leaves_no_stale_tail() {
         // PHAD rewrites PHAD_TEMP.bin with fewer particles after a loss.
@@ -741,6 +744,7 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    #[serial_test::serial(file_units)]
     #[test]
     fn binary_rewrite_shorter_is_truncated_too() {
         let (path, p) = temp("shorter.bin");
@@ -756,6 +760,7 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    #[serial_test::serial(file_units)]
     #[test]
     fn reading_a_file_does_not_truncate_it() {
         let (path, p) = temp("readonly.txt");
@@ -766,6 +771,7 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    #[serial_test::serial(file_units)]
     #[test]
     fn closing_all_files_at_exit_truncates_open_ones() {
         let (path, p) = temp("atexit.txt");
@@ -778,6 +784,7 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    #[serial_test::serial(file_units)]
     #[test]
     fn cosy_real_record_round_trip() {
         let value = -1.25f64;
