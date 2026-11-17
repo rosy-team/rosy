@@ -1,0 +1,61 @@
+BEGIN;
+    VARIABLE (RE) LOOPCOUNT;
+    PROCEDURE WRITE_TWICE X;
+        WRITE 6 X;
+        WRITE 6 X;
+    ENDPROCEDURE;
+    PROCEDURE READ_NOTE X;
+        WRITE 6 'note ' X;
+    ENDPROCEDURE;
+    PROCEDURE OPENFILE_LABEL;
+        WRITE 6 'label';
+    ENDPROCEDURE;
+    PROCEDURE LOOPER N;
+        LOOP I 1 N;
+            WRITE 6 'pass';
+        ENDLOOP;
+    ENDPROCEDURE;
+    LOOPCOUNT := 2;
+    WRITE_TWICE 'a';
+    READ_NOTE 'b';
+    OPENFILE_LABEL;
+    LOOPER LOOPCOUNT;
+END;
+
+======= expect
+a
+a
+note
+b
+label
+pass
+pass
+
+======= fox
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE LOOPCOUNT 1;
+    PROCEDURE WRITE_TWICE X;
+        WRITE 6 X;
+        WRITE 6 X;
+    ENDPROCEDURE;
+    PROCEDURE READ_NOTE X;
+        WRITE 6 'note ' X;
+    ENDPROCEDURE;
+    PROCEDURE OPENFILE_LABEL;
+        WRITE 6 'label';
+    ENDPROCEDURE;
+    PROCEDURE LOOPER N;
+        VARIABLE I 1;
+        LOOP I 1 N;
+            WRITE 6 'pass';
+        ENDLOOP;
+    ENDPROCEDURE;
+    LOOPCOUNT := 2;
+    WRITE_TWICE 'a';
+    READ_NOTE 'b';
+    OPENFILE_LABEL;
+    LOOPER LOOPCOUNT;
+ENDPROCEDURE;
+RUN;
+END;

@@ -22,4 +22,6 @@ node_modules
 bun.lock
 *.fox
 !examples/performance/**/*.fox
+# Construct cases written in COSY syntax, and fixtures they INCLUDE.
+!rosy-compiler/tests/**/*.fox
 *.pdf

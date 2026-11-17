@@ -1,0 +1,37 @@
+BEGIN;
+PROCEDURE RUN;
+    { COSY: a real is a constant series, so C%(-1) is C*x1 and C%1 is 0;
+      V|(N&N) is the real V|N, V|(1&N) a vector. Output checked against COSY. }
+    VARIABLE S 1; VARIABLE C 1; VARIABLE A 100; VARIABLE Y 100; VARIABLE Z 100;
+    VARIABLE V 10; VARIABLE W 10; VARIABLE U 10; VARIABLE N 1;
+    DAINI 4 1 0 S;
+    C := 2;
+    Y := C%(-1);
+    WRITE 6 (Y|1);
+    Z := C%1;
+    WRITE 6 (Z|0);
+    A := 3;
+    Y := A%(-1);
+    WRITE 6 (Y|1);
+    V := 4&2&5;
+    W := V|(2&2);
+    WRITE 6 TYPE(W) W;
+    N := 2;
+    W := V|(N&N);
+    WRITE 6 TYPE(W) W;
+    U := V|(1&N);
+    WRITE 6 TYPE(U) LENGTH(U);
+ENDPROCEDURE;
+RUN;
+END;
+
+======= expect
+ 2.000000000000000
+ 0.000000000000000
+ 3.000000000000000
+ 1.000000000000000
+ 2.000000000000000
+ 1.000000000000000
+ 2.000000000000000
+ 5.000000000000000
+ 2.000000000000000

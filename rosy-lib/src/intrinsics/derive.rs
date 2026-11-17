@@ -138,6 +138,15 @@ impl RosyDerive for DA {
     }
 }
 
+/// COSY treats a real as a constant series: `c%(-1)` is `c` times the
+/// integration variable, and `c%1` is zero. Picard iterations start from reals.
+impl RosyDerive for f64 {
+    type Output = DA;
+    fn rosy_derive(&self, var_index: i64) -> anyhow::Result<Self::Output> {
+        DA::constant(*self).rosy_derive(var_index)
+    }
+}
+
 impl RosyDerive for CD {
     type Output = CD;
     fn rosy_derive(&self, var_index: i64) -> anyhow::Result<Self::Output> {

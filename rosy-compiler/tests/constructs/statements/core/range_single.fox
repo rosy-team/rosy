@@ -1,0 +1,25 @@
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE PB 10; VARIABLE P 10; VARIABLE E 10; VARIABLE N 1;
+    PB := 0;
+    PB := 4&2&5;
+    LOOP N 1 3;
+        P := (PB|(1&N));
+        E := 1;
+        IF LENGTH(P)>1;
+            E := NORM(P);
+        ELSEIF LENGTH(P)=1;
+            E := P;
+        ENDIF;
+        IF E#0;
+            WRITE 6 E;
+        ENDIF;
+    ENDLOOP;
+ENDPROCEDURE;
+RUN;
+END;
+
+======= expect
+ 4.000000000000000
+ 6.000000000000000
+ 11.00000000000000
