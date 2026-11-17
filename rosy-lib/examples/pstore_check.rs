@@ -31,7 +31,19 @@ fn point(id: u64, step: u64) -> [f64; 3] {
     [a * a + t * (d - 0.5), b * b * b - t * c, c + t * a]
 }
 
+/// The tag carried in field `e` (index 8): any value tied to the particle.
+fn tag(id: u64, step: u64) -> f64 {
+    (id * 7 + step) as f64 + 0.25
+}
+
 fn check(world: &mpi::topology::SimpleCommunicator, store: &ParticleStore, n: u64, step: u64) {
+    // `e` travels with its particle through migration and halo copies.
+    for (i, d) in store.data.iter().enumerate() {
+        assert_eq!(d[8], tag(store.id[i], step), "e of owned particle {}", store.id[i]);
+    }
+    for (i, d) in store.halo_data.iter().enumerate() {
+        assert_eq!(d[8], tag(store.halo_id[i], step), "e of halo copy {}", store.halo_id[i]);
+    }
     let mut triples = Vec::new();
     let mut ids = Vec::new();
     let mut around = Vec::new();
@@ -202,12 +214,14 @@ fn main() {
         let p = point(id, 0);
         let mut data = [0.0; FIELDS];
         data[..3].copy_from_slice(&p);
+        data[8] = tag(id, 0);
         store.push(id, data);
     }
     for step in 0..4 {
         for i in 0..store.len() {
             let p = point(store.id[i], step);
             store.data[i][..3].copy_from_slice(&p);
+            store.data[i][8] = tag(store.id[i], step);
         }
         store.rebuild(&world, Q, Z_SCALE).unwrap();
         store.build_plan(&world).unwrap();

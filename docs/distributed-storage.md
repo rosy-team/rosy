@@ -48,9 +48,10 @@ Struct of arrays, one entry per owned particle, sorted by key:
 | `id` | 8 B | Original particle number. Never changes. |
 | `key` | 8 B | 3 x 20 bits, x then y then z, as in fmmcpp's `giveBoxNumber`. |
 | `x y z px py pz f n` | 64 B | PHAD's `source_*` arrays. |
+| `e` | 8 B | A per-particle tag the program owns; the store moves it with the particle and never reads it. PHAD's Nov 2026 version keeps each particle's lattice element there (`source_element`), which its aperture lookup starts from, so it must survive migration and halo copies. |
 | `prev_leaf` | 8 B | Leaf (level, number) the particle was in last step. |
 
-88 bytes per particle. Slots are ordered by `(key, id)`, so any box at any
+96 bytes per particle. Slots are ordered by `(key, id)`, so any box at any
 level is a contiguous range. Source lists handed to PHAD are sorted by `id`
 per box, so sums run in the same order as today.
 
@@ -319,11 +320,11 @@ is a variable, and every rank makes the same call:
 
 | Intrinsic | Purpose |
 |---|---|
-| `PSLOAD x y z px py pz f n count` | Hand this rank's input particles to the store. Particle numbers continue from the last load, lower ranks first. |
+| `PSLOAD x y z px py pz f n e count` | Hand this rank's input particles to the store. Particle numbers continue from the last load, lower ranks first. |
 | `PSBUILD q zscale` | Recompute keys, migrate, rebuild leaves, exchange the halo. |
-| `PSGET x y z px py pz f n ids nown` | Fill local arrays: owned particles first, then halo copies. `ids` are particle numbers from 1. |
+| `PSGET x y z px py pz f n e ids nown` | Fill local arrays: owned particles first, then halo copies. `ids` are particle numbers from 1. |
 | `PSLISTS snumbs start_snumbs nnumbs start_nnumbs cx cy cz nleaves` | The per-leaf source and neighbour lists that `FMMDIRECT` reads from `file_4` today, as local positions. |
-| `PSPUT x y z px py pz` | Write owned results back to the store. |
+| `PSPUT x y z px py pz e` | Write owned results back to the store. |
 | `PSSCALED sx sy sz` | Positions in the unit cube the tree was built in. |
 | `PSSIZES nmult nloc depth` | Multipoles and local expansions this rank holds, copies included, and the level count. |
 | `PSLEAFLOC index` | Position of each leaf's local expansion, in `PSLISTS` order. |
@@ -336,8 +337,8 @@ is a variable, and every rank makes the same call:
 | `PSPREV ids start` | For each owned particle, the particle numbers around it before the last `PSBUILD`. |
 | `PSPOS ids positions` | Local position of each particle number, 0 if not held here. |
 | `PSSUM values count total` | Sum over all ranks, correctly rounded. |
-| `PSALL x y z px py pz f n count` | Every particle in number order on the first rank, for output. |
-| `PSSLICE x y z px py pz f n first count` | This rank's share of the particles in number order: numbers `first .. first+count-1`, rank r getting the r-th of equal runs. Each rank formats its own part of an output file. |
+| `PSALL x y z px py pz f n e count` | Every particle in number order on the first rank, for output. |
+| `PSSLICE x y z px py pz f n e first count` | This rank's share of the particles in number order: numbers `first .. first+count-1`, rank r getting the r-th of equal runs. Each rank formats its own part of an output file. |
 | `PSWRITE unit lines count` | The first `count` strings of every rank's `lines`, lower ranks first, written as lines to file `unit` by the first rank in one go (only it needs the file open). With `PSSLICE`, output is formatted in parallel and comes out in particle order. |
 
 ## Open decisions

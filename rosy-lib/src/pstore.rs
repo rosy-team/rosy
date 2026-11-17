@@ -21,8 +21,12 @@ use crate::fmmtree::{
     Bounds, FINEST_LEVEL, Leaf, box_centre, box_number, key_range, morton_key, neighbours,
 };
 
-/// Values carried per particle: x y z px py pz f n.
-pub const FIELDS: usize = 8;
+/// Values carried per particle: x y z px py pz f n e. `e` is the program's
+/// own per-particle tag (PHAD keeps each particle's lattice element there);
+/// the store moves it with the particle and never reads it.
+pub const FIELDS: usize = 9;
+/// Fields `PSPUT` writes back: positions, momenta and `e`.
+const PUT_FIELDS: [usize; 7] = [0, 1, 2, 3, 4, 5, 8];
 /// Keys offered per rank, on average, when the ranges are chosen. A rank
 /// offers in proportion to the particles it holds.
 const SAMPLES_PER_RANK: usize = 128;
@@ -1600,11 +1604,11 @@ pub fn kernel_call(kernel: KernelFn, kinds: &str, cells: &mut [&mut dyn PsCell])
 
 /// Argument count of each `PS*` intrinsic. The compiler checks against it.
 pub const PS_INTRINSICS: &[(&str, usize)] = &[
-    ("PSLOAD", 9),
+    ("PSLOAD", 10),
     ("PSBUILD", 2),
-    ("PSGET", 10),
+    ("PSGET", 11),
     ("PSLISTS", 8),
-    ("PSPUT", 6),
+    ("PSPUT", 7),
     ("PSSCALED", 3),
     ("PSSIZES", 3),
     ("PSLEAFLOC", 1),
@@ -1618,8 +1622,8 @@ pub const PS_INTRINSICS: &[(&str, usize)] = &[
     ("PSPREV", 2),
     ("PSPOS", 2),
     ("PSSUM", 3),
-    ("PSALL", 9),
-    ("PSSLICE", 10),
+    ("PSALL", 10),
+    ("PSSLICE", 11),
     ("PSWRITE", 3),
 ];
 
@@ -1646,12 +1650,12 @@ fn stats_on() -> bool {
 impl crate::mpi::RosyMPIContext {
     /// Run one `PS*` intrinsic. Every rank must make the same call.
     ///
-    /// - `PSLOAD x y z px py pz f n count`: give the store the first
+    /// - `PSLOAD x y z px py pz f n e count`: give the store the first
     ///   `count` entries of this rank's arrays. Particle numbers continue
     ///   from the last load, lower ranks first.
     /// - `PSBUILD q zscale`: recompute keys with z multiplied by `zscale`,
     ///   move particles to their owners, rebuild leaves, fetch the halo.
-    /// - `PSGET x y z px py pz f n ids nown`: fill the arrays with this
+    /// - `PSGET x y z px py pz f n e ids nown`: fill the arrays with this
     ///   rank's particles, then its halo copies. `ids` are particle
     ///   numbers from 1. `nown` is how many entries are owned.
     /// - `PSLISTS snumbs start_snumbs nnumbs start_nnumbs cx cy cz nleaves`:
@@ -1659,7 +1663,7 @@ impl crate::mpi::RosyMPIContext {
     ///   `PSGET` arrays, with the offsets of each leaf's run and the leaf
     ///   centres in the unit cube. Sources are in particle-number order.
     ///   Neighbours come box by box, each box in particle-number order.
-    /// - `PSPUT x y z px py pz`: store the first `nown` entries back.
+    /// - `PSPUT x y z px py pz e`: store the first `nown` entries back.
     /// - `PSSCALED sx sy sz`: positions in the unit cube the tree was built
     ///   in, for the same entries as `PSGET`.
     /// - `PSSIZES nmult nloc depth`: how many multipoles and local
@@ -1689,9 +1693,9 @@ impl crate::mpi::RosyMPIContext {
     ///   value per owned particle in particle-number order, as a
     ///   one-process loop would; that gathers everything and is for
     ///   comparisons only.
-    /// - `PSALL x y z px py pz f n count`: every particle in number order
+    /// - `PSALL x y z px py pz f n e count`: every particle in number order
     ///   on the first rank, nothing elsewhere. For output only.
-    /// - `PSSLICE x y z px py pz f n first count`: this rank's share of the
+    /// - `PSSLICE x y z px py pz f n e first count`: this rank's share of the
     ///   particles in number order: particle numbers `first ..
     ///   first+count-1`, with rank r getting the r-th of `ranks` equal runs
     ///   of the numbers loaded. Lets every rank format and write its own
@@ -1721,9 +1725,9 @@ impl crate::mpi::RosyMPIContext {
         let world = &self.world;
         match name {
             "PSLOAD" => {
-                let count = args[8].ps_scalar()? as usize;
+                let count = args[FIELDS].ps_scalar()? as usize;
                 let columns: Vec<Vec<f64>> =
-                    args[..8].iter().map(|a| a.ps_values()).collect::<Result<_>>()?;
+                    args[..FIELDS].iter().map(|a| a.ps_values()).collect::<Result<_>>()?;
                 let short = columns.iter().any(|c| c.len() < count);
                 let counts = gather_all(world, &[if short { u64::MAX } else { count as u64 }])?;
                 ensure!(
@@ -1782,12 +1786,12 @@ impl crate::mpi::RosyMPIContext {
             }
             "PSGET" => {
                 let all = || store.data.iter().chain(&store.halo_data).chain(&store.far_data);
-                for (field, arg) in args[..8].iter_mut().enumerate() {
+                for (field, arg) in args[..FIELDS].iter_mut().enumerate() {
                     arg.ps_set_values(all().map(|d| d[field]).collect())?;
                 }
                 let ids = store.id.iter().chain(&store.halo_id).chain(&store.far_id);
-                args[8].ps_set_values(ids.map(|&id| (id + 1) as f64).collect())?;
-                args[9].ps_set_scalar(store.len() as f64)?;
+                args[FIELDS].ps_set_values(ids.map(|&id| (id + 1) as f64).collect())?;
+                args[FIELDS + 1].ps_set_scalar(store.len() as f64)?;
             }
             "PSLISTS" => {
                 let (mut own, mut own_start) = (Vec::new(), vec![1.0]);
@@ -1815,7 +1819,7 @@ impl crate::mpi::RosyMPIContext {
                 args[7].ps_set_scalar(leaves)?;
             }
             "PSPUT" => {
-                for (field, arg) in args.iter().enumerate() {
+                for (&field, arg) in PUT_FIELDS.iter().zip(args.iter()) {
                     let values = arg.ps_values()?;
                     ensure!(values.len() >= store.len(), "PSPUT: array is shorter than the owned particles");
                     for (d, v) in store.data.iter_mut().zip(values) {
@@ -1930,10 +1934,10 @@ impl crate::mpi::RosyMPIContext {
                 let values: Vec<f64> = exchange(world, &values)?.into_iter().flatten().collect();
                 let mut order: Vec<usize> = (0..ids.len()).collect();
                 order.sort_unstable_by_key(|&i| ids[i]);
-                for (field, arg) in args[..8].iter_mut().enumerate() {
+                for (field, arg) in args[..FIELDS].iter_mut().enumerate() {
                     arg.ps_set_values(order.iter().map(|&i| values[FIELDS * i + field]).collect())?;
                 }
-                args[8].ps_set_scalar(ids.len() as f64)?;
+                args[FIELDS].ps_set_scalar(ids.len() as f64)?;
             }
             "PSSLICE" => {
                 let ranks = world.size() as usize;
@@ -1959,11 +1963,11 @@ impl crate::mpi::RosyMPIContext {
                     ids.len(),
                     starts[me + 1] - starts[me]
                 );
-                for (field, arg) in args[..8].iter_mut().enumerate() {
+                for (field, arg) in args[..FIELDS].iter_mut().enumerate() {
                     arg.ps_set_values(order.iter().map(|&i| values[FIELDS * i + field]).collect())?;
                 }
-                args[8].ps_set_scalar((starts[me] + 1) as f64)?;
-                args[9].ps_set_scalar(ids.len() as f64)?;
+                args[FIELDS].ps_set_scalar((starts[me] + 1) as f64)?;
+                args[FIELDS + 1].ps_set_scalar(ids.len() as f64)?;
             }
             "PSWRITE" => {
                 let unit = args[0].ps_scalar()?;

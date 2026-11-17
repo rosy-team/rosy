@@ -7,11 +7,11 @@
 //! ## Syntax
 //!
 //! ```text
-//! PSLOAD  x y z px py pz f n count;
+//! PSLOAD  x y z px py pz f n e count;
 //! PSBUILD q zscale;
-//! PSGET   x y z px py pz f n ids nown;
+//! PSGET   x y z px py pz f n e ids nown;
 //! PSLISTS snumbs start_snumbs nnumbs start_nnumbs cx cy cz nleaves;
-//! PSPUT   x y z px py pz;
+//! PSPUT   x y z px py pz e;
 //! PSSCALED sx sy sz;
 //! PSSIZES nmult nloc depth;
 //! PSLEAFLOC index;
@@ -25,8 +25,8 @@
 //! PSPREV  ids start;
 //! PSPOS   ids positions;
 //! PSSUM   values count total;
-//! PSALL   x y z px py pz f n count;
-//! PSSLICE x y z px py pz f n first count;
+//! PSALL   x y z px py pz f n e count;
+//! PSSLICE x y z px py pz f n e first count;
 //! PSWRITE unit lines count;
 //! KERNEL  'file.c' 'function' ['kinds'] a b c ...;
 //! ```
@@ -64,11 +64,11 @@ use rosy_lib::RosyType;
 /// Each intrinsic and what its arguments are: `i` is read, `v` is a list
 /// it writes, `s` is a real it writes, `c` is an array of untyped cells.
 const INTRINSICS: &[(&str, &str)] = &[
-    ("PSLOAD", "iiiiiiiii"),
+    ("PSLOAD", "iiiiiiiiii"),
     ("PSBUILD", "ii"),
-    ("PSGET", "vvvvvvvvvs"),
+    ("PSGET", "vvvvvvvvvvs"),
     ("PSLISTS", "vvvvvvvs"),
-    ("PSPUT", "iiiiii"),
+    ("PSPUT", "iiiiiii"),
     ("PSSCALED", "vvv"),
     ("PSSIZES", "sss"),
     ("PSLEAFLOC", "v"),
@@ -82,8 +82,8 @@ const INTRINSICS: &[(&str, &str)] = &[
     ("PSPREV", "vv"),
     ("PSPOS", "iv"),
     ("PSSUM", "iis"),
-    ("PSALL", "vvvvvvvvs"),
-    ("PSSLICE", "vvvvvvvvss"),
+    ("PSALL", "vvvvvvvvvs"),
+    ("PSSLICE", "vvvvvvvvvss"),
     ("PSWRITE", "iii"),
     // Not a store call: the Coulomb sum over Taylor series, in rosy-lib.
     ("COULSUM", "iiiiiicv"),

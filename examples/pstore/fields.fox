@@ -1,0 +1,52 @@
+{ The store's ninth field e through the statements, under MPI:
+  mpirun -np 4 ./fields   (any rank count; prints "e checks failed: 0")
+  PSLOAD gives each particle e = 10*number + 0.5; PSGET must return it with
+  its particle; PSPUT changes it to 10*number + 0.75; PSALL and PSSLICE must
+  return the new values in particle order. }
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NP 1; VARIABLE IP 1; VARIABLE I 1; VARIABLE N 1; VARIABLE K 1;
+    VARIABLE Q 1; VARIABLE ZS 1; VARIABLE NOWN 1; VARIABLE CNT 1; VARIABLE FIRST 1;
+    VARIABLE BAD 1; VARIABLE TOTAL 1; VARIABLE BADV 1 1;
+    VARIABLE X 1 4000; VARIABLE Y 1 4000; VARIABLE Z 1 4000;
+    VARIABLE PX 1 4000; VARIABLE PY 1 4000; VARIABLE PZ 1 4000;
+    VARIABLE F 1 4000; VARIABLE NN 1 4000; VARIABLE E 1 4000; VARIABLE IDS 1 4000;
+    PNPRO NP;
+    PLOOP I 1 NP; IP := I; ENDPLOOP;
+    N := 300;
+    LOOP I 1 N;
+        K := (IP-1)*N+I;
+        X(I) := SIN(K*1.3); Y(I) := COS(K*0.7); Z(I) := 3*SIN(K*0.11);
+        PX(I) := K; PY(I) := 0; PZ(I) := 0; F(I) := 1; NN(I) := K;
+        E(I) := 10*K+0.5;
+    ENDLOOP;
+    PSLOAD X Y Z PX PY PZ F NN E N;
+    Q := 20; ZS := 1;
+    PSBUILD Q ZS;
+    PSGET X Y Z PX PY PZ F NN E IDS NOWN;
+    BAD := 0;
+    LOOP I 1 NOWN;
+        IF E(I)#10*IDS(I)+0.5; BAD := BAD+1; ENDIF;
+        IF NN(I)#IDS(I); BAD := BAD+1; ENDIF;
+        E(I) := 10*IDS(I)+0.75;
+    ENDLOOP;
+    PSPUT X Y Z PX PY PZ E;
+    PSHALO;
+    PSALL X Y Z PX PY PZ F NN E CNT;
+    IF IP=1;
+        IF CNT#N*NP; BAD := BAD+1; ENDIF;
+        LOOP I 1 CNT;
+            IF E(I)#10*I+0.75; BAD := BAD+1; ENDIF;
+        ENDLOOP;
+    ENDIF;
+    PSSLICE X Y Z PX PY PZ F NN E FIRST CNT;
+    LOOP I 1 CNT;
+        IF E(I)#10*(FIRST+I-1)+0.75; BAD := BAD+1; ENDIF;
+    ENDLOOP;
+    BADV(1) := BAD;
+    K := 1;
+    PSSUM BADV K TOTAL;
+    IF IP=1; WRITE 6 'e checks failed: '&ST(TOTAL); ENDIF;
+ENDPROCEDURE;
+RUN;
+END;
