@@ -88,7 +88,7 @@ const INTRINSICS: &[(&str, &str)] = &[
     ("PSSLICE", "vvvvvvvvvss"),
     ("PSWRITE", "iii"),
     // Not a store call: the Coulomb sum over Taylor series, in rosy-lib.
-    ("COULSUM", "iiiiiicv"),
+    ("COULSUM", "iiiiiiiicv"),
 ];
 
 #[derive(Debug)]
@@ -208,8 +208,8 @@ impl Transpile for PstoreStatement {
             // Reals are read first, so no borrow of them is alive in the call.
             let real = |k: usize| format!("rosy_lib::rosy_as_f64(&*({}))", cells[k]);
             let serialization = format!(
-                "{{ let (__i, __n, __relg, __want) = ({}, {}, {}, {}); rosy_lib::coulsum(&*({}), &*({}), __i, __n, __relg, __want, {}, {}).context(\"...in COULSUM\")?; }}",
-                real(2), real(3), real(4), real(5), cells[0], cells[1], cells[6], cells[7],
+                "{{ let (__i, __n, __w, __want) = ({}, {}, [{}, {}, {}], {}); rosy_lib::coulsum(&*({}), &*({}), __i, __n, __w, __want, {}, {}).context(\"...in COULSUM\")?; }}",
+                real(2), real(3), real(4), real(5), real(6), real(7), cells[0], cells[1], cells[8], cells[9],
             );
             return Ok(TranspilationOutput {
                 serialization,

@@ -238,11 +238,18 @@ about 0.45 GB per rank on top of the fixed 0.37 GB a rank uses at start.
 
 ## The near-field kernel
 
-`COULSUM y mq i n relg want phi radii` replaces the pair loop of PHAD's
-near-field integrator with one call. It adds up
+`COULSUM y mq i n wx wy wz want phi radii` replaces the pair loop of
+PHAD's near-field integrator with one call. It adds up
 `n_k (r_i - r_k) / |r_i - r_k|^3` over the other particles, each
 coordinate a series in time, on plain coefficient arrays. It is not a
 store call and needs no MPI.
+
+The distance is measured in the rest frame of the beam's common velocity
+`W = gamma*beta`, as PHAD's Nov 2026 version does it (`SC_D2`):
+`DOT := WX*DX + WY*DY + WZ*DZ`, `R2 := DX*DX + DY*DY + DZ*DZ + DOT*DOT`.
+(This replaces `COULSUM y mq i n relg ...`, which used the Oct 2026 form
+`DX*DX + DY*DY + RELG^2*DZ*DZ` for a beam moving along z.) The force
+scaling after the loop (`SC_G`) stays in the program.
 
 - **Same bits.** Every coefficient comes from the same operations in the
   same order as the series operators use, cutoff included. PHAD's output
@@ -258,7 +265,12 @@ store call and needs no MPI.
 - **Layout.** Particle `p` has its six series at `6(p-1)+1 ..= 6(p-1)+6`
   (positions, then momenta) and its charge factor at `mq(2p)`. The sums
   go to `phi(6(i-1)+4 ..= 6(i-1)+6)`. With `want` nonzero, `radii` gets
-  one convergence-radius estimate per pair.
+  one convergence-radius estimate per pair, exactly as PHAD's
+  `RADIUS_FROM_SERIES` gives it for the squared distance (including
+  `10^100` for a series whose ratios are all zero).
+- **Checked against PHAD's code.** `examples/pstore/coulsum.fox` runs
+  PHAD's own `SC_D2`, `RADIUS_FROM_SERIES` and pair loop next to
+  `COULSUM` and compares every coefficient and radius.
 
 PHAD's time stepping, error control and external fields stay in PHAD.
 
