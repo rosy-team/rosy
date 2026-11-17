@@ -66,6 +66,8 @@ impl BinaryOp {
             Self::Or => operators::or::get_return_type(lhs, rhs),
             Self::Derive => match *lhs {
                 t if t == RosyType::DA() => Some(RosyType::DA()),
+                // COSY: a real is a constant series, so `x%(-1)` is x·t.
+                t if t == RosyType::RE() => Some(RosyType::DA()),
                 t if t == RosyType::CD() => Some(RosyType::CD()),
                 _ => None,
             },

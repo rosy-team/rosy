@@ -1,0 +1,53 @@
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE WX 1; VARIABLE S 1; VARIABLE L 1;
+    VARIABLE Y 10 2; VARIABLE PHI 10 2; VARIABLE OUTPUT 10 1; VARIABLE SCX 10;
+    VARIABLE R 1; VARIABLE RR 1;
+    FUNCTION RAD SERIES ORD;
+        VARIABLE B 1;
+        B := ABS(SERIES|0);
+        IF B=0;
+            RAD := 0;
+        ELSEIF LO(1);
+            RAD := ABS(SERIES|1)/B;
+        ENDIF;
+    ENDFUNCTION;
+    PROCEDURE D2P DX DY D2;
+        VARIABLE DOT 10;
+        DOT := WX*DX+WX*DY;
+        D2 := DX*DX+DY*DY+DOT*DOT;
+    ENDPROCEDURE;
+    WX := 0.5;
+    DAINI 4 1 0 S;
+    Y(1) := 3;
+    Y(2) := 1;
+    LOOP L 1 4;
+        DANOT L;
+        OUTPUT(1) := 1+Y(1)*Y(1);
+        IF L>1;
+            R := RAD(OUTPUT(1),L);
+        ENDIF;
+        D2P (Y(1)-Y(2)) (Y(2)-1) SCX;
+        OUTPUT(1) := SCX;
+        IF L>1;
+            R := R+RAD(OUTPUT(1),L);
+            WRITE 6 R;
+        ENDIF;
+        PHI(1) := Y(2)*OUTPUT(1);
+        PHI(2) := Y(1)*OUTPUT(1);
+        PHI(1) := CONS(Y(1))+PHI(1)%(-1);
+        PHI(2) := CONS(Y(2))+PHI(2)%(-1);
+        Y(1) := PHI(1);
+        Y(2) := PHI(2);
+    ENDLOOP;
+    D2P 2 1 RR;
+    WRITE 6 RR;
+ENDPROCEDURE;
+RUN;
+END;
+
+======= expect
+ 10.00000000000000
+ 10.00000000000000
+ 10.00000000000000
+ 7.250000000000000

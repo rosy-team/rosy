@@ -175,6 +175,14 @@ impl ExprRecipe {
             ExprRecipe::Concat(left, right) => {
                 left.open_kind().join(right.open_kind()).join(OpenKind::Vec)
             }
+            // `V|(1&N)`: the `&` picks elements, it does not build the result.
+            // A one-element range is a real in COSY, so the index's concat must
+            // not mark the target as a vector.
+            ExprRecipe::BinaryOp {
+                op: rosy_lib::BinaryOp::Extract,
+                left,
+                ..
+            } => left.open_kind(),
             ExprRecipe::BinaryOp { op, left, right } => {
                 let inner = left.open_kind().join(right.open_kind());
                 if *op == rosy_lib::BinaryOp::Derive {
@@ -1548,6 +1556,19 @@ impl TypeResolver {
         }
     }
 
+    /// A literal, a `VARIABLE name 1` cell, or an explicitly typed cell: it
+    /// can never hold a series.
+    fn always_real(&self, recipe: &ExprRecipe) -> bool {
+        match recipe {
+            ExprRecipe::Literal(_) => true,
+            ExprRecipe::Variable(s) | ExprRecipe::IndexedVariable(s, _) => self
+                .nodes
+                .get(s)
+                .is_some_and(|n| n.unit_cell || matches!(n.rule, ResolutionRule::Explicit(_))),
+            _ => false,
+        }
+    }
+
     /// A COSY cell can hold a real on one path and a series on another:
     /// `DELTI(1) := T-(TC|I)`, or `DELTI(1) := DA(1)+T-(TC|I)`.
     /// As a DA, the real path comes back as a series, and a later `TC|I` reads
@@ -1791,6 +1812,20 @@ impl TypeResolver {
             ExprRecipe::BinaryOp { op, left, right } => {
                 let left_type = self.evaluate_recipe(left)?;
                 let right_type = self.evaluate_recipe(right)?;
+                // `PHI(1) := PHI(1)%(-1)` while PHI(1) still holds a real: the
+                // runtime gives a DA (COSY), but here that stays a cell with
+                // DA evidence (open_kind), so the one-hop rule in
+                // reopen_mixed_reals decides how far the series spreads. A
+                // static DA would flow through every copy (`OUTB := Y`) and
+                // turn real particle arrays into series. Only an operand that
+                // can never hold a series (`2%(-1)`, `VARIABLE C 1`) gives a
+                // static DA here.
+                if *op == rosy_lib::BinaryOp::Derive
+                    && left_type == RosyType::RE()
+                    && !self.always_real(left)
+                {
+                    return Err(anyhow!("derive of a cell that holds a real for now"));
+                }
                 let result = op.return_type(&left_type, &right_type);
                 result.ok_or_else(|| {
                     anyhow!(

@@ -783,6 +783,16 @@ impl ToRosy for Vec<Vec<RosyValue>> {
     }
 }
 
+/// COSY: `V|(3&3)` is the real `V|3`, not a one-element vector. PHAD's
+/// `PARTICLES := PARTICLEBINS|(1&NPBIN|1)` with a one-particle bin is then
+/// compared with `EMPTY#0`. Strings keep their one-character slice.
+fn single_element_is_real(found: RosyValue) -> RosyValue {
+    match found {
+        RosyValue::VE(v) if v.len() == 1 => RosyValue::RE(v[0]),
+        other => other,
+    }
+}
+
 fn peel_singleton_arr(v: &RosyValue) -> &RosyValue {
     match v {
         RosyValue::Arr(items) if items.len() == 1 => peel_singleton_arr(&items[0]),
@@ -925,7 +935,7 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
             RosyValue::VE(r) if r.len() == 2 => {
                 let (a, b) = (crate::rosy_round_index(r[0]), crate::rosy_round_index(r[1]));
                 if let Some(found) = lhs.slice_re(a, b) {
-                    return Ok(found);
+                    return Ok(single_element_is_real(found));
                 }
             }
             RosyValue::Arr(r)
@@ -936,7 +946,7 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
                     crate::rosy_round_index(r[1].as_f64()),
                 );
                 if let Some(found) = lhs.slice_re(a, b) {
-                    return Ok(found);
+                    return Ok(single_element_is_real(found));
                 }
             }
             _ => {}
@@ -1145,11 +1155,14 @@ pub fn rosy_dyn_binary(op: BinaryOp, lhs: &impl ToRosy, rhs: &impl ToRosy) -> Re
                     .map(|cell| match cell {
                         RosyValue::DA(a) => Ok(RosyValue::DA(a.rosy_derive(*i as i64)?)),
                         RosyValue::CD(a) => Ok(RosyValue::CD(a.rosy_derive(*i as i64)?)),
+                        RosyValue::RE(c) => Ok(RosyValue::DA(c.rosy_derive(*i as i64)?)),
                         _ => Ok(RosyValue::RE(0.0)),
                     })
                     .collect();
                 Ok(RosyValue::Arr(out?))
             }
+            // A real is a constant series: `c%(-1)` is c·t (COSY).
+            (RosyValue::RE(c), RosyValue::RE(i)) => Ok(RosyValue::DA(c.rosy_derive(*i as i64)?)),
             (RosyValue::RE(_), _) => Ok(RosyValue::RE(0.0)),
             (l, r) => bail!("% not defined for {} and {}", l.kind_name(), r.kind_name()),
         },

@@ -12,7 +12,9 @@ pub fn get_return_type(base: &RosyType, index: &RosyType) -> Option<RosyType> {
         (ST, RE) | (ST, VE) => Some(RosyType::ST()),
         (RE, RE) | (RE, VE) => Some(RosyType::RE()),
         (CM, RE) | (VE, RE) | (DA, RE) | (DA, VE) => Some(RosyType::RE()),
-        (VE, VE) => Some(RosyType::VE()),
+        // COSY: `V|(3&3)` is the real `V|3`; `V|(2&4)` is a vector. Which one
+        // depends on the range's values, so the result is a cell.
+        (VE, VE) => Some(RosyType::ANY()),
         (CD, RE) | (CD, VE) => Some(RosyType::CM()),
         _ => None,
     }
