@@ -321,11 +321,11 @@ is a variable, and every rank makes the same call:
 | Intrinsic | Purpose |
 |---|---|
 | `PSLOAD x y z px py pz f n e count` | Hand this rank's input particles to the store. Particle numbers continue from the last load, lower ranks first. |
-| `PSBUILD q zscale` | Recompute keys, migrate, rebuild leaves, exchange the halo. |
+| `PSBUILD q wx wy wz relg` | Recompute keys, migrate, rebuild leaves, exchange the halo. Keys come from positions boosted into the beam's rest frame exactly as PHAD's `SC_A` does it (`DOT := (WX*X+WY*Y+WZ*Z)/(RELG+1)`, `AX := X+WX*DOT`), with `W = gamma*beta` and `relg` as the program computed them. Stored positions stay in the lab frame. (Replaces `PSBUILD q zscale`, which scaled z by relg for the Oct 2026 PHAD, whose beam moved along z.) |
 | `PSGET x y z px py pz f n e ids nown` | Fill local arrays: owned particles first, then halo copies. `ids` are particle numbers from 1. |
 | `PSLISTS snumbs start_snumbs nnumbs start_nnumbs cx cy cz nleaves` | The per-leaf source and neighbour lists that `FMMDIRECT` reads from `file_4` today, as local positions. |
 | `PSPUT x y z px py pz e` | Write owned results back to the store. |
-| `PSSCALED sx sy sz` | Positions in the unit cube the tree was built in. |
+| `PSSCALED sx sy sz` | Positions in the unit cube the tree was built in: boosted, then scaled. |
 | `PSSIZES nmult nloc depth` | Multipoles and local expansions this rank holds, copies included, and the level count. |
 | `PSLEAFLOC index` | Position of each leaf's local expansion, in `PSLISTS` order. |
 | `PSUP level list count` | Upward-pass work list for one level. |
@@ -333,7 +333,7 @@ is a variable, and every rank makes the same call:
 | `PSMSYNC cells level` / `PSLSYNC cells level` | Exchange one level's multipoles or local expansions between ranks. |
 | `PSHALO` | Refresh halo copies after `PSPUT`. |
 | `PSCOST leaf seconds` | Charge measured work to an owned leaf. The next `PSBUILD` balances ranks by these costs plus each rank's own pass time. |
-| `PSBOUNDS xmin ymin zmin dzero` | The cube of the last `PSBUILD`. |
+| `PSBOUNDS xmin ymin zmin dzero` | The cube of the last `PSBUILD`, in the rest frame. |
 | `PSPREV ids start` | For each owned particle, the particle numbers around it before the last `PSBUILD`. |
 | `PSPOS ids positions` | Local position of each particle number, 0 if not held here. |
 | `PSSUM values count total` | Sum over all ranks, correctly rounded. |

@@ -9,11 +9,18 @@
 use mpi::traits::*;
 use rosy_lib::fmmtree::{Bounds, LeafTable, morton_key};
 use rosy_lib::fmmtree::MultipoleRecipe;
-use rosy_lib::pstore::{BoxRecipe, FIELDS, ParticleStore, gather_all};
+use rosy_lib::pstore::{BoxRecipe, FIELDS, Frame, ParticleStore, gather_all};
 use std::collections::HashMap;
 
 const Q: usize = 60;
-const Z_SCALE: f64 = 2.0657;
+/// A beam moving mostly along z, a little across, as PHAD's common velocity
+/// (`W = gamma*beta`, `relg = gamma = sqrt(1 + W.W)`).
+const W: [f64; 3] = [0.031, -0.017, 1.8392];
+
+fn frame() -> Frame {
+    let relg = (1.0 + W[0] * W[0] + W[1] * W[1] + W[2] * W[2]).sqrt();
+    Frame { w: W, relg }
+}
 
 /// Position of particle `id` at `step`. A clustered cloud that drifts.
 fn point(id: u64, step: u64) -> [f64; 3] {
@@ -111,7 +118,7 @@ fn check(world: &mpi::topology::SimpleCommunicator, store: &ParticleStore, n: u6
     let points: Vec<[f64; 3]> = (0..n)
         .map(|id| {
             let p = point(id, step);
-            [p[0], p[1], p[2] * Z_SCALE]
+            frame().boost(p[0], p[1], p[2])
         })
         .collect();
     let bounds = Bounds::of(&points).unwrap();
@@ -223,7 +230,7 @@ fn main() {
             store.data[i][..3].copy_from_slice(&p);
             store.data[i][8] = tag(store.id[i], step);
         }
-        store.rebuild(&world, Q, Z_SCALE).unwrap();
+        store.rebuild(&world, Q, frame()).unwrap();
         store.build_plan(&world).unwrap();
         store.exchange_halo(&world).unwrap();
         check(&world, &store, n, step);

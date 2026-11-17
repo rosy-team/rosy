@@ -8,7 +8,7 @@
 //!
 //! ```text
 //! PSLOAD  x y z px py pz f n e count;
-//! PSBUILD q zscale;
+//! PSBUILD q wx wy wz relg;
 //! PSGET   x y z px py pz f n e ids nown;
 //! PSLISTS snumbs start_snumbs nnumbs start_nnumbs cx cy cz nleaves;
 //! PSPUT   x y z px py pz e;
@@ -66,7 +66,7 @@ use rosy_lib::RosyType;
 /// it writes, `s` is a real it writes, `c` is an array of untyped cells.
 const INTRINSICS: &[(&str, &str)] = &[
     ("PSLOAD", "iiiiiiiiii"),
-    ("PSBUILD", "ii"),
+    ("PSBUILD", "iiiii"),
     ("PSGET", "vvvvvvvvvvs"),
     ("PSLISTS", "vvvvvvvs"),
     ("PSPUT", "iiiiiii"),
