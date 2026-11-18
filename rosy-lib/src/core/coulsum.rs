@@ -8,17 +8,23 @@
 //!
 //! Every coefficient is produced by the same operations in the same order
 //! as the series operators would use, including the `DAEPS` cutoff after
-//! each one, so the result is bit for bit what the loop below gives:
+//! each one, so the result is bit for bit what the loop below gives. It is
+//! PHAD's Nov 2026 pair loop, which measures distance in the rest frame of
+//! the beam's common velocity `W = gamma*beta` (`SC_D2`):
 //!
 //! ```text
 //! LOOP K 1 N; IF K#I;
-//!   R2 := (X(I)-X(K))*(X(I)-X(K));
-//!   R2 := R2 + (Y(I)-Y(K))*(Y(I)-Y(K));
-//!   R2 := R2 + RELG^2*(Z(I)-Z(K))*(Z(I)-Z(K));
+//!   DX := X(I)-X(K);  DY := Y(I)-Y(K);  DZ := Z(I)-Z(K);
+//!   DOT := WX*DX + WY*DY + WZ*DZ;
+//!   R2 := DX*DX + DY*DY + DZ*DZ + DOT*DOT;
 //!   W  := 1/(R2*SQRT(R2));
 //!   FX := FX + MQ(2*K)*(X(I)-X(K))*W;   (and FY, FZ)
 //! ENDIF; ENDLOOP;
 //! ```
+//!
+//! (The Oct 2026 PHAD used `R2 := DX*DX + DY*DY + RELG^2*DZ*DZ`, for a beam
+//! moving exactly along z. `W = (0, 0, gamma*beta)` gives the same value
+//! but rounds differently, so that form is gone.)
 //!
 //! Particle `p` keeps its six series at `6*(p-1)+1 ..= 6*(p-1)+6` (x, y,
 //! z, then momenta) and its charge factor at `MQ(2*p)`.
@@ -42,7 +48,7 @@ fn keep(c: f64, epsilon: f64) -> f64 {
 /// Series kept per pair, each `cap` coefficients long.
 const THEIRS: usize = 0; // 3: the other particle's x, y, z as last seen
 const D: usize = 3; // 3: coordinate differences
-const TZ: usize = 6; // RELG^2 * dz
+const DOT: usize = 6; // WX*dx + WY*dy + WZ*dz
 const R2: usize = 7;
 const ROOT_RAW: usize = 8; // square root before the cutoff: the recurrence reads these
 const ROOT: usize = 9;
@@ -53,16 +59,19 @@ const SERIES: usize = 15;
 
 /// Which coefficients of a pair's series are nonzero, one bit each.
 const M_D: usize = 0; // 3
-const M_TZ: usize = 3;
-const M_XX: usize = 4;
-const M_XY: usize = 5; // xx + yy
-const M_R2: usize = 6;
-const M_ROOT: usize = 7;
-const M_INVERSE: usize = 8;
-const M_SCALED: usize = 9; // 3: the charged differences
-const M_TERM: usize = 12; // 3
-const M_THEIRS: usize = 15; // 3
-const MASKS: usize = 18;
+const M_WD: usize = 3; // 3: W times each difference
+const M_DOTXY: usize = 6; // WX*dx + WY*dy
+const M_DOT: usize = 7;
+const M_XX: usize = 8;
+const M_XY: usize = 9; // xx + yy
+const M_XYZ: usize = 10; // xx + yy + zz
+const M_R2: usize = 11;
+const M_ROOT: usize = 12;
+const M_INVERSE: usize = 13;
+const M_SCALED: usize = 14; // 3: the charged differences
+const M_TERM: usize = 17; // 3
+const M_THEIRS: usize = 20; // 3
+const MASKS: usize = 23;
 
 /// Whether a term list made of these blocks, each ascending, is ascending
 /// as a whole.
@@ -116,9 +125,8 @@ struct Memo {
     /// Per particle `i`: its x, y, z as last seen, and what they were used with.
     mine: Vec<f64>,
     mine_have: Vec<u32>,
-    scalars: Vec<[u64; 2]>,
+    scalars: Vec<[u64; 4]>,
     sum: [Vec<f64>; 3],
-    ratios: Vec<f64>,
 }
 
 thread_local! {
@@ -152,15 +160,42 @@ fn difference_in_order(mine: &DA, theirs: &DA, kept: u64, len: usize) -> bool {
     rising
 }
 
+/// PHAD's `RADIUS_FROM_SERIES` on the squared distance, operation for
+/// operation: the two largest of `(|c_j| / |c_0|)^(1/j)`, `j = 1 ..= order`
+/// (Rosy's real `^` is `powf`), kept the way its IF/ELSEIF keeps them, then
+/// `1/(largest + second)`, or `10^100` when both are zero. `c_0` is not
+/// zero here: a zero squared distance is an error before this is reached.
+fn radius_from_series(coefficient: impl Fn(usize) -> f64, order: usize) -> Result<f64> {
+    use crate::operators::RosyPow;
+    let base = coefficient(0).abs();
+    let (mut largest, mut second) = (0.0f64, 0.0f64);
+    for j in 1..=order {
+        let ratio = RosyPow::rosy_pow(&(coefficient(j).abs() / base), &(1f64 / j as f64))?;
+        if ratio > largest {
+            second = largest;
+            largest = ratio;
+        } else if ratio > second {
+            second = ratio;
+        }
+    }
+    Ok(if largest + second > 0.0 {
+        1.0 / (largest + second)
+    } else {
+        RosyPow::rosy_pow(&10f64, &100f64)?
+    })
+}
+
 /// Sum the Coulomb terms on particle `i` from the other `n - 1` particles
 /// at the current truncation order, and store the three sums in
 /// `phi(6*(i-1)+4 ..= 6*(i-1)+6)`.
 ///
+/// `w` is the beam's common velocity `gamma*beta` as the program computed
+/// it (PHAD's `SC_WX`, `SC_WY`, `SC_WZ`).
+///
 /// With `want_radii` nonzero, `radii` becomes one convergence-radius
-/// estimate per pair, in `k` order: `1/(a + b)` for the two largest of
-/// `|c_j / c_0|^(1/j)`, `j = 1 ..= order`, over the coefficients of the
-/// squared distance. It needs order 2 or more. Otherwise `radii` is left
-/// alone.
+/// estimate per pair, in `k` order, as PHAD's `RADIUS_FROM_SERIES` gives it
+/// for the squared distance (see [`radius_from_series`]). It needs order 2
+/// or more. Otherwise `radii` is left alone.
 ///
 /// The series operators add a sparse product's terms in the order of the
 /// left operand's term list, and a list can fall out of ascending order
@@ -175,7 +210,7 @@ pub fn coulsum(
     mq: &[f64],
     i: f64,
     n: f64,
-    relg: f64,
+    w: [f64; 3],
     want_radii: f64,
     phi: &mut [DA],
     radii: &mut Vec<f64>,
@@ -223,12 +258,11 @@ pub fn coulsum(
     COULSUM_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if len > 64 {
         COULSUM_BY_OPERATORS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        return coulsum_by_operators(y, mq, i, n, relg, order, want_radii, phi, radii);
+        return coulsum_by_operators(y, mq, i, n, w, order, want_radii, phi, radii);
     }
-    let relg2 = relg.powf(2.0);
 
     // A scalar at or under the cutoff multiplies to nothing.
-    let live = relg2.abs() > epsilon;
+    let live = [w[0].abs() > epsilon, w[1].abs() > epsilon, w[2].abs() > epsilon];
 
     let in_order = MEMO.with(|memo| -> Result<bool> {
         let mut in_order = true;
@@ -244,7 +278,7 @@ pub fn coulsum(
                 charge: vec![0; slots * slots],
                 mine: vec![0.0; slots * 3 * monomials],
                 mine_have: vec![0; slots],
-                scalars: vec![[0; 2]; slots],
+                scalars: vec![[0; 4]; slots],
                 ..Memo::default()
             };
         }
@@ -272,7 +306,7 @@ pub fn coulsum(
         // How far this particle's own series still match what was kept.
         let me = i - 1;
         let mine_block = &mut m.mine[me * 3 * cap..(me + 1) * 3 * cap];
-        let scalars = [relg2.to_bits(), epsilon.to_bits()];
+        let scalars = [w[0].to_bits(), w[1].to_bits(), w[2].to_bits(), epsilon.to_bits()];
         let mut mine_same = if m.scalars[me] == scalars {
             (m.mine_have[me] as usize).min(len)
         } else {
@@ -327,19 +361,32 @@ pub fn coulsum(
                     masks[M_THEIRS + axis] |= bit(theirs);
                     masks[M_D + axis] |= bit(block[(D + axis) * cap + c]);
                 }
-                block[TZ * cap + c] = if live {
-                    keep(block[(D + 2) * cap + c] * relg2, epsilon)
-                } else {
-                    0.0
-                };
-                masks[M_TZ] |= bit(block[TZ * cap + c]);
+                // DOT := WX*DX + WY*DY + WZ*DZ, a real times a series
+                // scaling each kept term, then two sums.
+                let mut wd = [0.0f64; 3];
+                for axis in 0..3 {
+                    wd[axis] = if live[axis] {
+                        keep(block[(D + axis) * cap + c] * w[axis], epsilon)
+                    } else {
+                        0.0
+                    };
+                    masks[M_WD + axis] |= bit(wd[axis]);
+                }
+                let dot_xy = keep(wd[0] + wd[1], epsilon);
+                block[DOT * cap + c] = keep(dot_xy + wd[2], epsilon);
+                masks[M_DOTXY] |= bit(dot_xy);
+                masks[M_DOT] |= bit(block[DOT * cap + c]);
+                // R2 := DX*DX + DY*DY + DZ*DZ + DOT*DOT, summed left to right.
                 let xx = product(block, cap, D, D, c, epsilon);
                 let yy = product(block, cap, D + 1, D + 1, c, epsilon);
-                let zz = product(block, cap, TZ, D + 2, c, epsilon);
+                let zz = product(block, cap, D + 2, D + 2, c, epsilon);
+                let dd = product(block, cap, DOT, DOT, c, epsilon);
                 let xy = keep(xx + yy, epsilon);
-                block[R2 * cap + c] = keep(xy + zz, epsilon);
+                let xyz = keep(xy + zz, epsilon);
+                block[R2 * cap + c] = keep(xyz + dd, epsilon);
                 masks[M_XX] |= bit(xx);
                 masks[M_XY] |= bit(xy);
+                masks[M_XYZ] |= bit(xyz);
                 masks[M_R2] |= bit(block[R2 * cap + c]);
 
                 if c == 0 {
@@ -395,24 +442,34 @@ pub fn coulsum(
             // that this one lacks; a sum lists its first operand's terms,
             // then what each later one adds.
             let count = |mask: u64| (mask & window).count_ones();
+            let listed = |axis: usize, mask: u64| {
+                difference_in_order(&y[6 * me + axis], &y[6 * (k - 1) + axis], mask, len)
+            };
             for axis in 0..3 {
-                let listed = |mask: u64| difference_in_order(&y[6 * me + axis], &y[6 * (k - 1) + axis], mask, len);
                 let d = masks[M_D + axis];
-                if axis < 2 {
-                    in_order &= !by_list(count(d), count(d)) || listed(d);
-                } else {
-                    in_order &= !by_list(count(masks[M_TZ]), count(d)) || listed(masks[M_TZ]);
-                }
+                in_order &= !by_list(count(d), count(d)) || listed(axis, d);
                 let scaled = masks[M_SCALED + axis];
-                in_order &= !by_list(count(scaled), count(masks[M_INVERSE])) || listed(scaled);
+                in_order &= !by_list(count(scaled), count(masks[M_INVERSE])) || listed(axis, scaled);
             }
-            let (xx, xy, r2) = (
+            // DOT lists WX*DX's terms (DX's order), then the terms WY*DY
+            // adds (DY's order) that survive, then the ones WZ*DZ adds.
+            let (wd0, wd1, dot_xy, dot) = (
+                masks[M_WD] & window,
+                masks[M_WD + 1] & window,
+                masks[M_DOTXY] & window,
+                masks[M_DOT] & window,
+            );
+            let blocks = [wd0 & dot_xy & dot, wd1 & !wd0 & dot_xy & dot, dot & !dot_xy];
+            in_order &= !by_list(count(dot), count(dot))
+                || (listed(0, blocks[0]) && listed(1, blocks[1]) && listed(2, blocks[2]) && ascending(&blocks));
+            let (xx, xy, xyz, r2) = (
                 masks[M_XX] & window,
                 masks[M_XY] & window,
+                masks[M_XYZ] & window,
                 masks[M_R2] & window,
             );
             in_order &= !by_list(count(r2), count(masks[M_ROOT]))
-                || ascending(&[xx & xy & r2, xy & !xx & r2, r2 & !xy]);
+                || ascending(&[xx & xy & xyz & r2, xy & !xx & xyz & r2, xyz & !xy & r2, r2 & !xyz]);
             let term_sets = [
                 masks[M_TERM] & window,
                 masks[M_TERM + 1] & window,
@@ -434,15 +491,7 @@ pub fn coulsum(
                 bail!("COULSUM: division by zero for particles {i} and {k}");
             }
             if want_radii {
-                m.ratios.clear();
-                let c0 = f0.abs();
-                m.ratios.push(block[R2 * cap + 1].abs() / c0);
-                for j in 2..=order {
-                    m.ratios
-                        .push((block[R2 * cap + j].abs() / c0).powf(1.0 / j as f64));
-                }
-                m.ratios.sort_unstable_by(f64::total_cmp);
-                radii.push(1.0 / (m.ratios[order - 2] + m.ratios[order - 1]));
+                radii.push(radius_from_series(|j| block[R2 * cap + j], order)?);
             }
             for axis in 0..3 {
                 let term = &block[(TERM + axis) * cap..(TERM + axis) * cap + len];
@@ -495,7 +544,7 @@ pub fn coulsum(
         COULSUM_BY_OPERATORS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         #[cfg(test)]
         tests::FALLBACKS.with(|f| f.set(f.get() + 1));
-        return coulsum_by_operators(y, mq, i, n, relg, order, want_radii, phi, radii);
+        return coulsum_by_operators(y, mq, i, n, w, order, want_radii, phi, radii);
     }
     Ok(())
 }
@@ -509,7 +558,7 @@ pub fn coulsum_by_operators(
     mq: &[f64],
     i: usize,
     n: usize,
-    relg: f64,
+    w: [f64; 3],
     order: usize,
     want_radii: bool,
     phi: &mut [DA],
@@ -532,18 +581,24 @@ pub fn coulsum_by_operators(
         }
         let theirs = 6 * (k - 1);
         let d = |axis: usize| RosySub::rosy_sub(&y[mine + axis], &y[theirs + axis]);
-        let mut r2 = RosyMult::rosy_mult(&d(0)?, &d(0)?)?;
-        r2.add_assign_exact(&RosyMult::rosy_mult(&d(1)?, &d(1)?)?)?;
-        let scaled = RosyMult::rosy_mult(&RosyPow::rosy_pow(&relg, &2f64)?, &d(2)?)?;
-        r2.add_assign_exact(&RosyMult::rosy_mult(&scaled, &d(2)?)?)?;
+        let (dx, dy, dz) = (d(0)?, d(1)?, d(2)?);
+        // SC_D2, as Rosy runs it.
+        let dot = RosyAdd::rosy_add(
+            &RosyAdd::rosy_add(&RosyMult::rosy_mult(&w[0], &dx)?, &RosyMult::rosy_mult(&w[1], &dy)?)?,
+            &RosyMult::rosy_mult(&w[2], &dz)?,
+        )?;
+        let r2 = RosyAdd::rosy_add(
+            &RosyAdd::rosy_add(
+                &RosyAdd::rosy_add(&RosyMult::rosy_mult(&dx, &dx)?, &RosyMult::rosy_mult(&dy, &dy)?)?,
+                &RosyMult::rosy_mult(&dz, &dz)?,
+            )?,
+            &RosyMult::rosy_mult(&dot, &dot)?,
+        )?;
         if want_radii {
-            let c = |j: usize| RosyExtract::rosy_extract(&r2, &(j as f64)).map(f64::abs);
-            let mut ratios = vec![c(1)? / c(0)?];
-            for j in 2..=order {
-                ratios.push((c(j)? / c(0)?).powf(1.0 / j as f64));
-            }
-            ratios.sort_by(f64::total_cmp);
-            radii.push(1.0 / (ratios[order - 2] + ratios[order - 1]));
+            let coefficients = (0..=order)
+                .map(|j| RosyExtract::rosy_extract(&r2, &(j as f64)))
+                .collect::<Result<Vec<f64>>>()?;
+            radii.push(radius_from_series(|j| coefficients[j], order)?);
         }
         let w = RosyDiv::rosy_div(
             &1f64,
@@ -575,7 +630,7 @@ mod tests {
         mq: &[f64],
         i: usize,
         n: usize,
-        relg: f64,
+        w: [f64; 3],
         order: usize,
         radii: Option<&mut Vec<f64>>,
     ) -> [DA; 3] {
@@ -587,7 +642,7 @@ mod tests {
             mq,
             i,
             n,
-            relg,
+            w,
             order,
             want,
             &mut phi,
@@ -604,8 +659,17 @@ mod tests {
             .collect()
     }
 
+    /// The fast path against the operators for a beam with transverse
+    /// motion, one with a zero component of W, and one at rest (W = 0).
     #[test]
     fn matches_the_series_operators_bit_for_bit() {
+        for w in [[0.031, -0.017, 1.8392], [0.0, 0.2, 1.5], [0.0, 0.0, 0.0]] {
+            FALLBACKS.with(|f| f.set(0));
+            matches_for(w);
+        }
+    }
+
+    fn matches_for(w: [f64; 3]) {
         let full = 12usize;
         init_taylor(full as u32, 1).unwrap();
         let epsilon_before = crate::taylor::get_runtime().unwrap().config.epsilon;
@@ -652,7 +716,7 @@ mod tests {
                     &mq,
                     i,
                     n,
-                    1.37,
+                    w,
                     order,
                     want.then_some(&mut expected_radii),
                 );
@@ -663,7 +727,7 @@ mod tests {
                     &mq,
                     i as f64,
                     n as f64,
-                    1.37,
+                    w,
                     if want { 1.0 } else { 0.0 },
                     &mut phi,
                     &mut radii,
@@ -690,10 +754,10 @@ mod tests {
         let mut mq = mq;
         let check = |y: &[DA], mq: &[f64], n: usize, order: usize, i: usize| {
             set_max_order(order as u32).unwrap();
-            let expected = by_operators(y, mq, i, n, 1.37, order, None);
+            let expected = by_operators(y, mq, i, n, w, order, None);
             let mut phi = vec![DA::zero(); 6 * n];
             let mut radii = Vec::new();
-            coulsum(y, mq, i as f64, n as f64, 1.37, 0.0, &mut phi, &mut radii).unwrap();
+            coulsum(y, mq, i as f64, n as f64, w, 0.0, &mut phi, &mut radii).unwrap();
             for axis in 0..3 {
                 assert_eq!(
                     bits(&phi[6 * (i - 1) + 3 + axis], full),
@@ -823,5 +887,7 @@ mod tests {
         }
         set_max_order(full as u32).unwrap();
         crate::taylor::set_epsilon(epsilon_before).unwrap();
+        // The next frame starts its own series system.
+        crate::taylor::cleanup_taylor();
     }
 }

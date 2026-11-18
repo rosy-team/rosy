@@ -48,9 +48,10 @@ Struct of arrays, one entry per owned particle, sorted by key:
 | `id` | 8 B | Original particle number. Never changes. |
 | `key` | 8 B | 3 x 20 bits, x then y then z, as in fmmcpp's `giveBoxNumber`. |
 | `x y z px py pz f n` | 64 B | PHAD's `source_*` arrays. |
+| `e` | 8 B | A per-particle tag the program owns; the store moves it with the particle and never reads it. PHAD's Nov 2026 version keeps each particle's lattice element there (`source_element`), which its aperture lookup starts from, so it must survive migration and halo copies. |
 | `prev_leaf` | 8 B | Leaf (level, number) the particle was in last step. |
 
-88 bytes per particle. Slots are ordered by `(key, id)`, so any box at any
+96 bytes per particle. Slots are ordered by `(key, id)`, so any box at any
 level is a contiguous range. Source lists handed to PHAD are sorted by `id`
 per box, so sums run in the same order as today.
 
@@ -237,11 +238,18 @@ about 0.45 GB per rank on top of the fixed 0.37 GB a rank uses at start.
 
 ## The near-field kernel
 
-`COULSUM y mq i n relg want phi radii` replaces the pair loop of PHAD's
-near-field integrator with one call. It adds up
+`COULSUM y mq i n wx wy wz want phi radii` replaces the pair loop of
+PHAD's near-field integrator with one call. It adds up
 `n_k (r_i - r_k) / |r_i - r_k|^3` over the other particles, each
 coordinate a series in time, on plain coefficient arrays. It is not a
 store call and needs no MPI.
+
+The distance is measured in the rest frame of the beam's common velocity
+`W = gamma*beta`, as PHAD's Nov 2026 version does it (`SC_D2`):
+`DOT := WX*DX + WY*DY + WZ*DZ`, `R2 := DX*DX + DY*DY + DZ*DZ + DOT*DOT`.
+(This replaces `COULSUM y mq i n relg ...`, which used the Oct 2026 form
+`DX*DX + DY*DY + RELG^2*DZ*DZ` for a beam moving along z.) The force
+scaling after the loop (`SC_G`) stays in the program.
 
 - **Same bits.** Every coefficient comes from the same operations in the
   same order as the series operators use, cutoff included. PHAD's output
@@ -257,9 +265,41 @@ store call and needs no MPI.
 - **Layout.** Particle `p` has its six series at `6(p-1)+1 ..= 6(p-1)+6`
   (positions, then momenta) and its charge factor at `mq(2p)`. The sums
   go to `phi(6(i-1)+4 ..= 6(i-1)+6)`. With `want` nonzero, `radii` gets
-  one convergence-radius estimate per pair.
+  one convergence-radius estimate per pair, exactly as PHAD's
+  `RADIUS_FROM_SERIES` gives it for the squared distance (including
+  `10^100` for a series whose ratios are all zero).
+- **Checked against PHAD's code.** A test that runs PHAD's own `SC_D2`,
+  `RADIUS_FROM_SERIES` and pair loop next to `COULSUM`, comparing every
+  coefficient and radius, lives with PHAD (its code is not public). Here,
+  the unit tests compare `COULSUM` with Rosy's series operators.
 
 PHAD's time stepping, error control and external fields stay in PHAD.
+
+## Removing particles
+
+PHAD's Nov 2026 version removes particles that leave the aperture at the end
+of a step: it compacts its arrays in place, keeping the survivors' order,
+recounts the trailing cooling electrons, and restarts the force cycle with a
+fresh fast multipole pass (`INITIAL := 1`). `PSREMOVE` does the same to the
+store:
+
+- **No particle moves.** Each rank drops its own flagged particles.
+- **Same numbering as the one-process code.** The removed numbers (a short
+  sorted list) go to every rank, and a survivor's new number is its old one
+  minus the removed numbers below it. Output in number order (`PSALL`,
+  `PSSLICE`) stays row for row the same as the one-process run.
+- **Logging.** `removed` holds every removed particle's old number and
+  whatever `k` values the program attached, sorted by old number, so the
+  first rank can print PHAD's removal lines in PHAD's order.
+- **Then a fresh start.** After a call that removed something, the store is
+  as after `PSLOAD`: the next `PSBUILD` is a first build (balanced again,
+  earlier-neighbour lists empty), matching the restarted force cycle. A call
+  that removes nothing changes nothing, so a program can call it every step.
+- **Empty ranks** are allowed, and removing every particle leaves an empty
+  store (the program stops, as PHAD does).
+
+`examples/pstore/remove.fox` checks all of this against a one-process
+compaction at any rank count.
 
 ## External functions (`EXTERN`)
 
@@ -335,12 +375,12 @@ is a variable, and every rank makes the same call:
 
 | Intrinsic | Purpose |
 |---|---|
-| `PSLOAD x y z px py pz f n count` | Hand this rank's input particles to the store. Particle numbers continue from the last load, lower ranks first. |
-| `PSBUILD q zscale` | Recompute keys, migrate, rebuild leaves, exchange the halo. |
-| `PSGET x y z px py pz f n ids nown` | Fill local arrays: owned particles first, then halo copies. `ids` are particle numbers from 1. |
+| `PSLOAD x y z px py pz f n e count` | Hand this rank's input particles to the store. Particle numbers continue from the last load, lower ranks first. |
+| `PSBUILD q wx wy wz relg` | Recompute keys, migrate, rebuild leaves, exchange the halo. Keys come from positions boosted into the beam's rest frame exactly as PHAD's `SC_A` does it (`DOT := (WX*X+WY*Y+WZ*Z)/(RELG+1)`, `AX := X+WX*DOT`), with `W = gamma*beta` and `relg` as the program computed them. Stored positions stay in the lab frame. (Replaces `PSBUILD q zscale`, which scaled z by relg for the Oct 2026 PHAD, whose beam moved along z.) |
+| `PSGET x y z px py pz f n e ids nown` | Fill local arrays: owned particles first, then halo copies. `ids` are particle numbers from 1. |
 | `PSLISTS snumbs start_snumbs nnumbs start_nnumbs cx cy cz nleaves` | The per-leaf source and neighbour lists that `FMMDIRECT` reads from `file_4` today, as local positions. |
-| `PSPUT x y z px py pz` | Write owned results back to the store. |
-| `PSSCALED sx sy sz` | Positions in the unit cube the tree was built in. |
+| `PSPUT x y z px py pz e` | Write owned results back to the store. |
+| `PSSCALED sx sy sz` | Positions in the unit cube the tree was built in: boosted, then scaled. |
 | `PSSIZES nmult nloc depth` | Multipoles and local expansions this rank holds, copies included, and the level count. |
 | `PSLEAFLOC index` | Position of each leaf's local expansion, in `PSLISTS` order. |
 | `PSUP level list count` | Upward-pass work list for one level. |
@@ -348,13 +388,15 @@ is a variable, and every rank makes the same call:
 | `PSMSYNC cells level` / `PSLSYNC cells level` | Exchange one level's multipoles or local expansions between ranks. |
 | `PSHALO` | Refresh halo copies after `PSPUT`. |
 | `PSCOST leaf seconds` | Charge measured work to an owned leaf. The next `PSBUILD` balances ranks by these costs plus each rank's own pass time. |
-| `PSBOUNDS xmin ymin zmin dzero` | The cube of the last `PSBUILD`. |
+| `PSBOUNDS xmin ymin zmin dzero` | The cube of the last `PSBUILD`, in the rest frame. |
 | `PSPREV ids start` | For each owned particle, the particle numbers around it before the last `PSBUILD`. |
 | `PSPOS ids positions` | Local position of each particle number, 0 if not held here. |
 | `PSSUM values count total` | Sum over all ranks, correctly rounded. |
-| `PSALL x y z px py pz f n count` | Every particle in number order on the first rank, for output. |
-| `PSSLICE x y z px py pz f n first count` | This rank's share of the particles in number order: numbers `first .. first+count-1`, rank r getting the r-th of equal runs. Each rank formats its own part of an output file. |
+| `PSMAX values count max` | The largest of the first `count` values over all ranks, on every rank. Exact, so independent of the rank count. |
+| `PSALL x y z px py pz f n e count` | Every particle in number order on the first rank, for output. |
+| `PSSLICE x y z px py pz f n e first count` | This rank's share of the particles in number order: numbers `first .. first+count-1`, rank r getting the r-th of equal runs. Each rank formats its own part of an output file. |
 | `PSWRITE unit lines count` | The first `count` strings of every rank's `lines`, lower ranks first, written as lines to file `unit` by the first rank in one go (only it needs the file open). With `PSSLICE`, output is formatted in parallel and comes out in particle order. |
+| `PSREMOVE keep info k removed nremoved ncool` | Drop the owned particles whose `keep` flag (one per owned particle, in `PSGET` order) is 0. `info` holds `k` reals per owned particle, particle after particle. Every rank gets `removed`, one row `old_number info(1..k)` per removed particle sorted by old number, and `nremoved`; `ncool` drops by the removed numbers among the last `ncool`. Survivors are renumbered as a one-process in-place compaction would. See "Removing particles". |
 
 ## Open decisions
 

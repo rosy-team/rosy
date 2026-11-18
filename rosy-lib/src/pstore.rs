@@ -21,8 +21,12 @@ use crate::fmmtree::{
     Bounds, FINEST_LEVEL, Leaf, box_centre, box_number, key_range, morton_key, neighbours,
 };
 
-/// Values carried per particle: x y z px py pz f n.
-pub const FIELDS: usize = 8;
+/// Values carried per particle: x y z px py pz f n e. `e` is the program's
+/// own per-particle tag (PHAD keeps each particle's lattice element there);
+/// the store moves it with the particle and never reads it.
+pub const FIELDS: usize = 9;
+/// Fields `PSPUT` writes back: positions, momenta and `e`.
+const PUT_FIELDS: [usize; 7] = [0, 1, 2, 3, 4, 5, 8];
 /// Keys offered per rank, on average, when the ranges are chosen. A rank
 /// offers in proportion to the particles it holds.
 const SAMPLES_PER_RANK: usize = 128;
@@ -56,6 +60,33 @@ fn translation_seconds() -> f64 {
 /// Levels at or above this many boxes are counted by query, not by a
 /// dense histogram: 8^6 boxes is 2 MB per rank.
 const DENSE_COUNT_LEVELS: u32 = 6;
+
+/// The beam's rest frame, as PHAD's `SC_A` uses it: the common velocity
+/// `W = gamma * beta` and `relg = gamma`, both as PHAD computed them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Frame {
+    pub w: [f64; 3],
+    pub relg: f64,
+}
+
+impl Default for Frame {
+    /// At rest: positions unchanged.
+    fn default() -> Self {
+        Frame { w: [0.0; 3], relg: 1.0 }
+    }
+}
+
+impl Frame {
+    /// A lab position in the rest frame, in the exact operations of
+    /// PHAD's `SC_A`: `DOT := (WX*X + WY*Y + WZ*Z)/(RELG+1)`, then
+    /// `AX := X + WX*DOT` and the same for y and z.
+    #[inline]
+    pub fn boost(&self, x: f64, y: f64, z: f64) -> [f64; 3] {
+        let [wx, wy, wz] = self.w;
+        let dot = (wx * x + wy * y + wz * z) / (self.relg + 1.0);
+        [x + wx * dot, y + wy * dot, z + wz * dot]
+    }
+}
 
 /// One rank's share of the particles.
 #[derive(Debug, Default)]
@@ -98,8 +129,9 @@ pub struct ParticleStore {
     pub loaded: u64,
     /// This rank's part of the upward and downward passes.
     pub plan: Plan,
-    /// The z multiplier of the last rebuild.
-    pub z_scale: f64,
+    /// The rest frame of the last rebuild. Keys, the bounding cube and
+    /// `PSSCALED` are in this frame; the stored positions stay in the lab.
+    pub frame: Frame,
     /// For each owned particle, the particle numbers that were in its
     /// leaf's neighbourhood (the leaf and the boxes around it) before the
     /// last rebuild, ascending. Empty until the second rebuild.
@@ -183,9 +215,9 @@ impl ParticleStore {
     /// Recompute keys from the current positions, move every particle to
     /// the rank that owns its key, and rebuild the leaves.
     ///
-    /// `z_scale` multiplies z before the key is taken; PHAD passes `relg`.
+    /// Keys are taken from positions boosted into `frame` (PHAD's `SC_A`).
     /// `q` is the most particles allowed around one leaf.
-    pub fn rebuild(&mut self, world: &SimpleCommunicator, q: usize, z_scale: f64) -> Result<()> {
+    pub fn rebuild(&mut self, world: &SimpleCommunicator, q: usize, frame: Frame) -> Result<()> {
         let ranks = world.size() as usize;
         // Remember each particle's neighbourhood under the old tree.
         for leaf in &self.leaves {
@@ -202,11 +234,11 @@ impl ParticleStore {
         }
         self.far_id.clear();
         self.far_data.clear();
-        let bounds = self.global_bounds(world, z_scale)?;
+        let bounds = self.global_bounds(world, frame)?;
         self.bounds = Some(bounds);
-        self.z_scale = z_scale;
+        self.frame = frame;
         for (key, d) in self.key.iter_mut().zip(&self.data) {
-            *key = morton_key(bounds.scale([d[0], d[1], d[2] * z_scale]));
+            *key = morton_key(bounds.scale(frame.boost(d[0], d[1], d[2])));
         }
 
         self.splitters = self.sample_splitters(world)?;
@@ -1039,11 +1071,11 @@ impl ParticleStore {
         )
     }
 
-    fn global_bounds(&self, world: &SimpleCommunicator, z_scale: f64) -> Result<Bounds> {
+    fn global_bounds(&self, world: &SimpleCommunicator, frame: Frame) -> Result<Bounds> {
         let mut lo = [f64::INFINITY; 3];
         let mut hi = [f64::NEG_INFINITY; 3];
         for d in &self.data {
-            let p = [d[0], d[1], d[2] * z_scale];
+            let p = frame.boost(d[0], d[1], d[2]);
             for a in 0..3 {
                 lo[a] = lo[a].min(p[a]);
                 hi[a] = hi[a].max(p[a]);
@@ -1632,11 +1664,11 @@ fn extern_call_with(
 
 /// Argument count of each `PS*` intrinsic. The compiler checks against it.
 pub const PS_INTRINSICS: &[(&str, usize)] = &[
-    ("PSLOAD", 9),
-    ("PSBUILD", 2),
-    ("PSGET", 10),
+    ("PSLOAD", 10),
+    ("PSBUILD", 5),
+    ("PSGET", 11),
     ("PSLISTS", 8),
-    ("PSPUT", 6),
+    ("PSPUT", 7),
     ("PSSCALED", 3),
     ("PSSIZES", 3),
     ("PSLEAFLOC", 1),
@@ -1650,9 +1682,11 @@ pub const PS_INTRINSICS: &[(&str, usize)] = &[
     ("PSPREV", 2),
     ("PSPOS", 2),
     ("PSSUM", 3),
-    ("PSALL", 9),
-    ("PSSLICE", 10),
+    ("PSMAX", 3),
+    ("PSALL", 10),
+    ("PSSLICE", 11),
     ("PSWRITE", 3),
+    ("PSREMOVE", 6),
 ];
 
 /// The parts of `PSBUILD` timed separately in the stats report.
@@ -1678,12 +1712,15 @@ fn stats_on() -> bool {
 impl crate::mpi::RosyMPIContext {
     /// Run one `PS*` intrinsic. Every rank must make the same call.
     ///
-    /// - `PSLOAD x y z px py pz f n count`: give the store the first
+    /// - `PSLOAD x y z px py pz f n e count`: give the store the first
     ///   `count` entries of this rank's arrays. Particle numbers continue
     ///   from the last load, lower ranks first.
-    /// - `PSBUILD q zscale`: recompute keys with z multiplied by `zscale`,
-    ///   move particles to their owners, rebuild leaves, fetch the halo.
-    /// - `PSGET x y z px py pz f n ids nown`: fill the arrays with this
+    /// - `PSBUILD q wx wy wz relg`: recompute keys from positions boosted
+    ///   into the beam's rest frame exactly as PHAD's `SC_A` does it (`W =
+    ///   gamma*beta` of the common velocity, `relg = gamma`, both as the
+    ///   program computed them), move particles to their owners, rebuild
+    ///   leaves, fetch the halo. Stored positions stay in the lab frame.
+    /// - `PSGET x y z px py pz f n e ids nown`: fill the arrays with this
     ///   rank's particles, then its halo copies. `ids` are particle
     ///   numbers from 1. `nown` is how many entries are owned.
     /// - `PSLISTS snumbs start_snumbs nnumbs start_nnumbs cx cy cz nleaves`:
@@ -1691,9 +1728,9 @@ impl crate::mpi::RosyMPIContext {
     ///   `PSGET` arrays, with the offsets of each leaf's run and the leaf
     ///   centres in the unit cube. Sources are in particle-number order.
     ///   Neighbours come box by box, each box in particle-number order.
-    /// - `PSPUT x y z px py pz`: store the first `nown` entries back.
+    /// - `PSPUT x y z px py pz e`: store the first `nown` entries back.
     /// - `PSSCALED sx sy sz`: positions in the unit cube the tree was built
-    ///   in, for the same entries as `PSGET`.
+    ///   in (boosted, then scaled), for the same entries as `PSGET`.
     /// - `PSSIZES nmult nloc depth`: how many multipoles and local
     ///   expansions this rank holds, copies included, and the level count.
     /// - `PSLEAFLOC index`: for each leaf, in `PSLISTS` order, the position
@@ -1710,7 +1747,8 @@ impl crate::mpi::RosyMPIContext {
     ///   rank spent between `PSUP`/`PSDOWN` and the following sync. A
     ///   program that never calls it is balanced by an estimate. It is
     ///   local: ranks need not call it the same number of times.
-    /// - `PSBOUNDS xmin ymin zmin dzero`: the cube of the last `PSBUILD`.
+    /// - `PSBOUNDS xmin ymin zmin dzero`: the cube of the last `PSBUILD`,
+    ///   in the rest frame.
     /// - `PSPREV ids start`: for each owned particle, the particle numbers
     ///   (from 1) around it before the last `PSBUILD`, with offsets.
     /// - `PSPOS ids positions`: local position of each particle number, 0
@@ -1721,13 +1759,30 @@ impl crate::mpi::RosyMPIContext {
     ///   value per owned particle in particle-number order, as a
     ///   one-process loop would; that gathers everything and is for
     ///   comparisons only.
-    /// - `PSALL x y z px py pz f n count`: every particle in number order
+    /// - `PSMAX values count max`: the largest of the first `count` values
+    ///   over all ranks, on every rank. Exact, so it does not depend on
+    ///   the rank count. `count` must be at least 1 on every rank.
+    /// - `PSALL x y z px py pz f n e count`: every particle in number order
     ///   on the first rank, nothing elsewhere. For output only.
-    /// - `PSSLICE x y z px py pz f n first count`: this rank's share of the
+    /// - `PSSLICE x y z px py pz f n e first count`: this rank's share of the
     ///   particles in number order: particle numbers `first ..
     ///   first+count-1`, with rank r getting the r-th of `ranks` equal runs
     ///   of the numbers loaded. Lets every rank format and write its own
     ///   part of an output file.
+    /// - `PSREMOVE keep info k removed nremoved ncool`: drop the owned
+    ///   particles whose `keep` flag (one per owned particle, in `PSGET`
+    ///   order) is 0. `info` holds `k` reals per owned particle, particle
+    ///   after particle (`k` may be 0). Every rank then holds `removed`: one
+    ///   row `old_number info(1..k)` per removed particle, all ranks' rows,
+    ///   sorted by old number, and `nremoved`, their count. Survivors are
+    ///   renumbered `1..` keeping their order, `old - (removed numbers below
+    ///   it)`, which is a one-process program's in-place compaction, and
+    ///   `ncool` (the trailing particles, cooling electrons in PHAD) drops by
+    ///   the removed numbers among the last `ncool`. No particle moves. When
+    ///   something was removed the store is as after `PSLOAD`: call
+    ///   `PSBUILD` before using the tree again (a first build: earlier
+    ///   neighbour lists start empty, as PHAD's restarted force cycle
+    ///   expects). When nothing was removed nothing changes.
     /// - `PSWRITE unit lines count`: the first `count` strings of every
     ///   rank's `lines`, lower ranks first, written as lines to file `unit`
     ///   by the first rank (only it needs the file open), in one write.
@@ -1753,9 +1808,9 @@ impl crate::mpi::RosyMPIContext {
         let world = &self.world;
         match name {
             "PSLOAD" => {
-                let count = args[8].ps_scalar()? as usize;
+                let count = args[FIELDS].ps_scalar()? as usize;
                 let columns: Vec<Vec<f64>> =
-                    args[..8].iter().map(|a| a.ps_values()).collect::<Result<_>>()?;
+                    args[..FIELDS].iter().map(|a| a.ps_values()).collect::<Result<_>>()?;
                 let short = columns.iter().any(|c| c.len() < count);
                 let counts = gather_all(world, &[if short { u64::MAX } else { count as u64 }])?;
                 ensure!(
@@ -1775,7 +1830,10 @@ impl crate::mpi::RosyMPIContext {
             }
             "PSBUILD" => {
                 let q = args[0].ps_scalar()? as usize;
-                let z_scale = args[1].ps_scalar()?;
+                let frame = Frame {
+                    w: [args[1].ps_scalar()?, args[2].ps_scalar()?, args[3].ps_scalar()?],
+                    relg: args[4].ps_scalar()?,
+                };
                 // The first build has no work estimates yet, so it balances
                 // by count. Build once to get them, then again to use them.
                 let passes = if store.leaves.is_empty() { 2 } else { 1 };
@@ -1787,7 +1845,7 @@ impl crate::mpi::RosyMPIContext {
                     mark = std::time::Instant::now();
                 };
                 for _ in 0..passes {
-                    store.rebuild(world, q, z_scale)?;
+                    store.rebuild(world, q, frame)?;
                     lap(0);
                     store.build_plan(world)?;
                     lap(1);
@@ -1814,12 +1872,12 @@ impl crate::mpi::RosyMPIContext {
             }
             "PSGET" => {
                 let all = || store.data.iter().chain(&store.halo_data).chain(&store.far_data);
-                for (field, arg) in args[..8].iter_mut().enumerate() {
+                for (field, arg) in args[..FIELDS].iter_mut().enumerate() {
                     arg.ps_set_values(all().map(|d| d[field]).collect())?;
                 }
                 let ids = store.id.iter().chain(&store.halo_id).chain(&store.far_id);
-                args[8].ps_set_values(ids.map(|&id| (id + 1) as f64).collect())?;
-                args[9].ps_set_scalar(store.len() as f64)?;
+                args[FIELDS].ps_set_values(ids.map(|&id| (id + 1) as f64).collect())?;
+                args[FIELDS + 1].ps_set_scalar(store.len() as f64)?;
             }
             "PSLISTS" => {
                 let (mut own, mut own_start) = (Vec::new(), vec![1.0]);
@@ -1847,7 +1905,7 @@ impl crate::mpi::RosyMPIContext {
                 args[7].ps_set_scalar(leaves)?;
             }
             "PSPUT" => {
-                for (field, arg) in args.iter().enumerate() {
+                for (&field, arg) in PUT_FIELDS.iter().zip(args.iter()) {
                     let values = arg.ps_values()?;
                     ensure!(values.len() >= store.len(), "PSPUT: array is shorter than the owned particles");
                     for (d, v) in store.data.iter_mut().zip(values) {
@@ -1857,11 +1915,11 @@ impl crate::mpi::RosyMPIContext {
             }
             "PSSCALED" => {
                 let bounds = store.bounds.ok_or_else(|| anyhow::anyhow!("PSSCALED before PSBUILD"))?;
-                let scale = store.z_scale;
+                let frame = store.frame;
                 let all = || store.data.iter().chain(&store.halo_data).chain(&store.far_data);
                 for (axis, arg) in args.iter_mut().enumerate() {
                     arg.ps_set_values(
-                        all().map(|d| bounds.scale([d[0], d[1], d[2] * scale])[axis]).collect(),
+                        all().map(|d| bounds.scale(frame.boost(d[0], d[1], d[2]))[axis]).collect(),
                     )?;
                 }
             }
@@ -1952,6 +2010,16 @@ impl crate::mpi::RosyMPIContext {
                 };
                 args[2].ps_set_scalar(total)?;
             }
+            "PSMAX" => {
+                let count = args[1].ps_scalar()? as usize;
+                let values = args[0].ps_values()?;
+                ensure!(count >= 1, "PSMAX: count must be at least 1");
+                ensure!(values.len() >= count, "PSMAX: array is shorter than the count");
+                let mine = values[..count].iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                let mut all = 0.0f64;
+                world.all_reduce_into(&mine, &mut all, SystemOperation::max());
+                args[2].ps_set_scalar(all)?;
+            }
             "PSALL" => {
                 let ranks = world.size() as usize;
                 let mut ids: Vec<Vec<u64>> = vec![Vec::new(); ranks];
@@ -1962,10 +2030,10 @@ impl crate::mpi::RosyMPIContext {
                 let values: Vec<f64> = exchange(world, &values)?.into_iter().flatten().collect();
                 let mut order: Vec<usize> = (0..ids.len()).collect();
                 order.sort_unstable_by_key(|&i| ids[i]);
-                for (field, arg) in args[..8].iter_mut().enumerate() {
+                for (field, arg) in args[..FIELDS].iter_mut().enumerate() {
                     arg.ps_set_values(order.iter().map(|&i| values[FIELDS * i + field]).collect())?;
                 }
-                args[8].ps_set_scalar(ids.len() as f64)?;
+                args[FIELDS].ps_set_scalar(ids.len() as f64)?;
             }
             "PSSLICE" => {
                 let ranks = world.size() as usize;
@@ -1991,11 +2059,70 @@ impl crate::mpi::RosyMPIContext {
                     ids.len(),
                     starts[me + 1] - starts[me]
                 );
-                for (field, arg) in args[..8].iter_mut().enumerate() {
+                for (field, arg) in args[..FIELDS].iter_mut().enumerate() {
                     arg.ps_set_values(order.iter().map(|&i| values[FIELDS * i + field]).collect())?;
                 }
-                args[8].ps_set_scalar((starts[me] + 1) as f64)?;
-                args[9].ps_set_scalar(ids.len() as f64)?;
+                args[FIELDS].ps_set_scalar((starts[me] + 1) as f64)?;
+                args[FIELDS + 1].ps_set_scalar(ids.len() as f64)?;
+            }
+            "PSREMOVE" => {
+                let n = store.len();
+                let keep = args[0].ps_values()?;
+                ensure!(keep.len() >= n, "PSREMOVE: keep is shorter than the owned particles");
+                let k = args[2].ps_scalar()?;
+                ensure!(k >= 0.0 && k.fract() == 0.0, "PSREMOVE: k must be a whole number, not {k}");
+                let k = k as usize;
+                let info = if k > 0 { args[1].ps_values()? } else { Vec::new() };
+                ensure!(info.len() >= n * k, "PSREMOVE: info is shorter than k values per owned particle");
+                let ncool = args[5].ps_scalar()?;
+                let total = store.loaded;
+                // This rank's rows, then everyone's, by old number.
+                let mut mine = Vec::new();
+                for slot in 0..n {
+                    if keep[slot] == 0.0 {
+                        mine.push((store.id[slot] + 1) as f64);
+                        mine.extend_from_slice(&info[slot * k..slot * k + k]);
+                    }
+                }
+                let all = gather_all(world, &mine)?;
+                let mut rows: Vec<&[f64]> = all.chunks_exact(1 + k).collect();
+                rows.sort_unstable_by(|a, b| a[0].total_cmp(&b[0]));
+                let gone: Vec<u64> = rows.iter().map(|r| r[0] as u64 - 1).collect();
+                let cool_from = total.saturating_sub(ncool.max(0.0) as u64);
+                let cool_gone = gone.iter().filter(|&&id| id >= cool_from).count() as f64;
+                args[3].ps_set_values(rows.concat())?;
+                args[4].ps_set_scalar(gone.len() as f64)?;
+                args[5].ps_set_scalar(ncool - cool_gone)?;
+                if gone.is_empty() {
+                    return Ok(());
+                }
+                // Drop this rank's flagged particles, keeping the order.
+                let kept: Vec<bool> = keep[..n].iter().map(|&f| f != 0.0).collect();
+                store.id.retain_by(&kept);
+                store.key.retain_by(&kept);
+                store.data.retain_by(&kept);
+                store.leaf_level.retain_by(&kept);
+                store.weight.retain_by(&kept);
+                // Renumber as the serial compaction does.
+                for id in &mut store.id {
+                    *id -= gone.partition_point(|&g| g < *id) as u64;
+                }
+                store.loaded = total - gone.len() as u64;
+                // As after PSLOAD: the tree and everything built on it is gone.
+                store.prev = vec![Vec::new(); store.id.len()];
+                store.leaves.clear();
+                store.leaf_cost.clear();
+                store.pass_seconds = 0.0;
+                store.pass_mark = None;
+                store.plan = Plan::default();
+                store.bounds = None;
+                store.halo_id.clear();
+                store.halo_key.clear();
+                store.halo_data.clear();
+                store.far_id.clear();
+                store.far_data.clear();
+                store.position_of.clear();
+                store.directory.clear();
             }
             "PSWRITE" => {
                 let unit = args[0].ps_scalar()?;
@@ -2018,6 +2145,21 @@ impl crate::mpi::RosyMPIContext {
             other => bail!("unknown particle-store intrinsic {other}"),
         }
         Ok(())
+    }
+}
+
+/// Keep the entries of a per-particle column whose flag is set.
+trait RetainBy {
+    fn retain_by(&mut self, kept: &[bool]);
+}
+
+impl<T> RetainBy for Vec<T> {
+    fn retain_by(&mut self, kept: &[bool]) {
+        let mut at = 0;
+        self.retain(|_| {
+            at += 1;
+            kept[at - 1]
+        });
     }
 }
 

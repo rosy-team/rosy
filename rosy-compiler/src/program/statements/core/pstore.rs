@@ -7,11 +7,11 @@
 //! ## Syntax
 //!
 //! ```text
-//! PSLOAD  x y z px py pz f n count;
-//! PSBUILD q zscale;
-//! PSGET   x y z px py pz f n ids nown;
+//! PSLOAD  x y z px py pz f n e count;
+//! PSBUILD q wx wy wz relg;
+//! PSGET   x y z px py pz f n e ids nown;
 //! PSLISTS snumbs start_snumbs nnumbs start_nnumbs cx cy cz nleaves;
-//! PSPUT   x y z px py pz;
+//! PSPUT   x y z px py pz e;
 //! PSSCALED sx sy sz;
 //! PSSIZES nmult nloc depth;
 //! PSLEAFLOC index;
@@ -25,9 +25,11 @@
 //! PSPREV  ids start;
 //! PSPOS   ids positions;
 //! PSSUM   values count total;
-//! PSALL   x y z px py pz f n count;
-//! PSSLICE x y z px py pz f n first count;
+//! PSMAX   values count max;
+//! PSALL   x y z px py pz f n e count;
+//! PSSLICE x y z px py pz f n e first count;
 //! PSWRITE unit lines count;
+//! PSREMOVE keep info k removed nremoved ncool;
 //! EXTERN  'file.c' 'function' ['kinds'] a b c ...;
 //! ```
 //!
@@ -71,11 +73,11 @@ use rosy_lib::RosyType;
 /// Each intrinsic and what its arguments are: `i` is read, `v` is a list
 /// it writes, `s` is a real it writes, `c` is an array of untyped cells.
 const INTRINSICS: &[(&str, &str)] = &[
-    ("PSLOAD", "iiiiiiiii"),
-    ("PSBUILD", "ii"),
-    ("PSGET", "vvvvvvvvvs"),
+    ("PSLOAD", "iiiiiiiiii"),
+    ("PSBUILD", "iiiii"),
+    ("PSGET", "vvvvvvvvvvs"),
     ("PSLISTS", "vvvvvvvs"),
-    ("PSPUT", "iiiiii"),
+    ("PSPUT", "iiiiiii"),
     ("PSSCALED", "vvv"),
     ("PSSIZES", "sss"),
     ("PSLEAFLOC", "v"),
@@ -89,11 +91,13 @@ const INTRINSICS: &[(&str, &str)] = &[
     ("PSPREV", "vv"),
     ("PSPOS", "iv"),
     ("PSSUM", "iis"),
-    ("PSALL", "vvvvvvvvs"),
-    ("PSSLICE", "vvvvvvvvss"),
+    ("PSMAX", "iis"),
+    ("PSALL", "vvvvvvvvvs"),
+    ("PSSLICE", "vvvvvvvvvss"),
     ("PSWRITE", "iii"),
+    ("PSREMOVE", "iiivss"),
     // Not a store call: the Coulomb sum over Taylor series, in rosy-lib.
-    ("COULSUM", "iiiiiicv"),
+    ("COULSUM", "iiiiiiiicv"),
 ];
 
 #[derive(Debug)]
@@ -213,8 +217,8 @@ impl Transpile for PstoreStatement {
             // Reals are read first, so no borrow of them is alive in the call.
             let real = |k: usize| format!("rosy_lib::rosy_as_f64(&*({}))", cells[k]);
             let serialization = format!(
-                "{{ let (__i, __n, __relg, __want) = ({}, {}, {}, {}); rosy_lib::coulsum(&*({}), &*({}), __i, __n, __relg, __want, {}, {}).context(\"...in COULSUM\")?; }}",
-                real(2), real(3), real(4), real(5), cells[0], cells[1], cells[6], cells[7],
+                "{{ let (__i, __n, __w, __want) = ({}, {}, [{}, {}, {}], {}); rosy_lib::coulsum(&*({}), &*({}), __i, __n, __w, __want, {}, {}).context(\"...in COULSUM\")?; }}",
+                real(2), real(3), real(4), real(5), real(6), real(7), cells[0], cells[1], cells[8], cells[9],
             );
             return Ok(TranspilationOutput {
                 serialization,

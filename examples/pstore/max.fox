@@ -1,0 +1,27 @@
+{ PSMAX: the largest value over all ranks, on every rank.
+  mpirun -np 4 ./max   (any rank count; prints "PSMAX checks failed: 0") }
+BEGIN;
+PROCEDURE RUN;
+    VARIABLE NP 1; VARIABLE IP 1; VARIABLE I 1; VARIABLE K 1; VARIABLE M 1;
+    VARIABLE BAD 1; VARIABLE TOTAL 1; VARIABLE V 1 10; VARIABLE BADV 1 1;
+    PNPRO NP;
+    PLOOP I 1 NP; IP := I; ENDPLOOP;
+    BAD := 0;
+    { Rank r holds r/10, r/10 + 0.5 and, past the count, a value that must
+      be ignored. The largest counted value is NP/10 + 0.5. }
+    V(1) := IP/10; V(2) := IP/10+0.5; V(3) := 1000;
+    K := 2;
+    PSMAX V K M;
+    IF M#NP/10+0.5; BAD := BAD+1; ENDIF;
+    { All negative, the largest on one rank only. }
+    V(1) := -5-IP;
+    IF IP=NP; V(1) := -1.25; ENDIF;
+    K := 1;
+    PSMAX V K M;
+    IF M#(-1.25); BAD := BAD+1; ENDIF;
+    BADV(1) := BAD;
+    PSSUM BADV K TOTAL;
+    IF IP=1; WRITE 6 'PSMAX checks failed: '&ST(TOTAL); ENDIF;
+ENDPROCEDURE;
+RUN;
+END;

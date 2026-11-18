@@ -25,3 +25,6 @@ bun.lock
 # Construct cases written in COSY syntax, and fixtures they INCLUDE.
 !rosy-compiler/tests/**/*.fox
 *.pdf
+# Store checks run under MPI: keep the programs, not their builds.
+examples/pstore/*
+!examples/pstore/*.fox
