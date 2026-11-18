@@ -268,9 +268,10 @@ scaling after the loop (`SC_G`) stays in the program.
   one convergence-radius estimate per pair, exactly as PHAD's
   `RADIUS_FROM_SERIES` gives it for the squared distance (including
   `10^100` for a series whose ratios are all zero).
-- **Checked against PHAD's code.** `examples/pstore/coulsum.fox` runs
-  PHAD's own `SC_D2`, `RADIUS_FROM_SERIES` and pair loop next to
-  `COULSUM` and compares every coefficient and radius.
+- **Checked against PHAD's code.** A test that runs PHAD's own `SC_D2`,
+  `RADIUS_FROM_SERIES` and pair loop next to `COULSUM`, comparing every
+  coefficient and radius, lives with PHAD (its code is not public). Here,
+  the unit tests compare `COULSUM` with Rosy's series operators.
 
 PHAD's time stepping, error control and external fields stay in PHAD.
 
