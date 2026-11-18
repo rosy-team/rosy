@@ -100,6 +100,63 @@ const INTRINSICS: &[(&str, &str)] = &[
     ("COULSUM", "iiiiiiiicv"),
 ];
 
+/// Why an unknown procedure name must not be compiled as a do-nothing call
+/// (COSY syntax turns unknown procedures into no-ops so that missing COSY
+/// graphics routines don't stop a program): it is the old name of EXTERN,
+/// it uses the store's `PS` prefix, or it is a near miss of a store
+/// statement, EXTERN or COULSUM. Dropping such a call silently would skip
+/// real work (a misspelled PSREMOVE would never remove a particle).
+pub fn unknown_statement_error(name: &str) -> Option<String> {
+    let upper = name.to_ascii_uppercase();
+    if upper == "KERNEL" {
+        return Some("KERNEL was renamed to EXTERN: write EXTERN 'file' 'function' ...".to_string());
+    }
+    let names = INTRINSICS.iter().map(|(n, _)| *n).chain(["EXTERN"]);
+    let closest = names
+        .map(|n| (edit_distance(&upper, n), n))
+        .min()
+        .filter(|(d, _)| *d <= 2 && upper.len() >= 4);
+    if upper.starts_with("PS") && upper.len() > 2 || closest.is_some() {
+        let hint = closest.map(|(_, n)| format!(" (did you mean {n}?)")).unwrap_or_default();
+        return Some(format!(
+            "'{name}' is not a Rosy statement{hint}; unknown names this close to the store's statements are errors, not do-nothing calls"
+        ));
+    }
+    None
+}
+
+/// Levenshtein distance between two ASCII words.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    for (i, &ca) in a.iter().enumerate() {
+        let mut cur = vec![i + 1; b.len() + 1];
+        for (j, &cb) in b.iter().enumerate() {
+            cur[j + 1] = (prev[j] + usize::from(ca != cb)).min(prev[j + 1] + 1).min(cur[j] + 1);
+        }
+        prev = cur;
+    }
+    prev[b.len()]
+}
+
+#[cfg(test)]
+mod unknown_name_tests {
+    use super::unknown_statement_error;
+
+    #[test]
+    fn near_misses_of_store_statements_are_errors() {
+        assert!(unknown_statement_error("KERNEL").unwrap().contains("renamed to EXTERN"));
+        assert!(unknown_statement_error("PSREMOV").unwrap().contains("did you mean PSREMOVE?"));
+        assert!(unknown_statement_error("psremove_all").is_some(), "store prefix");
+        assert!(unknown_statement_error("EXTRN").unwrap().contains("did you mean EXTERN?"));
+        assert!(unknown_statement_error("COLSUM").unwrap().contains("did you mean COULSUM?"));
+        // COSY routines Rosy leaves out on purpose stay do-nothing calls.
+        for name in ["GRMOVE", "GRDRAW", "GRCHAR", "CLEAR", "GRWDTH", "GRPROJ", "MQ"] {
+            assert_eq!(unknown_statement_error(name), None, "{name}");
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct PstoreStatement {
     pub name: String,

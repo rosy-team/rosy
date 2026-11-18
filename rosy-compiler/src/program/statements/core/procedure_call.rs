@@ -206,6 +206,9 @@ impl Transpile for ProcedureCallStatement {
         let proc_context = match context.procedures.get(&self.name) {
             Some(ctx) => ctx,
             None => {
+                if let Some(why) = super::pstore::unknown_statement_error(&self.name) {
+                    return Err(vec![anyhow!("{why}")]);
+                }
                 if crate::syntax_config::is_cosy_syntax() {
                     // COSY graphics / system procs we don't have yet.
                     return Ok(TranspilationOutput {
