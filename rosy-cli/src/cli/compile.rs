@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, ensure};
 use rosy_compiler::{ast, embedded, program::Program, resolve, transpile::*};
 use std::{
     fs::write,
@@ -167,19 +167,38 @@ pub(crate) fn compile_source(
         serialization.contains("get_group_num")
             || serialization.contains(".coordinate(")
             || serialization.contains(".ps_call(")
-            || serialization.contains("rosy_lib::kernel_call(");
+            || serialization.contains("rosy_lib::extern_call(")
+            || serialization.contains("rosy_lib::extern_call_rust(");
 
-    // C files named by KERNEL statements, relative to the script.
+    // Files named by EXTERN statements, relative to the script: C files are
+    // compiled by a build script, Rust files mounted as modules of main.rs.
     let mut kernels = Vec::<std::path::PathBuf>::new();
-    for piece in serialization.split("/* rosy-kernel-source \"").skip(1) {
+    let mut rust_kernels = Vec::<(String, std::path::PathBuf)>::new();
+    for piece in serialization.split("/* rosy-extern-source \"").skip(1) {
         let Some(name) = piece.split("\" */").next() else { continue };
         let base = script_path.and_then(|p| p.parent()).unwrap_or(Path::new("."));
         let path = base.join(name);
         let path = path
             .canonicalize()
-            .with_context(|| format!("KERNEL source {} not found", path.display()))?;
-        if !kernels.contains(&path) {
-            kernels.push(path);
+            .with_context(|| format!("EXTERN source {} not found", path.display()))?;
+        match embedded::extern_module_name(name) {
+            Some(module) => {
+                if let Some((_, other)) = rust_kernels.iter().find(|(m, _)| *m == module) {
+                    ensure!(
+                        *other == path,
+                        "EXTERN files {} and {} map to the same module name {module}; rename one",
+                        other.display(),
+                        path.display()
+                    );
+                } else {
+                    rust_kernels.push((module, path));
+                }
+            }
+            None => {
+                if !kernels.contains(&path) {
+                    kernels.push(path);
+                }
+            }
         }
     }
 
@@ -194,8 +213,13 @@ pub(crate) fn compile_source(
         }
     }
 
-    let new_contents = embedded::inject_code(&serialization, needs_mpi_ctx)
+    let mut new_contents = embedded::inject_code(&serialization, needs_mpi_ctx)
         .context("Failed to inject transpiled code into template")?;
+    // Rust kernels: each file becomes a module of the program.
+    for (module, path) in &rust_kernels {
+        let path = path.to_string_lossy().replace('\\', "/");
+        new_contents.push_str(&format!("\n#[path = {path:?}]\nmod {module};\n"));
+    }
 
     write(rosy_output_path.join("src").join("main.rs"), &new_contents)
         .context("Failed to write Rust output file!")?;

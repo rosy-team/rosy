@@ -1,0 +1,9 @@
+BEGIN;
+{ A C kernel and a Rust kernel in one program: each doubles A into B. }
+VARIABLE A 1 4; VARIABLE B 1 4; VARIABLE C 1 4; VARIABLE T 1; VARIABLE N 1; VARIABLE I 1;
+LOOP I 1 4; A(I):=I; B(I):=0; C(I):=0; ENDLOOP;
+T:=0; N:=0;
+EXTERN 'extern_twice.c' 'twice' A B T N;
+EXTERN 'extern_twice.rs' 'twice' A C T N;
+WRITE 6 B(4) C(4) T N;
+END;

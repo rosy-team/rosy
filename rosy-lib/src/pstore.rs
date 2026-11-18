@@ -1466,13 +1466,17 @@ impl PsCell for Vec<crate::RosyValue> {
 }
 
 /// A C function a program supplies: how many arrays, the arrays, their lengths.
-pub type KernelFn = unsafe extern "C" fn(i64, *mut *mut f64, *const i64);
+pub type ExternFn = unsafe extern "C" fn(i64, *mut *mut f64, *const i64);
+
+/// A Rust function a program supplies: one slice per argument, laid out
+/// exactly as for a C kernel (see [`extern_call`]).
+pub type RustExternFn = fn(&mut [&mut [f64]]);
 
 /// The DA monomials in the order kernels see them: by total degree, then
 /// by exponents, higher powers of earlier variables first (for three
 /// variables at degree 2: x1², x1x2, x1x3, x2², x2x3, x3²). Entry k is the
 /// runtime's flat index of the k-th monomial.
-fn kernel_da_order() -> Result<Vec<usize>> {
+fn extern_da_order() -> Result<Vec<usize>> {
     let rt = crate::taylor::get_runtime()?;
     let nv = rt.config.num_vars;
     let mut order: Vec<usize> = (0..rt.num_monomials).collect();
@@ -1483,23 +1487,51 @@ fn kernel_da_order() -> Result<Vec<usize>> {
     Ok(order)
 }
 
-/// Call a program's C kernel. `kinds` has one letter per argument (missing
+/// Call a C function the program supplies (`EXTERN 'file.c'`). `kinds` has one letter per argument (missing
 /// letters mean `r`):
 /// - `r`: the cell goes over as an array of doubles (a real is an array of
 ///   one).
 /// - `d`: an array of untyped cells holding DA values. Each cell goes over
 ///   as a block of 1 + M doubles, M the number of DA monomials: a flag (1
 ///   if the cell holds a DA, else 0), then its coefficients in
-///   [`kernel_da_order`]. A block the kernel leaves with flag 1 becomes a
+///   [`extern_da_order`]. A block the kernel leaves with flag 1 becomes a
 ///   DA (coefficients at or below the DA epsilon are dropped); a block left
 ///   with flag 0 leaves its cell as it was.
 ///
 /// What the kernel changed is written back. The kernel must stay inside the
 /// lengths it is given.
-pub fn kernel_call(kernel: KernelFn, kinds: &str, cells: &mut [&mut dyn PsCell]) -> Result<()> {
+pub fn extern_call(kernel: ExternFn, kinds: &str, cells: &mut [&mut dyn PsCell]) -> Result<()> {
+    extern_call_with(kinds, cells, |pointers, lengths| {
+        // SAFETY: see extern_call_with: each pointer covers its length.
+        unsafe { kernel(pointers.len() as i64, pointers.as_mut_ptr(), lengths.as_ptr()) }
+    })
+}
+
+/// Call a Rust function the program supplies (`EXTERN 'file.rs'`): the same arguments and write-back as
+/// [`extern_call`], handed over as one mutable slice per argument.
+pub fn extern_call_rust(kernel: RustExternFn, kinds: &str, cells: &mut [&mut dyn PsCell]) -> Result<()> {
+    extern_call_with(kinds, cells, |pointers, lengths| {
+        let mut slices: Vec<&mut [f64]> = pointers
+            .iter()
+            .zip(lengths)
+            // SAFETY: see extern_call_with: each pointer covers its length,
+            // and no two arguments share memory, so the slices don't alias.
+            .map(|(&p, &len)| unsafe { std::slice::from_raw_parts_mut(p, len as usize) })
+            .collect();
+        kernel(&mut slices)
+    })
+}
+
+/// Lay the arguments out as arrays of doubles, run `call` on them (pointers
+/// and lengths), and write back what changed.
+fn extern_call_with(
+    kinds: &str,
+    cells: &mut [&mut dyn PsCell],
+    call: impl FnOnce(&mut [*mut f64], &[i64]),
+) -> Result<()> {
     let kinds: Vec<u8> = kinds.bytes().collect();
     let kind = |at: usize| kinds.get(at).copied().unwrap_or(b'r');
-    let da_order = if kinds.contains(&b'd') { Some(kernel_da_order()?) } else { None };
+    let da_order = if kinds.contains(&b'd') { Some(extern_da_order()?) } else { None };
     let block = da_order.as_ref().map_or(0, |o| o.len() + 1);
     let mut scalar = Vec::with_capacity(cells.len());
     let mut before = Vec::with_capacity(cells.len());
@@ -1519,7 +1551,7 @@ pub fn kernel_call(kernel: KernelFn, kinds: &str, cells: &mut [&mut dyn PsCell])
         match kind(at) {
             b'd' => {
                 let order = da_order.as_ref().expect("DA order built when a d argument is present");
-                let list = cell.ps_cells().map_err(|e| e.context(format!("kernel argument {} (kind d)", at + 1)))?;
+                let list = cell.ps_cells().map_err(|e| e.context(format!("EXTERN argument {} (kind d)", at + 1)))?;
                 let mut flat = vec![0.0; list.len() * block];
                 for (c, value) in list.iter().enumerate() {
                     if let crate::RosyValue::DA(da) = value {
@@ -1540,10 +1572,10 @@ pub fn kernel_call(kernel: KernelFn, kinds: &str, cells: &mut [&mut dyn PsCell])
                 }
                 Err(_) => {
                     scalar.push(false);
-                    before.push(cell.ps_values().map_err(|e| e.context(format!("kernel argument {}", at + 1)))?);
+                    before.push(cell.ps_values().map_err(|e| e.context(format!("EXTERN argument {}", at + 1)))?);
                 }
             },
-            other => bail!("kernel argument {}: unknown kind '{}' (expected r or d)", at + 1, other as char),
+            other => bail!("EXTERN argument {}: unknown kind '{}' (expected r or d)", at + 1, other as char),
         }
     }
     let mut after = before.clone();
@@ -1561,7 +1593,7 @@ pub fn kernel_call(kernel: KernelFn, kinds: &str, cells: &mut [&mut dyn PsCell])
     // `after`; in-place pointers point into the variables' own vectors, which
     // nothing touches until the call returns. A variable cannot be passed
     // twice (each argument is a separate &mut).
-    unsafe { kernel(pointers.len() as i64, pointers.as_mut_ptr(), lengths.as_ptr()) };
+    call(&mut pointers, &lengths);
     for (at, cell) in cells.iter_mut().enumerate() {
         if in_place[at].is_some() {
             continue;

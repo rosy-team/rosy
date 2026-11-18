@@ -1,4 +1,4 @@
-/* For examples/kernel_da.fox: reads DA cells, writes one back.
+/* For examples/extern_da.fox: reads DA cells, writes one back.
  * Each cell is 1 + M doubles: a flag (1 = a DA), then the coefficients by
  * degree, higher powers of earlier variables first. */
 void da_demo(long long count, double **v, const long long *len) {

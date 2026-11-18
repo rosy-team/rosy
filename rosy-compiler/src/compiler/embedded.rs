@@ -7,6 +7,22 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
+/// The module a Rust kernel file (`EXTERN 'file.rs' ...`) is mounted as in
+/// the generated program, derived from the path as written in the script;
+/// `None` for a C file. The statement and the CLI both use this, so the
+/// call and the `mod` line always agree.
+pub fn extern_module_name(file: &str) -> Option<String> {
+    if !file.ends_with(".rs") {
+        return None;
+    }
+    let stem: String = file
+        .trim_end_matches(".rs")
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' })
+        .collect();
+    Some(format!("rosy_extern_{stem}"))
+}
+
 fn write_if_changed(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
     let path = path.as_ref();
     let contents = contents.as_ref();
@@ -109,8 +125,9 @@ pub fn create_output_project(
     )
     .context("Failed to write Cargo.toml template")?;
 
-    // C kernels the program supplies (`KERNEL`) are compiled by a build script.
-    // ROSY_KERNEL_CFLAGS and ROSY_KERNEL_LIBS, read when the program is
+    // C files the program supplies (`EXTERN`) are compiled by a build script.
+    // ROSY_EXTERN_CFLAGS and ROSY_EXTERN_LIBS (or the older ROSY_KERNEL_*
+    // names), read when the program is
     // built, add compiler flags and libraries to link.
     let build_rs = output_dir.join("build.rs");
     if kernels.is_empty() {
@@ -129,11 +146,14 @@ pub fn create_output_project(
             }
         }
         script.push_str(concat!(
+            "    println!(\"cargo:rerun-if-env-changed=ROSY_EXTERN_CFLAGS\");\n",
+            "    println!(\"cargo:rerun-if-env-changed=ROSY_EXTERN_LIBS\");\n",
             "    println!(\"cargo:rerun-if-env-changed=ROSY_KERNEL_CFLAGS\");\n",
             "    println!(\"cargo:rerun-if-env-changed=ROSY_KERNEL_LIBS\");\n",
-            "    for flag in std::env::var(\"ROSY_KERNEL_CFLAGS\").unwrap_or_default().split_whitespace() {\n        build.flag(flag);\n    }\n",
-            "    build.compile(\"rosy_kernels\");\n",
-            "    for lib in std::env::var(\"ROSY_KERNEL_LIBS\").unwrap_or_default().split_whitespace() {\n        println!(\"cargo:rustc-link-lib={lib}\");\n    }\n",
+            "    let env = |new: &str, old: &str| std::env::var(new).or_else(|_| std::env::var(old)).unwrap_or_default();\n",
+            "    for flag in env(\"ROSY_EXTERN_CFLAGS\", \"ROSY_KERNEL_CFLAGS\").split_whitespace() {\n        build.flag(flag);\n    }\n",
+            "    build.compile(\"rosy_externs\");\n",
+            "    for lib in env(\"ROSY_EXTERN_LIBS\", \"ROSY_KERNEL_LIBS\").split_whitespace() {\n        println!(\"cargo:rustc-link-lib={lib}\");\n    }\n",
             "}\n",
         ));
         write_if_changed(&build_rs, script).context("Failed to write build.rs")?;

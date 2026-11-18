@@ -28,11 +28,11 @@
 //! PSALL   x y z px py pz f n count;
 //! PSSLICE x y z px py pz f n first count;
 //! PSWRITE unit lines count;
-//! KERNEL  'file.c' 'function' ['kinds'] a b c ...;
+//! EXTERN  'file.c' 'function' ['kinds'] a b c ...;
 //! ```
 //!
-//! `KERNEL` calls a C function the program supplies. The file is compiled
-//! and linked into the program; its path is relative to the script. Each
+//! `EXTERN` calls a C or Rust function the program supplies. The file is
+//! compiled into the program; its path is relative to the script. Each
 //! variable goes over as an array of doubles (a real is an array of one),
 //! and whatever the function changes is written back:
 //!
@@ -40,10 +40,17 @@
 //! void function(long long count, double **values, const long long *lengths);
 //! ```
 //!
+//! A file ending in `.rs` is a Rust module, mounted into the program; the
+//! function gets one slice per argument, laid out the same way:
+//!
+//! ```rust,ignore
+//! pub fn function(values: &mut [&mut [f64]]) { ... }
+//! ```
+//!
 //! An optional third string gives each argument's kind, one letter each:
 //! `r` (the default) as above, or `d` for an array of cells holding DA
 //! values, which go over as blocks of a flag and the coefficients (see
-//! `rosy_lib::kernel_call`).
+//! `rosy_lib::extern_call`).
 //!
 //! Every argument is a variable. Every rank must make the same call.
 //! See `rosy_lib::pstore` for what each one does.
@@ -93,7 +100,7 @@ const INTRINSICS: &[(&str, &str)] = &[
 pub struct PstoreStatement {
     pub name: String,
     pub args: Vec<VariableIdentifier>,
-    /// `KERNEL` only: the C file and the function in it.
+    /// `EXTERN` only: the C file and the function in it.
     pub strings: Vec<String>,
 }
 
@@ -122,19 +129,19 @@ impl FromRule for PstoreStatement {
                 _ => {}
             }
         }
-        if name == "KERNEL" {
+        if name == "EXTERN" {
             ensure!(
                 strings.len() == 2 || strings.len() == 3,
-                "KERNEL takes a C file and a function name, both quoted, optionally the argument kinds, then variables"
+                "EXTERN takes a C or Rust file and a function name, both quoted, optionally the argument kinds, then variables"
             );
             if let Some(kinds) = strings.get(2) {
                 ensure!(
                     kinds.chars().all(|c| matches!(c, 'r' | 'R' | 'd' | 'D')),
-                    "KERNEL argument kinds '{kinds}' may hold only r (reals) and d (DA cells)"
+                    "EXTERN argument kinds '{kinds}' may hold only r (reals) and d (DA cells)"
                 );
                 ensure!(
                     kinds.len() <= args.len(),
-                    "KERNEL argument kinds '{kinds}' name {} arguments but {} are given",
+                    "EXTERN argument kinds '{kinds}' name {} arguments but {} are given",
                     kinds.len(),
                     args.len()
                 );
@@ -174,7 +181,7 @@ impl Transpile for PstoreStatement {
     ) -> Result<TranspilationOutput, Vec<Error>> {
         let mut requested_variables = BTreeSet::new();
         let coulsum = self.name == "COULSUM";
-        if !coulsum && self.name != "KERNEL" {
+        if !coulsum && self.name != "EXTERN" {
             requested_variables.insert("rosy_mpi_context".to_string());
         }
         let mut cells = Vec::new();
@@ -215,14 +222,21 @@ impl Transpile for PstoreStatement {
                 ..Default::default()
             });
         }
-        if self.name == "KERNEL" {
-            // The CLI finds the file through the comment and compiles it in.
+        if self.name == "EXTERN" {
+            // The CLI finds the file through the comment and compiles it in
+            // (C) or mounts it as a module (Rust).
             let (file, function) = (&self.strings[0], &self.strings[1]);
             let kinds = self.strings.get(2).map_or(String::new(), |k| k.to_ascii_lowercase());
-            let serialization = format!(
-                "{{ /* rosy-kernel-source \"{file}\" */ unsafe extern \"C\" {{ fn {function}(count: i64, values: *mut *mut f64, lengths: *const i64); }} rosy_lib::kernel_call({function}, \"{kinds}\", &mut [{}]).context(\"...in KERNEL {function}\")?; }}",
-                cells.join(", "),
-            );
+            let serialization = match crate::compiler::embedded::extern_module_name(file) {
+                Some(module) => format!(
+                    "{{ /* rosy-extern-source \"{file}\" */ rosy_lib::extern_call_rust(crate::{module}::{function}, \"{kinds}\", &mut [{}]).context(\"...in EXTERN {function}\")?; }}",
+                    cells.join(", "),
+                ),
+                None => format!(
+                    "{{ /* rosy-extern-source \"{file}\" */ unsafe extern \"C\" {{ fn {function}(count: i64, values: *mut *mut f64, lengths: *const i64); }} rosy_lib::extern_call({function}, \"{kinds}\", &mut [{}]).context(\"...in EXTERN {function}\")?; }}",
+                    cells.join(", "),
+                ),
+            };
             return Ok(TranspilationOutput {
                 serialization,
                 requested_variables,

@@ -261,10 +261,10 @@ store call and needs no MPI.
 
 PHAD's time stepping, error control and external fields stay in PHAD.
 
-## Kernels a program supplies
+## External functions (`EXTERN`)
 
-`KERNEL 'file.c' 'function' a b c ...;` calls a C function that the program
-ships with. This is how PHAD's near-field integrator and lattice run as
+`EXTERN 'file.c' 'function' a b c ...;` calls a C function that the program
+ships with (or a Rust function, for a `.rs` file; see below). This is how PHAD's near-field integrator and lattice run as
 native code without that physics living in Rosy.
 
 - The file is compiled and linked into the program. Its path is relative to
@@ -278,7 +278,8 @@ native code without that physics living in Rosy.
   void function(long long count, double **values, const long long *lengths);
   ```
 
-- `ROSY_KERNEL_CFLAGS` and `ROSY_KERNEL_LIBS`, read when the program is
+- `ROSY_EXTERN_CFLAGS` and `ROSY_EXTERN_LIBS` (the older `ROSY_KERNEL_*`
+  names still work), read when the program is
   built, add compiler flags and libraries to link.
 - Arguments are copied in and out, so call it once for a whole batch (every
   leaf a process owns), not once per particle.
@@ -299,10 +300,25 @@ argument (missing letters mean `r`):
   order is fixed by this interface, not by how Rosy stores DA values.
 
 ```
-KERNEL 'fmm_rosy.c' 'phad_fmm_down' 'rrdd' PAR W MULTEXP LOCEXP;
+EXTERN 'fmm_rosy.c' 'phad_fmm_down' 'rrdd' PAR W MULTEXP LOCEXP;
 ```
 
-`examples/kernel.fox` and `examples/kernel_da.fox` are small checks.
+**Rust functions.** A file ending in `.rs` is a Rust module, mounted into the
+program as is (no build script, no C ABI). The function takes one mutable
+slice per argument, laid out exactly as for C, and the same write-back
+applies:
+
+```rust
+pub fn function(values: &mut [&mut [f64]]) { ... }
+```
+
+The module can use `rosy_lib` and the standard library. C and Rust kernels
+can be mixed in one program.
+
+`examples/extern.fox` and `examples/extern_da.fox` are small checks;
+`extern_rust.fox` and `extern_da_rust.fox` are the same with Rust kernels
+(`extern_twice.rs`, `extern_da.rs`) and give identical output, and
+`extern_mixed.fox` uses both kinds in one program.
 
 ## Decisions
 
