@@ -1,18 +1,28 @@
 BEGIN;
     VARIABLE (RE) X;
     X := ASIN(0.5);
-    WRITE 6 X;
+    {pi/6 = 0.52359877559829887308... lies between two doubles 1.1e-16
+     apart: libms that round correctly give the upper one (prints ...2989),
+     COSY and some others the lower one (prints ...2988). Accept either.}
+    WRITE 6 INT(X*1E12);
+    IF ABS(X-0.52359877559829887308)<1.2E-16;
+        WRITE 6 'ASIN(0.5) within one ulp of pi/6';
+    ENDIF;
 END;
 
 ======= expect
- 0.5235987755982988
+ 523598775598.0000
+ASIN(0.5) within one ulp of pi/6
 
 ======= fox
 BEGIN;
 PROCEDURE RUN;
     VARIABLE X 1;
     X := ASIN(0.5);
-    WRITE 6 X;
+    WRITE 6 INT(X*1E12);
+    IF ABS(X-0.52359877559829887308)<1.2E-16;
+        WRITE 6 'ASIN(0.5) within one ulp of pi/6';
+    ENDIF;
 ENDPROCEDURE;
 RUN;
 END;
