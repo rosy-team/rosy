@@ -54,8 +54,8 @@
 //! | Gather particles or output lines (`PSALL`, `PSSLICE`, `PSWRITE`) | **[`core::pstore`]** |
 //! | Balance processes by measured work (`PSCOST`) | **[`core::pstore`]** |
 //! | Drop particles from the store (`PSREMOVE`) | **[`core::pstore`]** |
-//! | Call a C or Rust function (`EXTERN`) | **[`core::pstore`]** |
-//! | Sum Coulomb forces over Taylor series (`COULSUM`) | **[`core::pstore`]** |
+//! | Call a C or Rust function (`EXTERN`) | **[`core::extern`]** |
+//! | Sum Coulomb forces over Taylor series (`COULSUM`) | **[`math::coulsum`]** |
 //! | Matrix operations | **[`math::linv`]**, **[`math::ldet`]**, **[`math::lev`]**, **[`math::mblock`]** |
 //! | Polynomial evaluation | **[`math::polval`]** |
 //! | Vector math | **[`math::vedot`]**, **[`math::veunit`]**, **[`math::vezero`]** |
@@ -133,6 +133,8 @@ pub use core::memfre::MemfreStatement;
 pub use core::memwrt::MemwrtStatement;
 pub use core::pnpro::PnproStatement;
 pub use core::pstore::PstoreStatement;
+pub use core::r#extern::ExternStatement;
+pub use math::coulsum::CoulsumStatement;
 pub use core::proot::ProotStatement;
 pub use core::ranseed::RanseedStatement;
 pub use core::recst::RecstStatement;
@@ -689,6 +691,24 @@ impl FromRule for Statement {
                 }),
             Rule::pstore => PstoreStatement::from_rule(pair)
                 .context("...while building a particle-store statement!")
+                .with_location(&loc)
+                .map(|opt| {
+                    opt.map(|stmt| Statement {
+                        inner: stmt.into(),
+                        source_location: loc.clone(),
+                    })
+                }),
+            Rule::extern_stmt => ExternStatement::from_rule(pair)
+                .context("...while building EXTERN statement!")
+                .with_location(&loc)
+                .map(|opt| {
+                    opt.map(|stmt| Statement {
+                        inner: stmt.into(),
+                        source_location: loc.clone(),
+                    })
+                }),
+            Rule::coulsum => CoulsumStatement::from_rule(pair)
+                .context("...while building COULSUM statement!")
                 .with_location(&loc)
                 .map(|opt| {
                     opt.map(|stmt| Statement {

@@ -97,6 +97,8 @@ statement   = _{
   | pwtime
   | pnpro
   | pstore
+  | extern_stmt
+  | coulsum
   | proot
   | imunit
   | lev
@@ -311,13 +313,19 @@ endif = { ^"ENDIF" ~ semicolon }
   pwtime = { ^"PWTIME" ~ variable_identifier ~ semicolon }
   pnpro = { ^"PNPRO" ~ variable_identifier ~ semicolon }
   pstore = { pstore_name ~ string* ~ variable_identifier* ~ semicolon }
-  pstore_name = @{ (^"EXTERN" | ^"PSREMOVE" | ^"PSWRITE" | ^"PSSLICE" | ^"PSLEAFLOC" | ^"PSSCALED" | ^"PSBOUNDS" | ^"PSLISTS" | ^"PSBUILD" | ^"PSMSYNC" | ^"PSLSYNC" | ^"PSSIZES" | ^"PSDOWN" | ^"PSLOAD" | ^"PSHALO" | ^"PSCOST" | ^"COULSUM" | ^"PSPREV" | ^"PSGET" | ^"PSPUT" | ^"PSPOS" | ^"PSSUM" | ^"PSMAX" | ^"PSALL" | ^"PSUP") ~ !(ASCII_ALPHANUMERIC | "_") }
+  pstore_name = @{ (^"PSREMOVE" | ^"PSWRITE" | ^"PSSLICE" | ^"PSLEAFLOC" | ^"PSSCALED" | ^"PSBOUNDS" | ^"PSLISTS" | ^"PSBUILD" | ^"PSMSYNC" | ^"PSLSYNC" | ^"PSSIZES" | ^"PSDOWN" | ^"PSLOAD" | ^"PSHALO" | ^"PSCOST" | ^"PSPREV" | ^"PSGET" | ^"PSPUT" | ^"PSPOS" | ^"PSSUM" | ^"PSMAX" | ^"PSALL" | ^"PSUP") ~ !(ASCII_ALPHANUMERIC | "_") }
+  /// EXTERN 'file' 'function' ['kinds'] variables;  (a C or Rust function the program supplies)
+  extern_stmt = { extern_name ~ string* ~ variable_identifier* ~ semicolon }
+  extern_name = @{ ^"EXTERN" ~ !(ASCII_ALPHANUMERIC | "_") }
   proot = { ^"PROOT" ~ variable_identifier ~ semicolon }
   imunit = { ^"IMUNIT" ~ variable_identifier ~ semicolon }
   /// [ MATH ]
   linv = { ^"LINV" ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
   ldet = { ^"LDET" ~ arg ~ arg ~ arg ~ arg ~ semicolon }
   intpol = { !longer_intpol ~ ^"INTPOL" ~ variable_identifier ~ arg ~ semicolon }
+  /// COULSUM y mq i n wx wy wz want phi radii;  (the Coulomb sum over Taylor series)
+  coulsum = { coulsum_name ~ variable_identifier* ~ semicolon }
+  coulsum_name = @{ ^"COULSUM" ~ !(ASCII_ALPHANUMERIC | "_") }
   polval = { ^"POLVAL" ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
   cpolval = { !longer_cpolval ~ ^"CPOLVAL" ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ arg ~ semicolon }
   /// [ LINEAR ALGEBRA ]

@@ -7,12 +7,14 @@
 //! - **[`lev`]** — `LEV mat er ei ev n d;` — eigenvalues and eigenvectors
 //! - **[`linv`]** — `LINV mat inv;` — matrix inverse
 //! - **[`mblock`]** — `MBLOCK mat T Ti d n;` — block-diagonal transform
+//! - **[`coulsum`]** — `COULSUM y mq i n wx wy wz want phi radii;` — Coulomb sum over Taylor series
 //! - **[`polval`]** — `POLVAL coeffs x result;` — polynomial evaluation
 //! - **[`cpolval`]** — `CPOLVAL coeffs x result;` — complex-DA polynomial composition
 //! - **[`vedot`]** — `VEDOT v1 v2 result;` — vector dot product
 //! - **[`veunit`]** — `VEUNIT vec result;` — normalize to unit vector
 //! - **[`vezero`]** — `VEZERO arr n thresh;` — zero components past threshold
 
+pub mod coulsum;
 pub mod cpolval;
 pub mod fit;
 pub mod intpol;

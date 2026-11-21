@@ -130,6 +130,8 @@ stmt_kind! {
     PLoop(PLoopStatement),
     Pnpro(PnproStatement),
     Pstore(PstoreStatement),
+    Extern(ExternStatement),
+    Coulsum(CoulsumStatement),
     Proot(ProotStatement),
     Polval(PolvalStatement),
     ProcedureCall(ProcedureCallStatement),

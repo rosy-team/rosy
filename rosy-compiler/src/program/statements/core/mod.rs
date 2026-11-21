@@ -67,14 +67,14 @@
 //! - `PSCOST leaf seconds;` — charge measured work to a leaf for the next build's balance
 //! - `PSREMOVE keep info k removed nremoved ncool;` — drop particles, renumbering survivors
 //!
-//! Also in [`pstore`], though not store calls:
+//! ## Native Code
 //!
-//! - `EXTERN 'file' 'function' ['kinds'] args...;` — call a C or Rust function the program supplies
-//! - `COULSUM y mq i n wx wy wz want phi radii;` — the Coulomb sum over Taylor series
+//! - **[`extern`]** — `EXTERN 'file' 'function' ['kinds'] args...;` — call a C or Rust function the program supplies
 
 pub mod argget;
 pub mod assign;
 pub mod r#break;
+pub mod r#extern;
 pub mod function;
 pub mod function_call;
 pub mod r#if;
@@ -101,5 +101,6 @@ pub mod sleepm;
 pub mod stcre;
 pub mod substr;
 pub mod var_decl;
+pub mod variable_args;
 pub mod velset;
 pub mod while_loop;

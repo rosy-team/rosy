@@ -30,29 +30,11 @@
 //! PSSLICE x y z px py pz f n e first count;
 //! PSWRITE unit lines count;
 //! PSREMOVE keep info k removed nremoved ncool;
-//! EXTERN  'file.c' 'function' ['kinds'] a b c ...;
 //! ```
 //!
-//! `EXTERN` calls a C or Rust function the program supplies. The file is
-//! compiled into the program; its path is relative to the script. Each
-//! variable goes over as an array of doubles (a real is an array of one),
-//! and whatever the function changes is written back:
-//!
-//! ```c
-//! void function(long long count, double **values, const long long *lengths);
-//! ```
-//!
-//! A file ending in `.rs` is a Rust module, mounted into the program; the
-//! function gets one slice per argument, laid out the same way:
-//!
-//! ```rust,ignore
-//! pub fn function(values: &mut [&mut [f64]]) { ... }
-//! ```
-//!
-//! An optional third string gives each argument's kind, one letter each:
-//! `r` (the default) as above, or `d` for an array of cells holding DA
-//! values, which go over as blocks of a flag and the coefficients (see
-//! `rosy_lib::extern_call`).
+//! `EXTERN` and `COULSUM`, which take their arguments the same way, have
+//! their own statements: [`super::extern`] and
+//! [`crate::program::statements::math::coulsum`].
 //!
 //! Every argument is a variable. Every rank must make the same call.
 //! See `rosy_lib::pstore` for what each one does.
@@ -60,15 +42,15 @@
 use anyhow::{Context, Error, Result, anyhow, ensure};
 use std::collections::BTreeSet;
 
+use super::variable_args::{infer_written, mutable_places};
 use crate::{
     ast::*,
     program::{
         expressions::core::variable_identifier::VariableIdentifier, statements::SourceLocation,
     },
-    resolve::{ExprRecipe, ResolutionRule, ScopeContext, TypeResolver},
+    resolve::{ScopeContext, TypeResolver},
     transpile::*,
 };
-use rosy_lib::RosyType;
 
 /// Each intrinsic and what its arguments are: `i` is read, `v` is a list
 /// it writes, `s` is a real it writes, `c` is an array of untyped cells.
@@ -96,8 +78,6 @@ const INTRINSICS: &[(&str, &str)] = &[
     ("PSSLICE", "vvvvvvvvvss"),
     ("PSWRITE", "iii"),
     ("PSREMOVE", "iiivss"),
-    // Not a store call: the Coulomb sum over Taylor series, in rosy-lib.
-    ("COULSUM", "iiiiiiiicv"),
 ];
 
 /// Why an unknown procedure name must not be compiled as a do-nothing call
@@ -111,7 +91,7 @@ pub fn unknown_statement_error(name: &str) -> Option<String> {
     if upper == "KERNEL" {
         return Some("KERNEL was renamed to EXTERN: write EXTERN 'file' 'function' ...".to_string());
     }
-    let names = INTRINSICS.iter().map(|(n, _)| *n).chain(["EXTERN"]);
+    let names = INTRINSICS.iter().map(|(n, _)| *n).chain(["EXTERN", "COULSUM"]);
     let closest = names
         .map(|n| (edit_distance(&upper, n), n))
         .min()
@@ -161,8 +141,6 @@ mod unknown_name_tests {
 pub struct PstoreStatement {
     pub name: String,
     pub args: Vec<VariableIdentifier>,
-    /// `EXTERN` only: the C file and the function in it.
-    pub strings: Vec<String>,
 }
 
 impl FromRule for PstoreStatement {
@@ -174,13 +152,10 @@ impl FromRule for PstoreStatement {
         );
         let mut name = String::new();
         let mut args = Vec::new();
-        let mut strings = Vec::new();
+        let mut strings = 0usize;
         for inner in pair.into_inner() {
             match inner.as_rule() {
-                Rule::string => {
-                    let raw = inner.as_str();
-                    strings.push(raw[1..raw.len() - 1].to_string());
-                }
+                Rule::string => strings += 1,
                 Rule::pstore_name => name = inner.as_str().to_ascii_uppercase(),
                 Rule::variable_identifier => args.push(
                     VariableIdentifier::from_rule(inner)
@@ -190,37 +165,7 @@ impl FromRule for PstoreStatement {
                 _ => {}
             }
         }
-        if name == "EXTERN" {
-            ensure!(
-                strings.len() == 2 || strings.len() == 3,
-                "EXTERN takes a C or Rust file and a function name, both quoted, optionally the argument kinds, then variables"
-            );
-            if let Some(kinds) = strings.get(2) {
-                ensure!(
-                    kinds.chars().all(|c| matches!(c, 'r' | 'R' | 'd' | 'D')),
-                    "EXTERN argument kinds '{kinds}' may hold only r (reals) and d (DA cells)"
-                );
-                ensure!(
-                    kinds.len() <= args.len(),
-                    "EXTERN argument kinds '{kinds}' name {} arguments but {} are given",
-                    kinds.len(),
-                    args.len()
-                );
-            }
-            let ident = |s: &str| {
-                !s.is_empty()
-                    && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-                    && !s.starts_with(|c: char| c.is_ascii_digit())
-            };
-            ensure!(ident(&strings[1]), "'{}' is not a C function name", strings[1]);
-            ensure!(
-                !strings[0].contains("*/") && !strings[0].contains('"'),
-                "'{}' is not a usable file name",
-                strings[0]
-            );
-            return Ok(Some(PstoreStatement { name, args, strings }));
-        }
-        ensure!(strings.is_empty(), "{name} takes variables only");
+        ensure!(strings == 0, "{name} takes variables only");
         let expected = INTRINSICS
             .iter()
             .find(|(n, _)| *n == name)
@@ -231,7 +176,7 @@ impl FromRule for PstoreStatement {
             "{name} takes {expected} variables, found {}",
             args.len()
         );
-        Ok(Some(PstoreStatement { name, args, strings }))
+        Ok(Some(PstoreStatement { name, args }))
     }
 }
 
@@ -240,70 +185,11 @@ impl Transpile for PstoreStatement {
         &self,
         context: &mut TranspilationInputContext,
     ) -> Result<TranspilationOutput, Vec<Error>> {
-        let mut requested_variables = BTreeSet::new();
-        let coulsum = self.name == "COULSUM";
-        if !coulsum && self.name != "EXTERN" {
-            requested_variables.insert("rosy_mpi_context".to_string());
-        }
-        let mut cells = Vec::new();
-        for arg in &self.args {
-            let output = arg.transpile(context).map_err(|e| {
-                add_context_to_all(e, format!("...while transpiling an argument of {}", self.name))
-            })?;
-            requested_variables.extend(output.requested_variables.clone());
-            let scope = &context
-                .variables
-                .get(&arg.name)
-                .ok_or_else(|| vec![anyhow!("Variable '{}' is not defined in this scope!", arg.name)])?
-                .scope;
-            let place = match scope {
-                VariableScope::Local => format!("&mut {}", output.serialization),
-                VariableScope::Arg => format!("&mut *{}", output.serialization),
-                VariableScope::Higher => {
-                    requested_variables.insert(arg.name.clone());
-                    format!("&mut *{}", output.serialization)
-                }
-            };
-            if coulsum {
-                cells.push(place);
-            } else {
-                cells.push(format!("{place} as &mut dyn PsCell"));
-            }
-        }
-        if coulsum {
-            // Reals are read first, so no borrow of them is alive in the call.
-            let real = |k: usize| format!("rosy_lib::rosy_as_f64(&*({}))", cells[k]);
-            let serialization = format!(
-                "{{ let (__i, __n, __w, __want) = ({}, {}, [{}, {}, {}], {}); rosy_lib::coulsum(&*({}), &*({}), __i, __n, __w, __want, {}, {}).context(\"...in COULSUM\")?; }}",
-                real(2), real(3), real(4), real(5), real(6), real(7), cells[0], cells[1], cells[8], cells[9],
-            );
-            return Ok(TranspilationOutput {
-                serialization,
-                requested_variables,
-                ..Default::default()
-            });
-        }
-        if self.name == "EXTERN" {
-            // The CLI finds the file through the comment and compiles it in
-            // (C) or mounts it as a module (Rust).
-            let (file, function) = (&self.strings[0], &self.strings[1]);
-            let kinds = self.strings.get(2).map_or(String::new(), |k| k.to_ascii_lowercase());
-            let serialization = match crate::compiler::embedded::extern_module_name(file) {
-                Some(module) => format!(
-                    "{{ /* rosy-extern-source \"{file}\" */ rosy_lib::extern_call_rust(crate::{module}::{function}, \"{kinds}\", &mut [{}]).context(\"...in EXTERN {function}\")?; }}",
-                    cells.join(", "),
-                ),
-                None => format!(
-                    "{{ /* rosy-extern-source \"{file}\" */ unsafe extern \"C\" {{ fn {function}(count: i64, values: *mut *mut f64, lengths: *const i64); }} rosy_lib::extern_call({function}, \"{kinds}\", &mut [{}]).context(\"...in EXTERN {function}\")?; }}",
-                    cells.join(", "),
-                ),
-            };
-            return Ok(TranspilationOutput {
-                serialization,
-                requested_variables,
-                ..Default::default()
-            });
-        }
+        let mut requested_variables = BTreeSet::from(["rosy_mpi_context".to_string()]);
+        let cells: Vec<String> = mutable_places(&self.name, &self.args, context, &mut requested_variables)?
+            .into_iter()
+            .map(|place| format!("{place} as &mut dyn PsCell"))
+            .collect();
         let serialization = format!(
             "rosy_mpi_context.ps_call(\"{}\", &mut [{}]).context(\"...in {}\")?;",
             self.name,
@@ -326,33 +212,7 @@ impl TranspileableStatement for PstoreStatement {
         ctx: &mut ScopeContext,
         source_location: SourceLocation,
     ) -> Option<Result<()>> {
-        let kinds = INTRINSICS.iter().find(|(n, _)| *n == self.name)?.1.as_bytes();
-        for (i, arg) in self.args.iter().enumerate() {
-            if !matches!(kinds[i], b'v' | b's') {
-                continue;
-            }
-            let Some(slot) = ctx.variables.get(&arg.name).cloned() else {
-                continue;
-            };
-            let Some(node) = resolver.nodes.get_mut(&slot) else {
-                continue;
-            };
-            if matches!(node.rule, ResolutionRule::Unresolved) {
-                // `VARIABLE X 1 n` is an array of reals; a bare cell is a list.
-                let ty = if kinds[i] == b's' {
-                    RosyType::RE()
-                } else if node.extra_dims > 0 {
-                    RosyType::new(rosy_lib::RosyBaseType::RE, node.extra_dims)
-                } else {
-                    RosyType::VE()
-                };
-                node.rule = ResolutionRule::InferredFrom {
-                    recipe: ExprRecipe::Literal(ty),
-                    reason: format!("{} writes it", self.name),
-                };
-                node.assigned_at = Some(source_location.clone());
-            }
-        }
-        Some(Ok(()))
+        let kinds = INTRINSICS.iter().find(|(n, _)| *n == self.name)?.1;
+        Some(infer_written(&self.name, kinds, &self.args, resolver, ctx, source_location))
     }
 }
