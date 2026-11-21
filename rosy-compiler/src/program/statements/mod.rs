@@ -45,6 +45,17 @@
 //! | Get imaginary unit | **[`core::imunit`]** |
 //! | Get process count | **[`core::pnpro`]** |
 //! | Test for the root process | **[`core::proot`]** |
+//! | Hand particles to the distributed store (`PSLOAD`) and build its tree (`PSBUILD`) | **[`core::pstore`]** |
+//! | Read or write the store's particles (`PSGET`, `PSPUT`, `PSHALO`) | **[`core::pstore`]** |
+//! | Get the store's leaf and neighbour lists (`PSLISTS`, `PSLEAFLOC`, `PSPREV`, `PSPOS`) | **[`core::pstore`]** |
+//! | Ask about the store's tree (`PSBOUNDS`, `PSSCALED`, `PSSIZES`) | **[`core::pstore`]** |
+//! | Run FMM passes across processes (`PSUP`, `PSDOWN`, `PSMSYNC`, `PSLSYNC`) | **[`core::pstore`]** |
+//! | Sum or maximise over all processes (`PSSUM`, `PSMAX`) | **[`core::pstore`]** |
+//! | Gather particles or output lines (`PSALL`, `PSSLICE`, `PSWRITE`) | **[`core::pstore`]** |
+//! | Balance processes by measured work (`PSCOST`) | **[`core::pstore`]** |
+//! | Drop particles from the store (`PSREMOVE`) | **[`core::pstore`]** |
+//! | Call a C or Rust function (`EXTERN`) | **[`core::pstore`]** |
+//! | Sum Coulomb forces over Taylor series (`COULSUM`) | **[`core::pstore`]** |
 //! | Matrix operations | **[`math::linv`]**, **[`math::ldet`]**, **[`math::lev`]**, **[`math::mblock`]** |
 //! | Polynomial evaluation | **[`math::polval`]** |
 //! | Vector math | **[`math::vedot`]**, **[`math::veunit`]**, **[`math::vezero`]** |
